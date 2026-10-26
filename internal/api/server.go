@@ -179,6 +179,7 @@ func (h *handler) routes() http.Handler {
 	mux.HandleFunc("POST /api/send", h.send)
 	mux.HandleFunc("POST /api/reply", h.reply)
 	mux.HandleFunc("POST /api/react", h.react)
+	mux.HandleFunc("POST /api/edit", h.edit)
 	mux.HandleFunc("POST /api/media/policy", h.mediaControl)
 	mux.HandleFunc("POST /api/media/download", h.mediaControl)
 	mux.HandleFunc("POST /api/sync", h.syncNow)

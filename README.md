@@ -765,6 +765,24 @@ chat in the credential's allowlist, and are audited by scope, chat and ref.
 `whatsapp-axi react REF EMOJI` and `whatsapp-axi react REF --remove` call them. Your
 own sent reactions are archived like incoming ones, including removals.
 
+### Editing your own messages
+
+```sh
+wasync edit --chat '123456789@g.us' --message-id 'ABCDEF123' --text 'Meet at 7, not 6'
+```
+
+`edit` replaces the text of a message you sent. wasync refuses, before connecting or
+sending anything, a message that is someone else's, is not plain text (media captions
+cannot be edited), was deleted, or was first sent more than WhatsApp's edit window ago
+(about 20 minutes, counted from the original send; later edits do not extend it). The
+error says which rule applied. The signed owner route is `POST /api/edit` with
+`{ "chat", "message_id", "text" }`. Agents use `POST /api/v1/messages/{ref}/edit` with
+`{ "text" }`, which needs the `edit.own` scope and the chat in the credential's
+allowlist; refusals use the codes `not_editable` and `edit_window_expired`, and an
+unknown outcome is `send_failed`, never retried automatically. `whatsapp-axi edit REF
+--text TEXT` calls it. Your edit is archived like one made on your phone, so
+`edited_at` and the new text appear in queries.
+
 REST aliases `/api/chats`, `/api/chats/{id}`, and the matching
 `/enable`, `/disable`, `/history`, `/messages` routes support both chat types.
 Existing `/api/groups` lists groups only. Explicit sending uses authenticated

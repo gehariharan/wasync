@@ -37,8 +37,15 @@ func v1WriteBody(w http.ResponseWriter, r *http.Request, id string, v any) bool 
 
 // v1WriteInvalid maps a target or argument problem found before sending.
 func v1WriteInvalid(w http.ResponseWriter, id string, err error) {
-	if errors.Is(err, whatsapp.ErrTargetUnavailable) {
+	switch {
+	case errors.Is(err, whatsapp.ErrTargetUnavailable):
 		v1Fail(w, id, 409, query.CodeTargetUnavailable, err.Error(), "choose a message that is still present in the conversation")
+		return
+	case errors.Is(err, whatsapp.ErrNotOwnMessage), errors.Is(err, whatsapp.ErrNotEditable):
+		v1Fail(w, id, 409, query.CodeNotEditable, err.Error(), "only your own text messages can be edited")
+		return
+	case errors.Is(err, whatsapp.ErrEditWindowExpired):
+		v1Fail(w, id, 409, query.CodeEditWindowExpired, err.Error(), "send a new message instead; an expired edit cannot be retried")
 		return
 	}
 	v1Fail(w, id, 400, query.CodeInvalidArgument, err.Error(), "")

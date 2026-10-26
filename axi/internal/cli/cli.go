@@ -120,6 +120,7 @@ func init() {
 		messageCommand,
 		replyCommand,
 		reactCommand,
+		editCommand,
 		{
 			name:        "version",
 			usage:       "whatsapp-axi version [--json]",

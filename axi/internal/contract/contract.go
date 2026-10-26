@@ -86,6 +86,8 @@ const (
 	CodeSchemaIncompatible = "schema_incompatible"
 	CodeRateLimited        = "rate_limited"
 	CodeTargetUnavailable  = "target_unavailable"
+	CodeNotEditable        = "not_editable"
+	CodeEditWindowExpired  = "edit_window_expired"
 	CodeSendFailed         = "send_failed"
 	CodeInternal           = "internal"
 )
@@ -94,7 +96,7 @@ const (
 var WasyncCodes = []string{
 	CodeUnauthorized, CodeForbidden, CodeNotFound, CodeInvalidArgument, CodeInvalidCursor,
 	CodeCursorExpired, CodeChatAmbiguous, CodeOwnerOffline, CodeNoAccount, CodeArchiveUnavailable,
-	CodeSchemaIncompatible, CodeRateLimited, CodeTargetUnavailable, CodeSendFailed, CodeInternal,
+	CodeSchemaIncompatible, CodeRateLimited, CodeTargetUnavailable, CodeNotEditable, CodeEditWindowExpired, CodeSendFailed, CodeInternal,
 }
 
 // Error codes produced by whatsapp-axi itself (never by wasync).
@@ -125,6 +127,7 @@ const (
 	FeatureDiagnostics   = "diagnostics"
 	FeatureWriteReply    = "write.reply"
 	FeatureWriteReact    = "write.react"
+	FeatureWriteEdit     = "write.edit"
 )
 
 // MessageRefPrefix starts every opaque message ref.

@@ -44,7 +44,7 @@ func FakeVersion() contract.VersionInfo {
 	archive := 6
 	return contract.VersionInfo{
 		APIVersion: 1, APIMinor: 0, WasyncVersion: "0.2.0-test", SchemaVersion: 6, ArchiveSchemaVersion: &archive,
-		Features: []string{"chats", "chats.match", "messages", "search", "search.context", "thread", "message.ref", "health.deep", "auth.scopes", "changes", "checkpoints", "diagnostics", "write.reply", "write.react"},
+		Features: []string{"chats", "chats.match", "messages", "search", "search.context", "thread", "message.ref", "health.deep", "auth.scopes", "changes", "checkpoints", "diagnostics", "write.reply", "write.react", "write.edit"},
 	}
 }
 

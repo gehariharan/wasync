@@ -21,10 +21,15 @@ type fakeWritingClient struct {
 	fakeClient
 	replies   []whatsapp.ReplyInput
 	reactions []whatsapp.ReactInput
+	edits     []whatsapp.EditInput
 }
 
 func (f *fakeWritingClient) Operations() whatsapp.Operations {
 	return whatsapp.Operations{
+		Edit: func(_ context.Context, in whatsapp.EditInput) (whatsapp.SendResult, error) {
+			f.edits = append(f.edits, in)
+			return whatsapp.SendResult{ChatID: in.To, MessageID: "synthetic-edit", Status: "server_acknowledged", TargetMessageID: in.Target.MessageID}, nil
+		},
 		React: func(_ context.Context, in whatsapp.ReactInput) (whatsapp.SendResult, error) {
 			f.reactions = append(f.reactions, in)
 			return whatsapp.SendResult{ChatID: in.To, MessageID: "synthetic-react", Status: "server_acknowledged", TargetMessageID: in.Target.MessageID}, nil
@@ -62,6 +67,7 @@ func writeFixture(t *testing.T) (dir string, client *fakeWritingClient, app *App
 	if _, err = store.Apply(ctx, account, []storage.Message{
 		{GroupID: "one@g.us", MessageID: "theirs", SenderID: "alice@lid", Timestamp: stamp, Type: "text", Text: "hello archive", Source: "live"},
 		{GroupID: "one@g.us", MessageID: "mine", SenderID: "me@lid", FromMe: true, Timestamp: stamp, Type: "text", Text: "my words", Source: "live"},
+		{GroupID: "one@g.us", MessageID: "stale", SenderID: "me@lid", FromMe: true, Timestamp: stamp.Add(-time.Hour), Type: "text", Text: "old words", Source: "live"},
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -19,6 +19,7 @@ import (
 type Operations struct {
 	Reply Replier
 	React Reactor
+	Edit  Editor
 }
 
 // MaxMessageText bounds text accepted by every write operation, as send does.

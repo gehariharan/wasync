@@ -14,7 +14,7 @@ import (
 // isWritePath reports the signed legacy routes that talk to WhatsApp and so
 // run without the ordinary short command deadline.
 func isWritePath(path string) bool {
-	return path == "/api/send" || path == "/api/reply" || path == "/api/react"
+	return path == "/api/send" || path == "/api/reply" || path == "/api/react" || path == "/api/edit"
 }
 
 // writeTarget resolves chat and message ID to an archived message. Writes
@@ -55,7 +55,7 @@ func decodeWrite(w http.ResponseWriter, r *http.Request, v any) bool {
 // failTarget maps a target the operation cannot act on to an error response.
 func failTarget(w http.ResponseWriter, err error) {
 	switch {
-	case errors.Is(err, whatsapp.ErrTargetUnavailable):
+	case errors.Is(err, whatsapp.ErrTargetUnavailable), errors.Is(err, whatsapp.ErrNotOwnMessage), errors.Is(err, whatsapp.ErrNotEditable), errors.Is(err, whatsapp.ErrEditWindowExpired):
 		fail(w, 409, err.Error())
 	default:
 		fail(w, 400, err.Error())

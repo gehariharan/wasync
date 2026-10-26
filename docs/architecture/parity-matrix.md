@@ -28,7 +28,7 @@ Legend: ✅ have, 🟡 partial, ❌ missing. Permission class is what an agent w
 | Reactions (capture) | ✅ event rows | – | – | read | – |
 | Send reaction | ✅ `whatsapp/write_react.go` | `send_react_cmd.go` | – | react | M (W-06) |
 | Edits / revokes capture | ✅ | `sync_edits.go` | – | read | – |
-| Edit own message | ❌ | `messages_edit.go` | – | send | M |
+| Edit own message | ✅ `whatsapp/write_edit.go` | `messages_edit.go` | – | edit.own | M (W-06) |
 | Revoke own message | ✅ via approval | `messages_delete.go` | – | destructive | – |
 | Forward | ❌ | `messages_forward.go` | – | send | M |
 | Delivery/read receipts | ❌ | `message_receipts.go`, `read_receipts.go` | yes | read / chat.state | M |
