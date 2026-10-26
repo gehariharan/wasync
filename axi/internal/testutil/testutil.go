@@ -6,6 +6,7 @@ package testutil
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -43,7 +44,7 @@ func FakeVersion() contract.VersionInfo {
 	archive := 6
 	return contract.VersionInfo{
 		APIVersion: 1, APIMinor: 0, WasyncVersion: "0.2.0-test", SchemaVersion: 6, ArchiveSchemaVersion: &archive,
-		Features: []string{"chats", "chats.match", "messages", "search", "search.context", "thread", "message.ref", "health.deep", "auth.scopes", "changes", "checkpoints", "diagnostics"},
+		Features: []string{"chats", "chats.match", "messages", "search", "search.context", "thread", "message.ref", "health.deep", "auth.scopes", "changes", "checkpoints", "diagnostics", "write.reply"},
 	}
 }
 
@@ -240,6 +241,8 @@ type API struct {
 	Codes    map[string]int // same keys -> status code
 	Auth     []string       // Authorization header per request, in order
 	Requests []string       // request URIs, in order
+	Methods  []string       // request methods, in order
+	Bodies   []string       // request bodies, in order
 }
 
 // NewAPI starts a fake API server and closes it when the test ends.
@@ -255,9 +258,12 @@ func NewAPI(t testing.TB) *API {
 func (a *API) Addr() string { return strings.TrimPrefix(a.URL, "http://") }
 
 func (a *API) serve(w http.ResponseWriter, r *http.Request) {
+	sent, _ := io.ReadAll(io.LimitReader(r.Body, 1<<20))
 	a.mu.Lock()
 	a.Auth = append(a.Auth, r.Header.Get("Authorization"))
 	a.Requests = append(a.Requests, r.URL.RequestURI())
+	a.Methods = append(a.Methods, r.Method)
+	a.Bodies = append(a.Bodies, string(sent))
 	a.mu.Unlock()
 	path := strings.TrimPrefix(r.URL.Path, "/api/v1")
 	if path == "/redirect" {

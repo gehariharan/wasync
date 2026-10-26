@@ -42,6 +42,17 @@ type Message struct {
 	ReceivedAt string          `json:"received_at"`
 }
 
+// WriteResult is the data of a write: WhatsApp's acknowledgement of a reply,
+// reaction or edit. A server acknowledgement is not proof of delivery.
+type WriteResult struct {
+	ChatID          string `json:"chat_id"`
+	MessageID       string `json:"message_id"`
+	TargetMessageID string `json:"target_message_id"`
+	Status          string `json:"status"`
+	Timestamp       string `json:"timestamp"`
+	ArchiveWarning  string `json:"archive_warning"`
+}
+
 // SearchHit is a search item; Before and After are present only when
 // context was requested.
 type SearchHit struct {

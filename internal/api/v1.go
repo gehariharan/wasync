@@ -112,7 +112,7 @@ func (h *handler) v1Authorize(w http.ResponseWriter, r *http.Request, id, scope,
 	}
 	c, err := h.agents.Authenticate(r.Header.Get("Authorization"))
 	if err == nil && scope != "" {
-		err = h.agents.AuthorizeAndAudit(c, scope, chat, "", id, mutation)
+		err = h.agents.AuthorizeAndAudit(c, scope, chat, r.PathValue("ref"), id, mutation)
 	} else if err != nil {
 		_ = h.agents.Audit(agentauth.AuditEntry{Time: time.Now(), Event: "request", Scope: scope, Chat: chat, Outcome: agentauth.OutcomeDenied, Code: query.CodeUnauthorized, RequestID: id})
 	}

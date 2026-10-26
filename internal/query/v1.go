@@ -44,6 +44,8 @@ const (
 	CodeArchiveUnavailable = "archive_unavailable"
 	CodeSchemaIncompatible = "schema_incompatible"
 	CodeRateLimited        = "rate_limited"
+	CodeTargetUnavailable  = "target_unavailable"
+	CodeSendFailed         = "send_failed"
 	CodeInternal           = "internal"
 )
 

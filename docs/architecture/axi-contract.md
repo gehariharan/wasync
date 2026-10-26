@@ -37,7 +37,7 @@ disables that command with `wasync_too_old` and an upgrade hint.
 Success: `{"request_id", "data", "page": {"next_cursor", "has_more"}}`
 Error: `{"request_id", "error_code", "error", "help", "state"}`
 
-Error codes: `unauthorized`, `forbidden`, `not_found`, `invalid_argument`, `invalid_cursor`, `cursor_expired`, `chat_ambiguous`, `owner_offline`, `no_account`, `archive_unavailable`, `schema_incompatible`, `rate_limited`, `internal`. The `wasync query --v1` mode emits the same envelope so AXI parses both transports identically.
+Error codes: `unauthorized`, `forbidden`, `not_found`, `invalid_argument`, `invalid_cursor`, `cursor_expired`, `chat_ambiguous`, `owner_offline`, `no_account`, `archive_unavailable`, `schema_incompatible`, `rate_limited`, `target_unavailable`, `send_failed`, `internal`. The `wasync query --v1` mode emits the same envelope so AXI parses both transports identically.
 
 Message-list and search responses add optional `data.total`, advertised by the
 `messages.total` feature. The archive owner counts all matching messages for the
@@ -72,6 +72,15 @@ are shared by reads and counts in [`storage`](../../internal/storage/messages.go
 | `GET /api/v1/messages/{ref}/thread` | `query thread --ref` | `thread` | `read.messages` |
 | `GET /api/v1/changes?after=&limit=` | `query changes --after` | `observe` | `observe` |
 | `GET/PUT /api/v1/checkpoints/{consumer}` | read only | `observe --consumer`, `observe ack` | `observe` |
+| `POST /api/v1/messages/{ref}/reply` | – (owner only) | `reply` | `send`, chat allowlist |
+
+Writes (feature `write.reply`) act on a message wasync has archived, are authorized
+and audited before they run (the audit entry holds scope, chat and ref, never text),
+and send once. `target_unavailable` (409) means the target was deleted or is a
+reaction; `owner_offline` (503) means wasync is not connected to WhatsApp;
+`send_failed` (502) means the outcome is unknown and must not be retried
+automatically. A ref that does not decode names no chat and is refused with
+`forbidden` before the handler runs.
 
 ### Message content safety
 

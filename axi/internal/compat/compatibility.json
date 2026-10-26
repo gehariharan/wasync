@@ -11,6 +11,7 @@
     "messages": {"features": ["chats", "chats.match", "messages"]},
     "search": {"features": ["chats", "chats.match", "search", "search.context"]},
     "thread": {"features": ["message.ref", "thread"]},
-    "message": {"features": ["message.ref"]}
+    "message": {"features": ["message.ref"]},
+    "reply": {"features": ["message.ref", "write.reply"]}
   }
 }

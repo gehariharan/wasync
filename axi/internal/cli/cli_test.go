@@ -91,7 +91,7 @@ func TestUsageErrorsExit2(t *testing.T) {
 		{[]string{"version", "--bogus"}, []string{"error: unknown flag --bogus for `version`", "help: valid flags for `version`: --json (--help always allowed)"}},
 		{[]string{"--limit=5"}, []string{"error: unknown flag --limit for `whatsapp-axi`", "valid flags for `whatsapp-axi`: --brief, --fields, --json"}},
 		{[]string{"help", "-x"}, []string{"unknown flag -x for `help`"}},
-		{[]string{"chat"}, []string{`error: unknown command "chat"`, "valid commands: chats, messages, search, thread, message, version, doctor, help"}},
+		{[]string{"chat"}, []string{`error: unknown command "chat"`, "valid commands: chats, messages, search, thread, message, reply, version, doctor, help"}},
 		{[]string{"messages"}, []string{"`messages` needs CHAT", "usage: whatsapp-axi messages CHAT"}},
 		{[]string{"search", "--chat"}, []string{"--chat needs a value (--chat CHAT)"}},
 		{[]string{"search", "a", "b"}, []string{`unexpected argument "b" for ` + "`search`"}},
@@ -142,13 +142,13 @@ func TestHelpCatalogListsOnlyImplementedCommands(t *testing.T) {
 			t.Errorf("%s advertises unimplemented work", c.Name)
 		}
 	}
-	if !reflect.DeepEqual(names, []string{"whatsapp-axi", "chats", "messages", "search", "thread", "message", "version", "doctor", "help", "observe", "setup"}) {
+	if !reflect.DeepEqual(names, []string{"whatsapp-axi", "chats", "messages", "search", "thread", "message", "reply", "version", "doctor", "help", "observe", "setup"}) {
 		t.Fatalf("catalog %v", names)
 	}
 	text, _ := h.run(t, "help")
-	mustContain(t, text, "commands[11]{name,usage,description}:", "help[1]:")
+	mustContain(t, text, "commands[12]{name,usage,description}:", "help[1]:")
 	// Every command that talks to wasync has a compatibility entry.
-	if got := compat.Default().CommandNames(); !reflect.DeepEqual(got, []string{"chats", "doctor", "home", "message", "messages", "observe", "search", "thread", "version"}) {
+	if got := compat.Default().CommandNames(); !reflect.DeepEqual(got, []string{"chats", "doctor", "home", "message", "messages", "observe", "reply", "search", "thread", "version"}) {
 		t.Fatalf("compat entries %v", got)
 	}
 	for _, args := range [][]string{{"version", "--help"}, {"help", "version"}, {"--help"}, {"help", "help"}, {"messages", "--help"}, {"help", "search"}} {
@@ -243,11 +243,11 @@ func TestVersionJSON(t *testing.T) {
 	if code != ExitOK || json.Unmarshal([]byte(out), &got) != nil {
 		t.Fatalf("%d %s", code, out)
 	}
-	if got.Version != buildinfo.Version || got.Commit != buildinfo.Commit || got.Date != buildinfo.Date || got.Wasync.Transport != "api" || got.Wasync.Version == nil || len(got.Wasync.Version.Features) != 12 || !got.Compat.OK {
+	if got.Version != buildinfo.Version || got.Commit != buildinfo.Commit || got.Date != buildinfo.Date || got.Wasync.Transport != "api" || got.Wasync.Version == nil || len(got.Wasync.Version.Features) != 13 || !got.Compat.OK {
 		t.Fatalf("%+v", got)
 	}
 	text, _ := h.run(t, "version")
-	mustContain(t, text, "whatsapp-axi: "+buildinfo.Version, "commit: "+buildinfo.Commit, "date: "+buildinfo.Date, `min_api: "1.0"`, "features[12]: chats,chats.match,messages", "archive_schema: \"6\"")
+	mustContain(t, text, "whatsapp-axi: "+buildinfo.Version, "commit: "+buildinfo.Commit, "date: "+buildinfo.Date, `min_api: "1.0"`, "features[13]: chats,chats.match,messages", "archive_schema: \"6\"")
 }
 
 func TestIncompatibleWasync(t *testing.T) {

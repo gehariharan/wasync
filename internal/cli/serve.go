@@ -21,7 +21,7 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 	if cfg.NoAPI {
 		return run(ctx, "")
 	}
-	server, err := api.StartMediaControlled(cfg.APIAddr, cfg.DataDir, store, status, a.Approvals, a.Approve, a.Sync, a.MediaDownload, sender...)
+	server, err := api.StartOperations(cfg.APIAddr, cfg.DataDir, store, status, a.Approvals, a.Approve, a.Sync, a.MediaDownload, a.Operations, sender...)
 	if err != nil {
 		return err
 	}
@@ -90,6 +90,7 @@ func (a *App) serveAction(offline bool) action {
 			send = active.Send
 		}
 		a.MediaDownload = nil
+		a.Operations = operationsOf(client)
 		a.Approvals = &approval.Queue{}
 		session := tui.NewSession(ctx, store, live)
 		session.Approvals = a.Approvals

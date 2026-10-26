@@ -717,6 +717,35 @@ quit capture before sending. When no owner runs, `send` acquires the device lock
 reuses the paired session and closes it after the request. No test sends real
 messages automatically. Read-only `query` commands never send messages.
 
+### Replies
+
+`wasync reply` quotes an archived message and can mention people. The target
+must already be in the local archive of that chat (a disabled or purged chat
+cannot be replied into), and it must not be deleted or a reaction.
+
+```sh
+wasync reply --chat '123456789@g.us' --message-id 'ABCDEF123' --text 'On my way'
+wasync reply --chat '123456789@g.us' --message-id 'ABCDEF123' \
+  --text 'Can you check this, @15551234567?' --mention '15551234567@s.whatsapp.net'
+```
+
+Each `--mention` (repeatable, up to 20) is a user JID, and the text must contain
+`@NUMBER` for it so a mention is never invisible. Like `send`, `reply` reuses a
+running owner or connects with the saved session, sends exactly once and prints
+`result.status`, `result.message_id` and `result.target_message_id` as JSON.
+The owner route is the signed `POST /api/reply` with `{ "chat", "message_id",
+"text", "mentions" }`, using the same `send.token` signature as `/api/send`.
+Quoted text is copied into the reply only when the target is a text message.
+
+Agents reply through `POST /api/v1/messages/{ref}/reply` with `{ "text",
+"mentions" }`. That needs an agent credential holding the `send` scope and the
+target's chat in its allowlist (`wasync agents grant NAME --scope send --chat
+CHAT_JID`); wasync records the attempt, the chat and the ref, never the text, in
+the audit log. Errors use the v1 envelope: `target_unavailable` (deleted or a
+reaction), `not_found` (not archived or another account), `owner_offline`
+(wasync is not connected) and `send_failed`, whose outcome is unknown and must
+not be retried automatically. `whatsapp-axi reply REF --text TEXT` calls it.
+
 REST aliases `/api/chats`, `/api/chats/{id}`, and the matching
 `/enable`, `/disable`, `/history`, `/messages` routes support both chat types.
 Existing `/api/groups` lists groups only. Explicit sending uses authenticated

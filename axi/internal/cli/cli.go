@@ -29,7 +29,7 @@ const (
 )
 
 // Description is the one-sentence description shown in the home view.
-const Description = "Read-only, agent-friendly access to your local WhatsApp archive through wasync"
+const Description = "Agent-friendly access to your local WhatsApp archive through wasync: reads by default, writes only with a scope a human granted"
 
 // App holds the process dependencies so tests can replace them.
 type App struct {
@@ -118,6 +118,7 @@ func init() {
 		searchCommand,
 		threadCommand,
 		messageCommand,
+		replyCommand,
 		{
 			name:        "version",
 			usage:       "whatsapp-axi version [--json]",

@@ -24,7 +24,7 @@ Legend: ✅ have, 🟡 partial, ❌ missing. Permission class is what an agent w
 | Multi-account | 🟡 one per data dir | `config.yaml` accounts | – | – | F (ADR only) |
 | Reply/quote capture | ✅ `reply_to_message_id` | – | – | read | – |
 | Send text / file | ✅ | `send.go`, `send_file.go` | – | send | – |
-| Send reply/quote, mentions | ❌ | `send.go:158` | – | send | M |
+| Send reply/quote, mentions | ✅ `whatsapp/write_reply.go` | `send.go:158` | – | send | M (W-06) |
 | Reactions (capture) | ✅ event rows | – | – | read | – |
 | Send reaction | ❌ | `send_react_cmd.go` | – | send | M |
 | Edits / revokes capture | ✅ | `sync_edits.go` | – | read | – |

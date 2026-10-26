@@ -90,6 +90,12 @@ func StartControlled(addr, dir string, store *storage.Store, status func() whats
 }
 
 func StartMediaControlled(addr, dir string, store *storage.Store, status func() whatsapp.CaptureStatus, approvals *approval.Queue, approve func(int64, string) error, syncer whatsapp.Syncer, media whatsapp.MediaDownloader, sender ...whatsapp.Sender) (*Server, error) {
+	return StartOperations(addr, dir, store, status, approvals, approve, syncer, media, whatsapp.Operations{}, sender...)
+}
+
+// StartOperations also serves reply, reaction and edit through ops, which are
+// nil while the owner has no live WhatsApp client.
+func StartOperations(addr, dir string, store *storage.Store, status func() whatsapp.CaptureStatus, approvals *approval.Queue, approve func(int64, string) error, syncer whatsapp.Syncer, media whatsapp.MediaDownloader, ops whatsapp.Operations, sender ...whatsapp.Sender) (*Server, error) {
 	if err := ValidateAddr(addr); err != nil {
 		return nil, err
 	}
@@ -101,7 +107,7 @@ func StartMediaControlled(addr, dir string, store *storage.Store, status func() 
 	if err != nil {
 		return nil, fmt.Errorf("start local API (change --api-addr or use --no-api): %w", err)
 	}
-	h := &handler{agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, syncer: syncer}
+	h := &handler{agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, syncer: syncer, ops: ops}
 	if len(sender) > 0 {
 		h.sender = sender[0]
 	}
@@ -154,6 +160,7 @@ type handler struct {
 	sendAuthMu       sync.Mutex
 	sendNonces       map[string]time.Time
 	sender           whatsapp.Sender
+	ops              whatsapp.Operations
 	store            *storage.Store
 	token, authority string
 	status           func() whatsapp.CaptureStatus
@@ -170,6 +177,7 @@ func (h *handler) routes() http.Handler {
 	})
 	mux.HandleFunc("GET /api/status", h.getStatus)
 	mux.HandleFunc("POST /api/send", h.send)
+	mux.HandleFunc("POST /api/reply", h.reply)
 	mux.HandleFunc("POST /api/media/policy", h.mediaControl)
 	mux.HandleFunc("POST /api/media/download", h.mediaControl)
 	mux.HandleFunc("POST /api/sync", h.syncNow)
@@ -221,7 +229,7 @@ func (h *handler) routes() http.Handler {
 			return
 		}
 		requiredToken := h.token
-		if (r.URL.Path == "/api/send" || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") {
+		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") {
 			if r.URL.Path == "/api/send" && h.sender == nil || strings.HasPrefix(r.URL.Path, "/api/actions") && h.approvals == nil {
 				fail(w, 503, "sending unavailable")
 				return
@@ -256,7 +264,7 @@ func (h *handler) routes() http.Handler {
 		}
 		// An explicitly requested attachment upload may take longer than the
 		// ordinary command deadline. The caller's context still cancels on disconnect.
-		if r.URL.Path == "/api/send" {
+		if isWritePath(r.URL.Path) {
 			if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
 				fail(w, 500, "could not configure transfer response")
 				return
