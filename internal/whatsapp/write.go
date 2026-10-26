@@ -18,6 +18,7 @@ import (
 // wires them to its connected client; they are nil when it is offline.
 type Operations struct {
 	Reply Replier
+	React Reactor
 }
 
 // MaxMessageText bounds text accepted by every write operation, as send does.

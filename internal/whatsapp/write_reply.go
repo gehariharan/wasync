@@ -125,5 +125,5 @@ func (c *Client) Reply(ctx context.Context, in ReplyInput) (SendResult, error) {
 
 // Operations returns the writes this client can perform.
 func (c *Client) Operations() Operations {
-	return Operations{Reply: c.Reply}
+	return Operations{Reply: c.Reply, React: c.React}
 }

@@ -1,7 +1,7 @@
 # whatsapp-axi
 
 `whatsapp-axi` is a command-line tool for AI agents to read your local WhatsApp archive and, when you
-grant it, to reply to messages in it. The archive
+grant it, to reply and react to messages in it. The archive
 belongs to [wasync](https://github.com/gehariharan/wasync); `whatsapp-axi` only asks wasync for
 data and formats the answer for agents, following the [AXI](https://github.com/kunchenguid/axi)
 principles: compact output, explicit empty states, structured errors on stdout, next-step hints.
@@ -10,7 +10,7 @@ It has no WhatsApp code of its own. It never connects to WhatsApp, never opens t
 session store, never takes wasync's device lock and never starts `wasync serve`.
 
 > Status: early development. Today it implements the home view, the read commands (`chats`, `messages`,
-> `search`, `thread`, `message`), `observe`, `reply`, `version`, `doctor`, `setup` (agent hooks and skill)
+> `search`, `thread`, `message`), `observe`, `reply`, `react`, `version`, `doctor`, `setup` (agent hooks and skill)
 > and `help`.
 
 ## How it reads wasync
@@ -19,7 +19,7 @@ whatsapp-axi uses exactly two transports and tells you which one served each res
 
 | Transport | Used when | Can do |
 |---|---|---|
-| Local API: `http://127.0.0.1:8787/api/v1` | wasync is running (TUI or `wasync serve`) and its API version is compatible | Scoped reads and, with the right scope, writes (`reply`) with an agent credential |
+| Local API: `http://127.0.0.1:8787/api/v1` | wasync is running (TUI or `wasync serve`) and its API version is compatible | Scoped reads and, with the right scope, writes (`reply`, `react`) with an agent credential |
 | `wasync query <command> --v1 --json` subprocess | wasync is not running | Read-only offline reads of the archive |
 
 Selection is deterministic: whatsapp-axi probes `GET /api/v1/version` with a short timeout. If it answers
@@ -49,7 +49,8 @@ Settings, all optional:
   convenience, not a security boundary.
 - **Writes need a scope you grant, per chat.** `whatsapp-axi reply REF --text TEXT` posts to wasync's API,
   which refuses it unless the credential holds `send` and the message's chat is in its allowlist
-  (`wasync agents grant <name> --scope read.chats,read.messages,send --chat <chat-jid>`). whatsapp-axi adds
+  (`wasync agents grant <name> --scope read.chats,read.messages,send --chat <chat-jid>`).
+  `whatsapp-axi react REF EMOJI|--remove` needs the separate `react` scope the same way. whatsapp-axi adds
   no rules of its own and prints wasync's refusal unchanged. It sends once and never retries; offline
   (`wasync query`) never writes.
 - **Offline reads are not scoped.** `wasync query` reads the archive as your OS user, like opening your

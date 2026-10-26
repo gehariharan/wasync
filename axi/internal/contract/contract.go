@@ -124,6 +124,7 @@ const (
 	FeatureCheckpoints   = "checkpoints"
 	FeatureDiagnostics   = "diagnostics"
 	FeatureWriteReply    = "write.reply"
+	FeatureWriteReact    = "write.react"
 )
 
 // MessageRefPrefix starts every opaque message ref.

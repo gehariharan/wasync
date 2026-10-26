@@ -20,7 +20,7 @@ func writerHarness(t *testing.T) (*harness, *testutil.API) {
 	return h, srv
 }
 
-func ack(status string) map[string]any {
+func ackEnvelope(status string) map[string]any {
 	return map[string]any{"request_id": "r-w", "data": map[string]any{
 		"chat_id": "one@g.us", "message_id": "NEW1", "target_message_id": "a", "status": status, "timestamp": "2026-10-01T12:00:00Z",
 	}}
@@ -39,7 +39,7 @@ func posts(srv *testutil.API) (n int, last string) {
 
 func TestReplyPostsOnceAndPrintsAcknowledgement(t *testing.T) {
 	h, srv := writerHarness(t)
-	srv.Routes[replyEndpoint] = ack("server_acknowledged")
+	srv.Routes[replyEndpoint] = ackEnvelope("server_acknowledged")
 	out, code := h.run(t, "reply", testRef, "--text", "On my way @123", "--mentions", "123@s.whatsapp.net, ,456@s.whatsapp.net")
 	if code != ExitOK {
 		t.Fatalf("exit %d\n%s", code, out)
@@ -150,7 +150,7 @@ func TestReplyRefusesIncompatibleWasyncWithoutPosting(t *testing.T) {
 	v := testutil.FakeVersion()
 	v.Features = []string{"message.ref"}
 	srv.Version = v
-	srv.Routes[replyEndpoint] = ack("server_acknowledged")
+	srv.Routes[replyEndpoint] = ackEnvelope("server_acknowledged")
 	out, code := h.run(t, "reply", testRef, "--text", "hello")
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)

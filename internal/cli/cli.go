@@ -80,6 +80,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   media download --chat ID --message-id ID    One-time attachment download (live owner)
   send --to CHAT_ID [--text TEXT] [--file PATH --type image|document]
   reply --chat CHAT_ID --message-id ID --text TEXT [--mention USER_JID ...]
+  react --chat CHAT_ID --message-id ID (--emoji EMOJI|--remove)
   status                                     Inspect local pairing state
   query [groups|chats|messages|search|status]       Read-only JSON queries for agents
   query [version|message|thread|changes|checkpoint|doctor]  More queries; --v1 envelope
@@ -180,6 +181,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	}
 	if args[0] == "reply" {
 		return a.runReply(parent, cfg, args[1:])
+	}
+	if args[0] == "react" {
+		return a.runReact(parent, cfg, args[1:])
 	}
 	if args[0] == "query" {
 		ctx, cancel := context.WithTimeout(parent, cfg.Timeout)

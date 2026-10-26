@@ -19,11 +19,16 @@ import (
 // fakeWritingClient records the writes a CLI command asks its connected client for.
 type fakeWritingClient struct {
 	fakeClient
-	replies []whatsapp.ReplyInput
+	replies   []whatsapp.ReplyInput
+	reactions []whatsapp.ReactInput
 }
 
 func (f *fakeWritingClient) Operations() whatsapp.Operations {
 	return whatsapp.Operations{
+		React: func(_ context.Context, in whatsapp.ReactInput) (whatsapp.SendResult, error) {
+			f.reactions = append(f.reactions, in)
+			return whatsapp.SendResult{ChatID: in.To, MessageID: "synthetic-react", Status: "server_acknowledged", TargetMessageID: in.Target.MessageID}, nil
+		},
 		Reply: func(_ context.Context, in whatsapp.ReplyInput) (whatsapp.SendResult, error) {
 			f.replies = append(f.replies, in)
 			return whatsapp.SendResult{ChatID: in.To, MessageID: "synthetic-reply", Status: "server_acknowledged", TargetMessageID: in.Target.MessageID}, nil

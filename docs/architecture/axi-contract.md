@@ -73,8 +73,9 @@ are shared by reads and counts in [`storage`](../../internal/storage/messages.go
 | `GET /api/v1/changes?after=&limit=` | `query changes --after` | `observe` | `observe` |
 | `GET/PUT /api/v1/checkpoints/{consumer}` | read only | `observe --consumer`, `observe ack` | `observe` |
 | `POST /api/v1/messages/{ref}/reply` | – (owner only) | `reply` | `send`, chat allowlist |
+| `PUT/DELETE /api/v1/messages/{ref}/reaction` | – (owner only) | `react REF EMOJI`, `react REF --remove` | `react`, chat allowlist |
 
-Writes (feature `write.reply`) act on a message wasync has archived, are authorized
+Writes (features `write.reply`, `write.react`) act on a message wasync has archived, are authorized
 and audited before they run (the audit entry holds scope, chat and ref, never text),
 and send once. `target_unavailable` (409) means the target was deleted or is a
 reaction; `owner_offline` (503) means wasync is not connected to WhatsApp;

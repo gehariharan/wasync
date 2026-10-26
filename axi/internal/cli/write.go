@@ -45,16 +45,21 @@ func (a *App) writeTransport(ctx context.Context, cmd, action string) (messageWr
 	return w, t, nil
 }
 
-// post sends one write and decodes WhatsApp's acknowledgement into out.
-func post(ctx context.Context, w messageWriter, t transport.Transport, path string, body, out any) (contract.Response, error) {
+// ack runs one write call and decodes WhatsApp's acknowledgement into out.
+func ack(t transport.Transport, out any, call func(*contract.Response) error) (contract.Response, error) {
 	var resp contract.Response
-	if err := w.Post(ctx, path, body, &resp); err != nil {
+	if err := call(&resp); err != nil {
 		return resp, err
 	}
 	if err := json.Unmarshal(resp.Data, out); err != nil {
 		return resp, &contract.Error{RequestID: resp.RequestID, Code: contract.CodeInvalidResponse, Message: "wasync response data has an unexpected shape: " + err.Error(), Transport: t.Name()}
 	}
 	return resp, nil
+}
+
+// post sends one write and decodes WhatsApp's acknowledgement into out.
+func post(ctx context.Context, w messageWriter, t transport.Transport, path string, body, out any) (contract.Response, error) {
+	return ack(t, out, func(r *contract.Response) error { return w.Post(ctx, path, body, r) })
 }
 
 // writeExplain points a missing credential at the scope the command needs.

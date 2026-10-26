@@ -14,7 +14,7 @@ import (
 // isWritePath reports the signed legacy routes that talk to WhatsApp and so
 // run without the ordinary short command deadline.
 func isWritePath(path string) bool {
-	return path == "/api/send" || path == "/api/reply"
+	return path == "/api/send" || path == "/api/reply" || path == "/api/react"
 }
 
 // writeTarget resolves chat and message ID to an archived message. Writes

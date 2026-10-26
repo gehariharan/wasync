@@ -12,6 +12,7 @@
     "search": {"features": ["chats", "chats.match", "search", "search.context"]},
     "thread": {"features": ["message.ref", "thread"]},
     "message": {"features": ["message.ref"]},
-    "reply": {"features": ["message.ref", "write.reply"]}
+    "reply": {"features": ["message.ref", "write.reply"]},
+    "react": {"features": ["message.ref", "write.react"]}
   }
 }

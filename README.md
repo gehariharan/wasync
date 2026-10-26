@@ -746,6 +746,25 @@ reaction), `not_found` (not archived or another account), `owner_offline`
 (wasync is not connected) and `send_failed`, whose outcome is unknown and must
 not be retried automatically. `whatsapp-axi reply REF --text TEXT` calls it.
 
+### Reactions
+
+```sh
+wasync react --chat '123456789@g.us' --message-id 'ABCDEF123' --emoji '👍'
+wasync react --chat '123456789@g.us' --message-id 'ABCDEF123' --remove
+```
+
+`react` sets your reaction on an archived message, or clears it with `--remove`;
+give exactly one of `--emoji` and `--remove`. WhatsApp keeps one reaction per person
+per message, so a new emoji replaces the old one. `--emoji` must be a single emoji
+(words, plain digits and ASCII punctuation are refused). The target rules, owner reuse
+and one-attempt behaviour are the same as for `reply`; the signed owner route is
+`POST /api/react` with `{ "chat", "message_id", "emoji" }` or `"remove": true`.
+Agents use `PUT /api/v1/messages/{ref}/reaction` with `{ "emoji" }` and `DELETE` on the
+same path to clear it. Both need the `react` scope (separate from `send`) and the
+chat in the credential's allowlist, and are audited by scope, chat and ref.
+`whatsapp-axi react REF EMOJI` and `whatsapp-axi react REF --remove` call them. Your
+own sent reactions are archived like incoming ones, including removals.
+
 REST aliases `/api/chats`, `/api/chats/{id}`, and the matching
 `/enable`, `/disable`, `/history`, `/messages` routes support both chat types.
 Existing `/api/groups` lists groups only. Explicit sending uses authenticated
