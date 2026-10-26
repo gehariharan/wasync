@@ -41,7 +41,7 @@ Legend: ✅ have, 🟡 partial, ❌ missing. Permission class is what an agent w
 | Polls / locations capture | ❌ | `sync_polls.go`, `store/locations.go` | yes | read | B |
 | Channels, status, presence, calls | ❌ | `newsletters.go`, `presence.go`, `calls.go` | yes | read | B |
 | Change journal / pull feed | ❌ | `store/changes.go` | yes | read | D (W-04) |
-| Webhooks (HMAC, SSRF guard) | ❌ | `app/webhook.go` | yes | admin | D (W-05) |
+| Webhooks (HMAC, SSRF guard) | ✅ `internal/webhook`, human-managed, identifier-only events on the change journal | `app/webhook.go` | – | admin (human only, not grantable) | D (W-05) |
 | Storage limits | ❌ | `storage_limits.go` | – | admin | B |
 | Local purge / clean | ✅ via approval | `messages purge` | – | destructive | – |
 | Disappearing-message expiry | ✅ `Expire` | – | – | – | – |

@@ -8,16 +8,21 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/api"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/tui"
+	"github.com/gehariharan/wasync/internal/webhook"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 )
 
 // withAPI closes all HTTP handlers before the caller closes the store/client.
 func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Store, status func() whatsapp.CaptureStatus, run func(context.Context, string) error, sender ...whatsapp.Sender) (result error) {
+	// Webhook delivery belongs to the owner and does not depend on the API.
+	stopWebhooks := a.startWebhooks(ctx, cfg, store)
+	defer stopWebhooks()
 	if cfg.NoAPI {
 		return run(ctx, "")
 	}
@@ -47,6 +52,27 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 	}
 	return result
 }
+
+// startWebhooks runs the webhook dispatcher until the returned stop function
+// is called. It idles cheaply when no endpoint is registered.
+func (a *App) startWebhooks(ctx context.Context, cfg config.Config, store *storage.Store) (stop func()) {
+	sender := a.WebhookSender
+	if sender == nil {
+		sender = webhook.NewSender(nil)
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+	d := &webhook.Dispatcher{Dir: cfg.DataDir, Store: store, Sender: sender, Audit: agentauth.NewAuditLog(cfg.DataDir)}
+	go func() {
+		defer close(done)
+		d.Run(runCtx)
+	}()
+	return func() {
+		cancel()
+		<-done
+	}
+}
+
 func (a *App) serveAction(offline bool) action {
 	return func(ctx context.Context, cfg config.Config, store *storage.Store, log *slog.Logger) (result error) {
 		if cfg.NoAPI {
