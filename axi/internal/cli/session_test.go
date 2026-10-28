@@ -3,6 +3,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -25,7 +26,7 @@ func sessionHarness(t *testing.T, payload string) (*harness, string) {
 func TestSessionEndRecordsNamesAndCountsOnly(t *testing.T) {
 	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
 	writeFile(t, transcript, sessionTranscript)
-	h, store := sessionHarness(t, `{"session_id":"s1","transcript_path":"`+transcript+`","cwd":"/ignored-by-test","hook_event_name":"SessionEnd","reason":"other"}`)
+	h, store := sessionHarness(t, `{"session_id":"s1","transcript_path":"`+filepath.ToSlash(transcript)+`","cwd":"/ignored-by-test","hook_event_name":"SessionEnd","reason":"other"}`)
 	out, code := h.run(t, "session-end")
 	if code != ExitOK {
 		t.Fatalf("exit %d: %s", code, out)
@@ -37,7 +38,7 @@ func TestSessionEndRecordsNamesAndCountsOnly(t *testing.T) {
 			t.Errorf("session record or output leaks %q:\n%s\n%s", leak, out, stored)
 		}
 	}
-	if info, err := os.Stat(store); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(store); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Fatalf("store mode: %v %v", info, err)
 	}
 }
@@ -59,7 +60,7 @@ func TestSessionEndFromOpenCodeCommandNames(t *testing.T) {
 func TestSessionEndWithoutCommandsRecordsNothing(t *testing.T) {
 	transcript := filepath.Join(t.TempDir(), "transcript.jsonl")
 	writeFile(t, transcript, `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"ls"}}]}}`+"\n")
-	h, store := sessionHarness(t, `{"transcript_path":"`+transcript+`"}`)
+	h, store := sessionHarness(t, `{"transcript_path":"`+filepath.ToSlash(transcript)+`"}`)
 	out, code := h.run(t, "session-end")
 	if code != ExitOK {
 		t.Fatalf("exit %d: %s", code, out)

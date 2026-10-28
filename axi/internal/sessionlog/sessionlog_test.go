@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -80,7 +81,7 @@ func TestSaveLastIsPerDirectoryPrivateAndBounded(t *testing.T) {
 	if strings.Contains(string(b), "/work") {
 		t.Fatalf("store keeps directory paths: %s", b)
 	}
-	if info, err := os.Stat(path); err != nil || info.Mode().Perm() != 0o600 {
+	if info, err := os.Stat(path); err != nil || (runtime.GOOS != "windows" && info.Mode().Perm() != 0o600) {
 		t.Fatalf("mode %v %v", info, err)
 	}
 	for i := 0; i < maxDirs+5; i++ {
