@@ -218,6 +218,31 @@ func (s *Store) Groups(ctx context.Context, account int64) ([]Group, error) {
 	return groups, rows.Err()
 }
 func (s *Store) SetEnabled(ctx context.Context, account int64, ids []string, enabled bool) error {
+	return s.setEnabled(ctx, account, ids, enabled, historyOnEnable)
+}
+
+// historyMode says when enabling capture queues a request for older messages.
+type historyMode int
+
+const (
+	historyOnEnable historyMode = iota // only when capture was off (the TUI and CLI default)
+	historyNever                       // capture from now on only
+	historyAlways                      // also for an already enabled chat, unless a request is in flight
+)
+
+// EnableCapture turns capture on for one cached chat. With withHistory it also
+// queues a request for older messages (unless one is already in flight), the
+// same as enabling the chat in the TUI; without it capture starts from now on
+// and no history is requested.
+func (s *Store) EnableCapture(ctx context.Context, account int64, chat string, withHistory bool) error {
+	mode := historyNever
+	if withHistory {
+		mode = historyAlways
+	}
+	return s.setEnabled(ctx, account, []string{chat}, true, mode)
+}
+
+func (s *Store) setEnabled(ctx context.Context, account int64, ids []string, enabled bool, history historyMode) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -248,7 +273,15 @@ func (s *Store) SetEnabled(ctx context.Context, account int64, ids []string, ena
 				return err
 			}
 		}
-		if enabled && !wasEnabled {
+		queueHistory := enabled && !wasEnabled && history != historyNever
+		if enabled && wasEnabled && history == historyAlways {
+			var state string
+			if e := tx.QueryRowContext(ctx, "SELECT state FROM history_jobs WHERE account_id=? AND group_id=?", account, id).Scan(&state); e != nil && e != sql.ErrNoRows {
+				return e
+			}
+			queueHistory = state != "sending" && state != "waiting"
+		}
+		if queueHistory {
 			if _, err = tx.ExecContext(ctx, `INSERT INTO history_jobs(account_id,group_id,updated_at) VALUES(?,?,?)
    ON CONFLICT(account_id,group_id) DO UPDATE SET state='queued',request_id='',requested_at=NULL,last_error='',updated_at=excluded.updated_at`, account, id, time.Now().UnixMilli()); err != nil {
 				return err

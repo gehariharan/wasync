@@ -26,13 +26,13 @@ func (a *App) tuiAction(offline bool) action {
 		if offline {
 			session := tui.NewSession(ctx, store, nil)
 			session.Approvals = a.Approvals
-			session.MediaRoot = filepath.Join(cfg.DataDir, "media")
+			session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
 			a.Approve = session.ApproveAction
 			a.Sync = session.Sync
 			return a.withAPI(ctx, cfg, store, nil, func(ctx context.Context, url string) error {
 				session.APIURL = url
 				session.Approvals = a.Approvals
-				session.MediaRoot = filepath.Join(cfg.DataDir, "media")
+				session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
 				return tui.Run(ctx, session, a.In, a.Out)
 			})
 		}
@@ -74,7 +74,7 @@ func (a *App) tuiAction(offline bool) action {
 		a.Operations = operationsOf(client)
 		session := tui.NewSession(clientCtx, store, live)
 		session.Approvals = a.Approvals
-		session.MediaRoot = filepath.Join(cfg.DataDir, "media")
+		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
 		a.Approve = session.ApproveAction
 		a.Sync = session.Sync
 		if media, ok := client.(interface {
@@ -85,7 +85,7 @@ func (a *App) tuiAction(offline bool) action {
 		return a.withAPI(clientCtx, cfg, store, live.Status, func(ctx context.Context, url string) error {
 			session.APIURL = url
 			session.Approvals = a.Approvals
-			session.MediaRoot = filepath.Join(cfg.DataDir, "media")
+			session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
 			return tui.Run(ctx, session, a.In, a.Out)
 		}, send)
 	}

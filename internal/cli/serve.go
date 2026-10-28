@@ -120,7 +120,7 @@ func (a *App) serveAction(offline bool) action {
 		a.Approvals = &approval.Queue{}
 		session := tui.NewSession(ctx, store, live)
 		session.Approvals = a.Approvals
-		session.MediaRoot = filepath.Join(cfg.DataDir, "media")
+		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
 		a.Approve = session.ApproveAction
 		a.Sync = session.Sync
 		if media, ok := client.(interface {

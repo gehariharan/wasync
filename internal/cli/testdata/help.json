@@ -139,8 +139,8 @@
       "usage": "delete --chat CHAT_ID --scope everyone --message-id MESSAGE_ID\n       wasync delete --chat CHAT_ID --scope my-whatsapp-chat"
     },
     {
-      "description": "Inspect or interactively approve a destructive request.",
-      "details": "Requires the running owner's command channel. REQUEST_ID is the 32-character hexadecimal ID returned by clean or delete.",
+      "description": "Inspect or interactively approve a destructive request or an agent's chat access request.",
+      "details": "Requires the running owner's command channel. REQUEST_ID is the 32-character hexadecimal ID returned by clean or delete, or printed by whatsapp-axi access request.",
       "path": "actions",
       "usage": "actions status|approve REQUEST_ID"
     },
@@ -151,8 +151,8 @@
       "usage": "actions status REQUEST_ID"
     },
     {
-      "description": "Ask a human to approve a pending destructive request.",
-      "details": "Requires an interactive terminal and a typed confirmation. Agents cannot bypass confirmation with --yes.",
+      "description": "Ask a human to approve a pending destructive request or chat access request.",
+      "details": "Requires an interactive terminal and a typed confirmation. Agents cannot bypass confirmation with --yes. For a chat access request you also choose the chat (when several match) and the history depth: from now on only, or a full history sync.",
       "path": "actions approve",
       "usage": "actions approve REQUEST_ID"
     },
@@ -242,9 +242,9 @@
     },
     {
       "description": "Create a scoped agent credential; human only, interactive terminal required.",
-      "details": "NAME is 1-32 characters of a-z, 0-9 and -. Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own, chat.state, group.admin, capture.manage, export (default read.chats,read.messages). There is no destructive scope. --chat (repeatable) limits the client to listed chats and is required for send, react, edit.own, chat.state, group.admin and capture.manage. --rate is requests per minute (default 60); omit --expires for no expiry. The credential is printed once; only its hash is stored. Legacy api.token, send.token and approve.token are never accepted as agent credentials.",
+      "details": "NAME is 1-32 characters of a-z, 0-9 and -. Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own, chat.state, group.admin, capture.manage, export (default read.chats,read.messages). There is no destructive scope. --chat (repeatable) limits the client to listed chats and is required for send, react, edit.own, chat.state, group.admin and capture.manage unless --on-demand is given. --on-demand starts the client with no chats: it asks (whatsapp-axi access request) and you approve each chat, read and send separately, with a history depth, in the TUI or actions approve. --rate is requests per minute (default 60); omit --expires for no expiry. The credential is printed once; only its hash is stored. Legacy api.token, send.token and approve.token are never accepted as agent credentials.",
       "path": "agents grant",
-      "usage": "agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--expires DURATION] [--rate N]"
+      "usage": "agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--on-demand] [--expires DURATION] [--rate N]"
     },
     {
       "description": "List agent clients, scopes and limits.",

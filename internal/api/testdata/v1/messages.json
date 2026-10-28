@@ -489,7 +489,7 @@
     "body": {
       "error": "client scoped is not allowed chat two@g.us",
       "error_code": "forbidden",
-      "help": "Chat two@g.us is not in the allowlist for scope read.messages. A human must re-grant the client in an interactive terminal: wasync agents revoke scoped && wasync agents grant scoped --scope read.chats,read.messages --chat one@g.us --chat two@g.us --rate 6000",
+      "help": "Chat two@g.us is not allowed for scope read.messages. Ask the person to approve it: run `whatsapp-axi access request --chat two@g.us` (or POST /api/v1/access-requests); nothing is granted until they confirm in wasync. Otherwise: A human must re-grant the client in an interactive terminal: wasync agents revoke scoped && wasync agents grant scoped --scope read.chats,read.messages --chat one@g.us --chat two@g.us --rate 6000",
       "request_id": "<request_id>"
     },
     "request": "GET /api/v1/chats/two@g.us/messages",

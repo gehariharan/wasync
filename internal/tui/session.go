@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"github.com/gehariharan/wasync/internal/mediafiles"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/whatsapp"
@@ -33,9 +35,11 @@ type Snapshot struct {
 	Account int64
 }
 type Session struct {
-	Approvals  *approval.Queue
-	APIURL     string
-	MediaRoot  string
+	Approvals *approval.Queue
+	APIURL    string
+	MediaRoot string
+	// DataDir holds agents.json and the audit log; chat access requests need it.
+	DataDir    string
 	ctx        context.Context
 	store      *storage.Store
 	client     Client
@@ -258,6 +262,8 @@ func (s *Session) ApproveAction(account int64, id string) (result error) {
 		s.Approvals.Finish(id, status, result)
 	}()
 	switch request.Kind {
+	case approval.KindChatAccess:
+		return s.grantChatAccess(account, request)
 	case "clear-message":
 		return s.ClearMessage(account, request.Chat, request.Message)
 	case "purge-chat":
@@ -273,10 +279,58 @@ func (s *Session) RejectAction(account int64, id string) error {
 	if s.Approvals == nil {
 		return fmt.Errorf("approval queue unavailable")
 	}
-	if _, err := s.Approvals.Take(account, id); err != nil {
+	pending := s.Approvals.Get(account, id)
+	if err := s.Approvals.Reject(account, id); err != nil {
 		return err
 	}
-	s.Approvals.Finish(id, "rejected", nil)
+	if pending != nil && pending.Kind == approval.KindChatAccess && s.DataDir != "" {
+		a := pending.Access
+		_ = agentauth.NewAuditLog(s.DataDir).Append(agentauth.AuditEntry{Event: "access_reject", ClientID: a.AgentID, ClientName: a.Agent, Scope: strings.Join(a.Scopes, ","), Chat: pending.Chat, Ref: id[:8], Outcome: agentauth.OutcomeDenied})
+	}
+	return nil
+}
+
+// DecideAccess records the human's chat and history-depth choice on a pending
+// access request; ApproveAction then applies exactly that choice.
+func (s *Session) DecideAccess(account int64, id, chat, history string) error {
+	if s.Approvals == nil {
+		return fmt.Errorf("approval queue unavailable")
+	}
+	return s.Approvals.Decide(account, id, chat, history)
+}
+
+// grantChatAccess applies an approved access request: capture is enabled for
+// the chosen chat, older history is requested only if the human asked for it,
+// and only then is the agent's access extended to that one chat. Any failure
+// leaves the agent without access.
+func (s *Session) grantChatAccess(account int64, request approval.Request) error {
+	a := request.Access
+	if s.DataDir == "" {
+		return fmt.Errorf("agent registry location unknown; nothing granted")
+	}
+	chat := a.Chosen
+	if err := agentauth.CanGrantChatAccess(s.DataDir, a.AgentID, a.Scopes, time.Now()); err != nil {
+		return err // before capture changes: an agent that is gone gets nothing
+	}
+	if storage.ChatKind(chat) == "direct" {
+		// Direct chats appear in the cache once seen; a requested number may be new.
+		if err := s.store.SaveDiscoveredChat(s.ctx, account, storage.Group{ID: chat, Name: chat}); err != nil {
+			return err
+		}
+	}
+	if err := s.store.EnableCapture(s.ctx, account, chat, a.History == approval.HistoryFull); err != nil {
+		return err
+	}
+	audit := agentauth.NewAuditLog(s.DataDir)
+	entry := agentauth.AuditEntry{Event: "access_grant", ClientID: a.AgentID, ClientName: a.Agent, Scope: strings.Join(a.Scopes, ","), Chat: chat, Ref: request.ID[:8], Outcome: agentauth.OutcomeAllowed}
+	if err := audit.Append(entry); err != nil {
+		return fmt.Errorf("audit log unavailable; access not granted: %w", err)
+	}
+	if _, err := agentauth.GrantChatAccess(s.DataDir, a.AgentID, chat, a.Scopes, request.ID, time.Now()); err != nil {
+		entry.Outcome, entry.Code = agentauth.OutcomeDenied, "failed"
+		_ = audit.Append(entry)
+		return err
+	}
 	return nil
 }
 

@@ -371,7 +371,10 @@ Newer queries emit the versioned v1 envelope (`--v1` opts existing queries in):
 --context N`, `query changes [--after CURSOR] [--limit N]`, `query checkpoint
 --consumer NAME` and `query doctor`. Scoped API credentials for agents are
 managed with `wasync agents grant|list|revoke`, which a human must run in an
-interactive terminal (no `--yes`). `wasync help COMMAND` documents each one.
+interactive terminal (no `--yes`); `--on-demand` lets an agent ask for chats
+that you approve one at a time, see
+[just-in-time access](#letting-an-agent-ask-for-chats-just-in-time-access).
+`wasync help COMMAND` documents each one.
 
 All query results are JSON on stdout by default; `--json` is also accepted for
 explicit agent invocations. Diagnostics go to stderr. Exit codes are 0 for
@@ -1014,6 +1017,41 @@ service supports interactive CLI approval through a separate private `approve.to
 The query and send credentials cannot approve a request. Agents should receive
 only the query credential; filesystem access as your OS user is not a security
 boundary against a malicious agent.
+
+## Letting an agent ask for chats (just-in-time access)
+
+You do not have to pick an agent's chats up front. Create the credential with
+`--on-demand`; it then starts with no chats at all:
+
+```sh
+wasync agents grant helper --scope read.chats,read.messages,send --on-demand
+```
+
+When the agent needs a chat it cannot use, its refusal points at
+`whatsapp-axi access request --chat JID` (or `--match` with a phone number or
+name, and `--send` to also ask to send). Asking grants nothing. wasync resolves
+the request to concrete candidate chats that only you see, and queues a pending
+request with the same rules as the destructive actions above: five-minute
+expiry, no replay, typed confirmation, no `--yes`.
+
+You see the request in the TUI, or run `wasync actions approve REQUEST_ID` in a
+terminal (a headless `wasync serve` has no dialog, so the agent tells you the
+ID). Before confirming you choose:
+
+- the chat, when several match;
+- the history depth: **from now on only** (new messages, nothing older is
+  requested) or a **full history sync** (also asks your phone for the chat's
+  older messages, best effort, like the TUI's `h`);
+- you see whether the agent asked to read only or also to send.
+
+On approval wasync turns on capture for that chat, applies the history choice,
+and extends that agent to that one chat with only the access you saw: read
+never implies send, and the agent can never gain a scope its credential does
+not already hold. Rejecting or letting the request expire changes nothing.
+Approved chats show in `wasync agents list`; to take them away, revoke and
+re-grant the agent. Pre-approving chats with `--chat`, or in the TUI, still
+works and combines with `--on-demand`. Direct chats synced without a contact
+name are best matched by phone number.
 
 ## Re-pairing screen
 

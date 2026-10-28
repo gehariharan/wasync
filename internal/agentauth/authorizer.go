@@ -154,16 +154,41 @@ func (a *Authorizer) Authorize(c *Client, scope string, chatJID string) error {
 	if !current.HasScope(scope) {
 		return &Error{Code: CodeForbidden, Status: 403, Scope: scope, Chat: chatJID, Message: fmt.Sprintf("client %s lacks scope %s", current.Name, scope), Help: fmt.Sprintf("Missing scope %s. A human must re-grant the client in an interactive terminal: %s", scope, regrantCommand(&current, scope, chatJID, 0))}
 	}
-	restricted := RequiresAllowlist(scope) || len(current.Chats) > 0
+	restricted := RequiresAllowlist(scope) || current.Restricted()
 	if restricted && chatJID == "" && RequiresAllowlist(scope) {
 		return &Error{Code: CodeForbidden, Status: 403, Scope: scope, Message: fmt.Sprintf("scope %s requires a chat", scope), Help: "Name the target chat; scope " + scope + " is limited to the client's chat allowlist."}
 	}
-	if restricted && chatJID != "" && !current.AllowsChat(chatJID) {
-		return &Error{Code: CodeForbidden, Status: 403, Scope: scope, Chat: chatJID, Message: fmt.Sprintf("client %s is not allowed chat %s", current.Name, chatJID), Help: fmt.Sprintf("Chat %s is not in the allowlist for scope %s. A human must re-grant the client in an interactive terminal: %s", chatJID, scope, regrantCommand(&current, scope, chatJID, 0))}
+	if restricted && chatJID != "" && !current.AllowsChatScope(scope, chatJID) {
+		return &Error{Code: CodeForbidden, Status: 403, Scope: scope, Chat: chatJID, Message: fmt.Sprintf("client %s is not allowed chat %s", current.Name, chatJID), Help: notAllowedHelp(&current, scope, chatJID)}
 	}
 	if wait := a.take(current, now); wait > 0 {
 		seconds := int(math.Ceil(wait.Seconds()))
 		return &Error{Code: CodeRateLimited, Status: 429, Scope: scope, Chat: chatJID, RetryAfter: wait, Message: fmt.Sprintf("client %s exceeded %d requests per minute", current.Name, current.RatePerMinute), Help: fmt.Sprintf("Retry after %ds. A human can raise the limit in an interactive terminal: %s", seconds, regrantCommand(&current, "", "", current.RatePerMinute*2))}
+	}
+	return nil
+}
+
+// AllowAccessRequest checks that c is still a valid credential and consumes one
+// rate-limit token. Any active client may ask for chat access, because asking
+// grants nothing: a human decides. The rate limit and the pending cap keep a
+// misbehaving agent from flooding the person with prompts.
+func (a *Authorizer) AllowAccessRequest(c *Client) error {
+	if c == nil {
+		return unauthorized("agent credential required")
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if err := a.refresh(); err != nil {
+		return fmt.Errorf("agent registry unavailable: %w", err)
+	}
+	r, found := a.clients[c.ID]
+	now := a.now()
+	if !found || r.Status(now) != "active" {
+		return unauthorized("agent credential is no longer valid")
+	}
+	if wait := a.take(r.Client, now); wait > 0 {
+		seconds := int(math.Ceil(wait.Seconds()))
+		return &Error{Code: CodeRateLimited, Status: 429, RetryAfter: wait, Message: fmt.Sprintf("client %s exceeded %d requests per minute", r.Name, r.RatePerMinute), Help: fmt.Sprintf("Retry after %ds.", seconds)}
 	}
 	return nil
 }
@@ -219,6 +244,14 @@ func (a *Authorizer) take(c Client, now time.Time) time.Duration {
 func cloneClient(c Client) Client {
 	c.Scopes = append([]string(nil), c.Scopes...)
 	c.Chats = append([]string(nil), c.Chats...)
+	if c.Grants != nil {
+		grants := make([]ChatGrant, len(c.Grants))
+		for i, g := range c.Grants {
+			g.Scopes = append([]string(nil), g.Scopes...)
+			grants[i] = g
+		}
+		c.Grants = grants
+	}
 	if c.ExpiresAt != nil {
 		t := *c.ExpiresAt
 		c.ExpiresAt = &t

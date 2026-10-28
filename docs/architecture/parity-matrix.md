@@ -41,6 +41,7 @@ Legend: ✅ have, 🟡 partial, ❌ missing. Permission class is what an agent w
 | Polls / locations capture | ❌ | `sync_polls.go`, `store/locations.go` | yes | read | B |
 | Channels, status, presence, calls | ❌ | `newsletters.go`, `presence.go`, `calls.go` | yes | read | B |
 | Change journal / pull feed | ❌ | `store/changes.go` | yes | read | D (W-04) |
+| Agent chat access on demand (human-approved, per chat, read/send separate, history depth) | ✅ `api/v1_access.go`, `approval`, `agentauth` | – | `access` | access.request (not a scope; approval-gated) | M (JIT) |
 | Webhooks (HMAC, SSRF guard) | ✅ `internal/webhook`, human-managed, identifier-only events on the change journal | `app/webhook.go` | – | admin (human only, not grantable) | D (W-05) |
 | Storage limits | ❌ | `storage_limits.go` | – | admin | B |
 | Local purge / clean | ✅ via approval | `messages purge` | – | destructive | – |

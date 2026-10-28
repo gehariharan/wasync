@@ -75,6 +75,8 @@ type Model struct {
 	confirmIDs                       []string
 	confirmDraft                     string
 	confirmRequest                   *approval.Request
+	confirmChoice                    int    // chat access: index of the chosen candidate
+	confirmHistory                   string // chat access: approval.HistoryNow or HistoryFull
 	help                             bool
 }
 
@@ -149,6 +151,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.confirmID = v.snapshot.Pending.ID
 			m.confirmDraft = ""
 			m.confirmRequest = v.snapshot.Pending
+			m.confirmChoice, m.confirmHistory = 0, approval.HistoryNow
 		}
 		if v.err != nil {
 			m.notice = "Archive read failed: " + v.err.Error()
@@ -338,8 +341,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.confirm != "" {
+			if m.isAccessRequest() && (key == "up" || key == "down" || key == "tab") {
+				// Choices are shown above the typed confirmation, so they can be
+				// changed until the exact phrase is entered.
+				if candidates := m.confirmRequest.Access.Candidates; key == "tab" {
+					m.confirmHistory = map[string]string{approval.HistoryNow: approval.HistoryFull, approval.HistoryFull: approval.HistoryNow}[m.confirmHistory]
+				} else if key == "down" {
+					m.confirmChoice = min(m.confirmChoice+1, len(candidates)-1)
+				} else {
+					m.confirmChoice = max(m.confirmChoice-1, 0)
+				}
+				m.confirmDraft = ""
+				return m, nil
+			}
 			if m.confirm == "agent-action" && key != "n" && key != "esc" {
 				expected := "DELETE " + m.confirmID[max(0, len(m.confirmID)-6):]
+				if m.isAccessRequest() {
+					expected = "ALLOW " + m.confirmID[max(0, len(m.confirmID)-6):]
+				}
 				if key == "enter" && m.confirmDraft == expected {
 					key = "y"
 				} else {
@@ -355,9 +374,27 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if key == "y" {
 				kind, id, account := m.confirm, m.confirmID, m.snapshot.Account
+				var decide func() error
+				if m.isAccessRequest() {
+					chat, history := m.confirmRequest.Access.Candidates[m.confirmChoice].Chat, m.confirmHistory
+					decide = func() error {
+						decider, ok := m.session.(interface {
+							DecideAccess(int64, string, string, string) error
+						})
+						if !ok {
+							return fmt.Errorf("access approval unavailable")
+						}
+						return decider.DecideAccess(account, id, chat, history)
+					}
+				}
 				m.confirm = ""
 				m.writeBusy = true
 				return m, func() tea.Msg {
+					if decide != nil {
+						if err := decide(); err != nil {
+							return operationMsg{kind, err}
+						}
+					}
 					if kind == "enable-all" || kind == "disable-all" {
 						bulk, ok := m.session.(interface {
 							ToggleMany(int64, []string, bool) error
@@ -755,7 +792,11 @@ func (m Model) View() tea.View {
 			content = top + panel("KEYBOARD", "↑/↓ or j/k  Move selection\nMouse wheel  Scroll list\nPgUp/PgDn, Home/End  Jump\nSpace  Enable/disable selected chat\nm  Cycle chat media: manual / auto / inherit\nTab  Groups / Direct / All\nA/N  Enable/disable category (confirmation)\nEnter  Browse archived messages\n/  Filter groups or search message text\ne  Show enabled groups only\nr  Refresh group metadata\nh  Retry older history for this group\nc  Connect/pair again\nd  Clear selected message locally (confirmation)\nX  Revoke your message in WhatsApp (confirmation)\nW  Delete WhatsApp chat state (confirmation)\nD  Purge local chat archive (confirmation)\nL  Unlink device and quit (confirmation)\n\nMessages: m download selected attachment once · n/p older/newer · R latest\nCtrl+D / Ctrl+U scroll selected message body\nEsc  Back/clear filter · q quit (keeps session linked)\n?  Close help", w, bodyHeight)
 		} else if m.confirm != "" {
 			description := m.confirmDescription()
-			content = top + panel("CONFIRM DESTRUCTIVE ACTION", ansi.Hardwrap(description, w-6, false), w, bodyHeight)
+			title := "CONFIRM DESTRUCTIVE ACTION"
+			if m.isAccessRequest() {
+				title = "AGENT ASKS FOR CHAT ACCESS"
+			}
+			content = top + panel(title, ansi.Hardwrap(description, w-6, false), w, bodyHeight)
 		} else if m.mode == "messages" {
 			content = top + m.messageView(w, bodyHeight)
 		} else {
@@ -764,6 +805,9 @@ func (m Model) View() tea.View {
 		prompt := m.notice
 		if m.confirm == "agent-action" {
 			prompt = "Type the exact confirmation shown above · n / Esc reject"
+			if m.isAccessRequest() {
+				prompt = "↑/↓ chat · Tab history depth · type the exact confirmation · n / Esc reject (nothing is granted)"
+			}
 		}
 		if m.snapshot.Status.Error != "" {
 			prompt = m.snapshot.Status.Error
@@ -994,7 +1038,47 @@ func historyRequestLabel(state string) string {
 	}
 }
 
+// isAccessRequest reports whether the open confirmation is an agent asking for
+// access to a chat rather than a destructive action.
+func (m Model) isAccessRequest() bool {
+	return m.confirm == "agent-action" && m.confirmRequest != nil && m.confirmRequest.Kind == approval.KindChatAccess && m.confirmRequest.Access != nil && len(m.confirmRequest.Access.Candidates) > 0
+}
+
+// accessDescription spells out who gets what before the typed confirmation:
+// the agent, the chat, the access level and the history depth.
+func (m Model) accessDescription() string {
+	a := m.confirmRequest.Access
+	choice := min(max(m.confirmChoice, 0), len(a.Candidates)-1)
+	access := "READ the messages of"
+	if a.Send {
+		access = "READ and SEND messages (also reactions and edits of its own) in"
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "Agent %s asks to %s one chat.\nIt asked for: %s\n\nChats it may mean (↑/↓ to choose):\n", oneLine(a.Agent), access, oneLine(a.Query))
+	for i, c := range a.Candidates {
+		marker := "  "
+		if i == choice {
+			marker = "> "
+		}
+		fmt.Fprintf(&b, "%s%s  %s\n", marker, oneLine(c.Name), oneLine(c.Chat))
+	}
+	if a.Truncated {
+		b.WriteString("  (more chats matched; the agent can ask again with a more specific name)\n")
+	}
+	history := "FROM NOW ON ONLY: capture new messages; no older messages are requested"
+	if m.confirmHistory == approval.HistoryFull {
+		history = "FULL HISTORY SYNC: also ask your phone for this chat's older messages (best effort)"
+	}
+	chosen := a.Candidates[choice]
+	fmt.Fprintf(&b, "\nHistory (Tab to change): %s\n\nApproving will: turn on capture for %s, then give %s %s only this chat. Nothing else changes.\n", history, oneLine(chosen.Chat), oneLine(a.Agent), map[bool]string{false: "read access to", true: "read and send access to"}[a.Send])
+	fmt.Fprintf(&b, "\nType ALLOW %s then Enter to approve.\n> %s\nn / Esc reject", m.confirmID[max(0, len(m.confirmID)-6):], oneLine(m.confirmDraft))
+	return b.String()
+}
+
 func (m Model) confirmDescription() string {
+	if m.isAccessRequest() {
+		return m.accessDescription()
+	}
 	kind, chat, message := m.confirm, m.groupID, m.confirmID
 	if kind == "agent-action" && m.confirmRequest != nil {
 		request := m.confirmRequest

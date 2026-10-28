@@ -39,6 +39,49 @@ var DefaultScopes = []string{ScopeReadChats, ScopeReadMessages}
 
 var allowlistRequired = map[string]bool{ScopeSend: true, ScopeReact: true, ScopeEditOwn: true, ScopeChatState: true, ScopeGroupAdmin: true, ScopeCaptureManage: true}
 
+// Scope families a just-in-time access request can ask for. Read access always
+// comes with a request; send is separate and optional. Capture, group, state
+// and export scopes are never requestable: only a human grant can add them.
+var (
+	readFamily = []string{ScopeReadChats, ScopeReadMessages, ScopeReadMedia, ScopeObserve}
+	sendFamily = []string{ScopeSend, ScopeReact, ScopeEditOwn}
+)
+
+func requestable(scope string) bool {
+	return contains(readFamily, scope) || contains(sendFamily, scope)
+}
+
+// AccessScopes returns the scopes an access request for read (and, when send is
+// true, also send) would grant client: those of the two families that its
+// credential already holds. A request can never widen the credential itself.
+func (c *Client) AccessScopes(send bool) ([]string, error) {
+	set := map[string]bool{}
+	for _, s := range readFamily {
+		if c.HasScope(s) {
+			set[s] = true
+		}
+	}
+	if len(set) == 0 {
+		return nil, fmt.Errorf("this credential holds no read scope")
+	}
+	if send {
+		held := false
+		for _, s := range sendFamily {
+			if c.HasScope(s) {
+				set[s] = true
+				held = true
+			}
+		}
+		if !held {
+			return nil, fmt.Errorf("this credential holds no send, react or edit.own scope")
+		}
+	}
+	return canonicalScopes(set), nil
+}
+
+// IsRequestable reports whether an access request could ever cover scope.
+func IsRequestable(scope string) bool { return requestable(scope) }
+
 // ValidScope reports whether s can be granted.
 func ValidScope(s string) bool {
 	for _, known := range AllScopes {

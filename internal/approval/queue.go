@@ -39,10 +39,14 @@ func (in Input) Validate() error {
 	return nil
 }
 
+// StatusPending is a request waiting for a human.
+const StatusPending = "pending_human_confirmation"
+
 type Request struct {
 	ID      string `json:"id"`
 	Account int64  `json:"account_id"`
 	Input
+	Access  *Access   `json:"access,omitempty"`
 	Expires time.Time `json:"expires_at"`
 	Status  string    `json:"status"`
 	Error   string    `json:"error,omitempty"`
@@ -61,7 +65,7 @@ func (q *Queue) Add(account int64, in Input) (Request, error) {
 	q.expire()
 	active := 0
 	for _, r := range q.requests {
-		if r.Status == "pending_human_confirmation" {
+		if r.Status == StatusPending {
 			active++
 		}
 	}
@@ -72,21 +76,26 @@ func (q *Queue) Add(account int64, in Input) (Request, error) {
 	if _, err := rand.Read(id); err != nil {
 		return Request{}, err
 	}
-	r := Request{ID: hex.EncodeToString(id), Account: account, Input: in, Expires: time.Now().Add(5 * time.Minute), Status: "pending_human_confirmation"}
+	r := Request{ID: hex.EncodeToString(id), Account: account, Input: in, Expires: time.Now().Add(5 * time.Minute), Status: StatusPending}
+	q.evictOld()
+	q.requests = append(q.requests, r)
+	return r, nil
+}
+
+// evictOld makes room by dropping the oldest finished request once the queue is full.
+func (q *Queue) evictOld() {
 	if len(q.requests) >= 256 {
 		for i, old := range q.requests {
-			if old.Status != "pending_human_confirmation" && old.Status != "executing" {
+			if old.Status != StatusPending && old.Status != "executing" {
 				q.requests = append(q.requests[:i], q.requests[i+1:]...)
 				break
 			}
 		}
 	}
-	q.requests = append(q.requests, r)
-	return r, nil
 }
 func (q *Queue) expire() {
 	for i := range q.requests {
-		if q.requests[i].Status == "pending_human_confirmation" && time.Now().After(q.requests[i].Expires) {
+		if q.requests[i].Status == StatusPending && time.Now().After(q.requests[i].Expires) {
 			q.requests[i].Status = "expired"
 		}
 	}
@@ -99,8 +108,8 @@ func (q *Queue) Pending(account int64) *Request {
 	defer q.mu.Unlock()
 	q.expire()
 	for _, r := range q.requests {
-		if r.Account == account && r.Status == "pending_human_confirmation" {
-			copy := r
+		if r.Account == account && r.Status == StatusPending {
+			copy := r.clone()
 			return &copy
 		}
 	}
@@ -111,9 +120,12 @@ func (q *Queue) Take(account int64, id string) (Request, error) {
 	defer q.mu.Unlock()
 	q.expire()
 	for i, r := range q.requests {
-		if r.Account == account && r.ID == id && r.Status == "pending_human_confirmation" {
+		if r.Account == account && r.ID == id && r.Status == StatusPending {
+			if r.Kind == KindChatAccess && (r.Access.Chosen == "" || r.Access.History == "") {
+				return Request{}, fmt.Errorf("choose the chat and the history depth before approving")
+			}
 			q.requests[i].Status = "executing"
-			return r, nil
+			return r.clone(), nil
 		}
 	}
 	return Request{}, fmt.Errorf("request expired or already handled")
@@ -137,7 +149,7 @@ func (q *Queue) Get(account int64, id string) *Request {
 	q.expire()
 	for _, r := range q.requests {
 		if r.Account == account && r.ID == id {
-			copy := r
+			copy := r.clone()
 			return &copy
 		}
 	}

@@ -77,6 +77,7 @@
           "chats": [],
           "expires_at": null,
           "name": "test-agent",
+          "on_demand": false,
           "scopes": [
             "read.chats",
             "read.messages"
@@ -173,6 +174,7 @@
           "chats": [],
           "expires_at": null,
           "name": "observer",
+          "on_demand": false,
           "scopes": [
             "observe"
           ]

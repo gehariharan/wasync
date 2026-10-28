@@ -161,3 +161,55 @@ func TestMigrationQueuesPreviouslyEnabledGroups(t *testing.T) {
 		t.Fatal("existing enabled group was not bootstrapped")
 	}
 }
+
+func TestEnableCaptureHistoryDepth(t *testing.T) {
+	s, account := captureStore(t)
+	ctx := context.Background()
+	state := func(id string) string {
+		t.Helper()
+		groups, err := s.GroupSummaries(ctx, account)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, g := range groups {
+			if g.ID == id {
+				if !g.Enabled {
+					return "off:" + g.HistoryRequest
+				}
+				return "on:" + g.HistoryRequest
+			}
+		}
+		t.Fatalf("%s missing", id)
+		return ""
+	}
+	// From now on only: capture starts, no history request is queued.
+	if err := s.EnableCapture(ctx, account, "two@g.us", false); err != nil || state("two@g.us") != "on:" {
+		t.Fatalf("now only: %v %q", err, state("two@g.us"))
+	}
+	// Full history on a chat that is already capturing queues one request.
+	if err := s.EnableCapture(ctx, account, "two@g.us", true); err != nil || state("two@g.us") != "on:queued" {
+		t.Fatalf("full on enabled chat: %v %q", err, state("two@g.us"))
+	}
+	// A request already in flight is left alone instead of failing or restarting.
+	job, err := s.NextHistory(ctx, account)
+	if err != nil || job == nil {
+		t.Fatal(err)
+	}
+	started, err := s.StartHistoryRequest(ctx, account, job.GroupID, "request", HistoryAnchor{ID: "original", Timestamp: time.Now()})
+	if err != nil || !started {
+		t.Fatal(err)
+	}
+	if err = s.EnableCapture(ctx, account, job.GroupID, true); err != nil || state(job.GroupID) != "on:sending" {
+		t.Fatalf("in-flight request disturbed: %v %q", err, state(job.GroupID))
+	}
+	// Plain enabling keeps its old behaviour: history on the off to on transition only.
+	if err = s.SetEnabled(ctx, account, []string{"two@g.us"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetEnabled(ctx, account, []string{"two@g.us"}, true); err != nil || state("two@g.us") != "on:queued" {
+		t.Fatalf("SetEnabled history: %v %q", err, state("two@g.us"))
+	}
+	if err = s.EnableCapture(ctx, account, "missing@g.us", false); err == nil {
+		t.Fatal("enabled an uncached chat")
+	}
+}

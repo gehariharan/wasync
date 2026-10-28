@@ -92,6 +92,24 @@ func (h *handler) approveAction(w http.ResponseWriter, r *http.Request) {
 	if account == nil {
 		return
 	}
+	// Access requests carry the human's choice of chat and history depth in the
+	// signed body; it is recorded on the pending request just before approval.
+	if request := h.approvals.Get(account.ID, r.PathValue("id")); request != nil && request.Kind == approval.KindChatAccess {
+		var choice struct {
+			Chat    string `json:"chat"`
+			History string `json:"history"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&choice); err != nil || decoder.Decode(new(any)) != io.EOF {
+			fail(w, 400, "access approval needs {\"chat\":...,\"history\":\"now\"|\"full\"}")
+			return
+		}
+		if err := h.approvals.Decide(account.ID, request.ID, choice.Chat, choice.History); err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
+	}
 	if err := h.approve(account.ID, r.PathValue("id")); err != nil {
 		fail(w, 409, err.Error())
 		return
