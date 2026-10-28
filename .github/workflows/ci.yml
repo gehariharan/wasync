@@ -29,6 +29,8 @@ jobs:
           go build -tags sqlite_fts5 -o "$RUNNER_TEMP/wasync" ./cmd/wasync
           (cd axi && CGO_ENABLED=0 go build -o "$RUNNER_TEMP/whatsapp-axi" ./cmd/whatsapp-axi)
           python3 scripts/smoke-pair.py "$RUNNER_TEMP/wasync" "$RUNNER_TEMP/whatsapp-axi"
+      - name: Exercise the offline terminal UI in a real terminal, as the release check does
+        run: python3 scripts/smoke-installed.py "$RUNNER_TEMP/wasync" dev "$(go env GOARCH)"
       - name: Build the release archive as release.yml does (unsigned)
         if: runner.os == 'Linux'
         run: |

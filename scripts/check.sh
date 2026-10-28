@@ -13,3 +13,4 @@ trap 'rm -rf "$work"' EXIT
 go build -tags sqlite_fts5 -o "$work/wasync" ./cmd/wasync
 (cd axi && CGO_ENABLED=0 go build -o "$work/whatsapp-axi" ./cmd/whatsapp-axi)
 python3 scripts/smoke-pair.py "$work/wasync" "$work/whatsapp-axi"
+python3 scripts/smoke-installed.py "$work/wasync" dev "$(go env GOARCH)"

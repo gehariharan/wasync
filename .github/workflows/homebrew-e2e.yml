@@ -111,4 +111,7 @@ jobs:
       - name: Exercise installed binary, concurrent queries and offline TUI
         env:
           EXPECTED_ARCHITECTURE: ${{ matrix.architecture }}
+          # The tap's latest release may predate the first-run access screen; remove
+          # this once a release containing it is published.
+          WASYNC_SMOKE_ALLOW_MISSING_FIRST_RUN: "1"
         run: python3 scripts/smoke-installed.py "$(brew --prefix)/bin/wasync" "$PACKAGE_VERSION" "$EXPECTED_ARCHITECTURE"
