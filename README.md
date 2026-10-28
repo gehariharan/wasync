@@ -471,7 +471,8 @@ Delivery is at-least-once and in journal order per endpoint. Dedupe on the event
 Answer with any 2xx to acknowledge. A 5xx, 408, 429 or network error is retried
 after 5 seconds, 30 seconds, 2 minutes and 10 minutes; any other answer, or the
 fifth failure, moves the event to the dead-letter list and delivery continues
-with the next event. Endpoints are independent, so a failing one does not delay
+with the next event. If the dead-letter file cannot be written, the event is held
+and retried every 10 minutes rather than dropped. Endpoints are independent, so a failing one does not delay
 another. A new endpoint receives changes from the moment the owner first sees it,
 not history. If the archive is restored from a backup or the journal position
 becomes unreadable, the endpoint skips to the journal head and records
