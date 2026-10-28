@@ -700,8 +700,9 @@ that replay is not guaranteed.
 
 This is an unofficial WhatsApp client: protocol compatibility, WhatsApp terms and
 account restriction risks apply. Obtain appropriate permission before archiving
-or sharing conversations. There are no features for posting messages to conversations, cloud services,
-AI processing or application web frontend. Attachment downloads are opt-in.
+or sharing conversations. Posting is explicit: `send`, `reply`, `react` and `edit` write to WhatsApp only
+when you run them, and agents can use them only where a person granted the scope. There are no cloud
+services, AI processing or application web frontend. Attachment downloads are opt-in.
 The original design and risk review are saved in
 [the HTML design artifact](.lavish/whatsapp-sync-design.html).
 
