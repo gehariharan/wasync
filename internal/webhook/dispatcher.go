@@ -231,6 +231,10 @@ func (d *Dispatcher) deliver(ctx context.Context, account *storage.Account, ep E
 			err := AppendDeadLetter(d.Dir, DeadLetter{Time: d.now(), EndpointID: ep.ID, EndpointName: ep.Name, EventID: ev.ID, Sequence: c.Sequence, Op: c.Op, ChatID: c.ChatID, Ref: ev.Ref, Attempts: st.Attempts, Code: res.Code, Status: res.Status})
 			if err != nil {
 				// Without a durable dead-letter record, hold the event and retry.
+				if b := d.backoff(); len(b) > 0 {
+					retryAt := d.now().Add(b[len(b)-1])
+					st.RetryAt = &retryAt
+				}
 				d.put(ep.ID, st)
 				d.fail("deadletter_error", err)
 				return

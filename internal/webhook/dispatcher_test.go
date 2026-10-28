@@ -227,6 +227,27 @@ func TestDispatcherRetriesThenDeadLettersAndContinues(t *testing.T) {
 	}
 }
 
+func TestDispatcherBacksOffWhenDeadLetterCannotBeWritten(t *testing.T) {
+	h := newHarness(t, AddRequest{})
+	h.rcv.status = func(Event) int { return 400 }
+	if err := os.Mkdir(filepath.Join(h.dir, DeadLetterFileName), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	d := h.dispatcher()
+	d.Tick(t.Context())
+	h.message("one@g.us")
+	d.Tick(t.Context())
+	d.Tick(t.Context())
+	if got := h.rcv.ids(); len(got) != 1 {
+		t.Fatalf("event re-sent inside the backoff window: %v", got)
+	}
+	h.clock.advance(8 * time.Second)
+	d.Tick(t.Context())
+	if got := h.rcv.ids(); len(got) != 2 {
+		t.Fatalf("event not retried after backoff: %v", got)
+	}
+}
+
 func TestDispatcherDeadLettersPermanentRejectionImmediately(t *testing.T) {
 	h := newHarness(t, AddRequest{})
 	h.rcv.status = func(Event) int { return 400 }
