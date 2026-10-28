@@ -130,3 +130,10 @@ when it is no longer returned. Entries older than 30 days are pruned by
 `cursor_expired`. `journal_meta.epoch` is random per archive, so cursors from
 a recreated archive also return `cursor_expired`. Checkpoints are monotonic
 per `(account, consumer)` and are committed only through the owner API.
+
+Webhook delivery (`internal/webhook`) reads this journal but needs no migration:
+each endpoint's position is kept in `webhook-state.json` (written only by the
+owner), not in `consumer_checkpoints`. That lets the owner reset an endpoint to
+the journal head when an archive is restored, which API checkpoints may not do
+(they only move forward). After restoring a backup, webhook endpoints skip to
+the head and record `webhook.cursor_reset` in `agent-audit.log`.
