@@ -22,6 +22,30 @@ func (s *Store) SaveDiscoveredChat(ctx context.Context, account int64, chat Grou
 	return err
 }
 
+// SaveDirectNames sets the display name of already-known direct chats. It never
+// creates a chat and never touches groups, so syncing contacts cannot add chats
+// to the list. Unchanged names are left alone.
+func (s *Store) SaveDirectNames(ctx context.Context, account int64, names map[string]string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	now := time.Now().UnixMilli()
+	for id, name := range names {
+		if name == "" || ChatKind(id) != "direct" {
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE groups SET name=?,updated_at=? WHERE account_id=? AND group_id=? AND name<>?`, name, now, account, id, name); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 // SetMediaDownload changes only metadata for a still-enabled, non-deleted original.
 func (s *Store) SetMediaDownload(ctx context.Context, account int64, chat, message, state, path string) (bool, error) {
 	return s.setMediaDownload(ctx, account, chat, message, state, path, false, false)

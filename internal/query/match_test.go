@@ -37,3 +37,24 @@ func TestMatchChatsTiers(t *testing.T) {
 		t.Fatalf("ambiguity %+v", amb)
 	}
 }
+
+func TestMatchChatsFindsDirectChatsByContactName(t *testing.T) {
+	groups := []storage.Group{
+		{ID: "15550000001@s.whatsapp.net", Name: "Synthetic Uncle"},
+		{ID: "90000000001@lid", Name: "synthetic aunt"},
+		{ID: "15550000002@s.whatsapp.net", Name: "15550000002@s.whatsapp.net"},
+	}
+	for match, want := range map[string]string{
+		"synthetic uncle": "15550000001@s.whatsapp.net",
+		"AUNT":            "90000000001@lid",
+		"synthetic":       "15550000001@s.whatsapp.net,90000000001@lid",
+	} {
+		out := []string{}
+		for _, g := range MatchChats(groups, match) {
+			out = append(out, g.ID)
+		}
+		if got := strings.Join(out, ","); got != want {
+			t.Errorf("%q: %q want %q", match, got, want)
+		}
+	}
+}

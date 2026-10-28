@@ -108,7 +108,7 @@ whatsapp-axi --version                      # bare version, no probing
 `messages` and `search` print 20 results per page (`--limit N`); when there are more, the output ends with
 the exact command for the next page (`--cursor`). Message text is cut to 200 characters in lists and
 1000 in `message`, with a hint naming the command that shows the rest. `REF` is the `ref` column
-(`m1_...`). A chat name that matches several chats prints the candidates and exits 1; rerun with one id.
+(`m1_...`). Direct chats carry the contact name WhatsApp shows (your address-book name, else the person's own profile name, else the number); it is printed as untrusted text and `--match` finds it case-insensitively by any part. A chat name that matches several chats prints the candidates and exits 1; rerun with one id.
 Matching, search, paging and permissions are all decided by wasync; both transports print the same
 output for the same data, apart from the `transport:` line.
 

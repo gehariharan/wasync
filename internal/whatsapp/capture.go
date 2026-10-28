@@ -135,6 +135,9 @@ func (c *Client) captureEvent(evt any) error {
 	if err := c.persistEventAnchors(evt, account); err != nil {
 		return err
 	}
+	if err := c.syncContactNames(evt, account); err != nil {
+		return err
+	}
 	if p.metadataOnly {
 		switch e := evt.(type) {
 		case *events.Message:
