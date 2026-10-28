@@ -40,41 +40,42 @@ var DefaultScopes = []string{ScopeReadChats, ScopeReadMessages}
 var allowlistRequired = map[string]bool{ScopeSend: true, ScopeReact: true, ScopeEditOwn: true, ScopeChatState: true, ScopeGroupAdmin: true, ScopeCaptureManage: true}
 
 // Scope families a just-in-time access request can ask for. Read access always
-// comes with a request; send is separate and optional. Capture, group, state
-// and export scopes are never requestable: only a human grant can add them.
+// comes with a request; send (send, which covers replies, and react) and edit
+// (edit.own) are separate optional extras. Capture, group, state and export
+// scopes are never requestable: only a human grant can add them.
 var (
 	readFamily = []string{ScopeReadChats, ScopeReadMessages, ScopeReadMedia, ScopeObserve}
-	sendFamily = []string{ScopeSend, ScopeReact, ScopeEditOwn}
+	sendFamily = []string{ScopeSend, ScopeReact}
+	editFamily = []string{ScopeEditOwn}
 )
 
 func requestable(scope string) bool {
-	return contains(readFamily, scope) || contains(sendFamily, scope)
+	return contains(readFamily, scope) || contains(sendFamily, scope) || contains(editFamily, scope)
 }
 
-// AccessScopes returns the scopes an access request for read (and, when send is
-// true, also send) would grant client: those of the two families that its
+// AccessScopes returns the scopes an access request for read (plus send and/or
+// edit when asked) would grant client: those of the requested families that its
 // credential already holds. A request can never widen the credential itself.
-func (c *Client) AccessScopes(send bool) ([]string, error) {
+func (c *Client) AccessScopes(send, edit bool) ([]string, error) {
 	set := map[string]bool{}
-	for _, s := range readFamily {
-		if c.HasScope(s) {
-			set[s] = true
-		}
-	}
-	if len(set) == 0 {
-		return nil, fmt.Errorf("this credential holds no read scope")
-	}
-	if send {
+	add := func(family []string) bool {
 		held := false
-		for _, s := range sendFamily {
+		for _, s := range family {
 			if c.HasScope(s) {
 				set[s] = true
 				held = true
 			}
 		}
-		if !held {
-			return nil, fmt.Errorf("this credential holds no send, react or edit.own scope")
-		}
+		return held
+	}
+	if !add(readFamily) {
+		return nil, fmt.Errorf("this credential holds no read scope")
+	}
+	if send && !add(sendFamily) {
+		return nil, fmt.Errorf("this credential holds no send or react scope")
+	}
+	if edit && !add(editFamily) {
+		return nil, fmt.Errorf("this credential holds no edit.own scope")
 	}
 	return canonicalScopes(set), nil
 }

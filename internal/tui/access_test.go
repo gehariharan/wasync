@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/localfs"
@@ -151,3 +152,112 @@ func TestAccessRejectionGrantsAndEnablesNothing(t *testing.T) {
 }
 
 func timeNow() time.Time { return time.Now() }
+
+type modeBackend struct {
+	fakeBackend
+	set []accessmode.Mode
+}
+
+func (b *modeBackend) SetAccessMode(_ int64, m accessmode.Mode) error {
+	b.set = append(b.set, m)
+	return nil
+}
+
+func modeModel(chosen bool) (Model, *modeBackend) {
+	b := &modeBackend{}
+	b.snapshot = Snapshot{Account: 1, ModeChosen: chosen, Mode: accessmode.Mode{Mode: accessmode.Ask}}
+	m := NewModel(b)
+	m.snapshot = b.snapshot
+	m.qrSink = func(string) {}
+	return m, b
+}
+
+func TestFirstRunScreenAsksOnceAndEscChangesNothing(t *testing.T) {
+	m, b := modeModel(false)
+	m, _ = update(m, snapshotMsg{snapshot: b.snapshot})
+	if m.confirm != "access-mode" {
+		t.Fatal("first run did not ask how agents should get chats")
+	}
+	text := m.confirmDescription()
+	for _, want := range []string{"Ask me each time", "Sync all chats", "agents can send, reply and react in any chat", "WITHOUT asking you", "stay manual", "access already given stays"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("screen lacks %q:\n%s", want, text)
+		}
+	}
+	m, _ = update(m, key("esc"))
+	m, _ = update(m, snapshotMsg{snapshot: b.snapshot})
+	if m.confirm != "" || len(b.set) != 0 {
+		t.Fatalf("screen came back or saved after Esc: %q %v", m.confirm, b.set)
+	}
+	m, _ = update(m, key("M"))
+	if m.confirm != "access-mode" {
+		t.Fatal("M does not reopen the screen")
+	}
+}
+
+func TestSyncAllNeedsDepthAndTypedPhrase(t *testing.T) {
+	m, b := modeModel(true)
+	m, _ = update(m, key("M"))
+	m, _ = update(m, key("2"))
+	if !strings.Contains(m.confirmDescription(), "How much history") {
+		t.Fatalf("no history question:\n%s", m.confirmDescription())
+	}
+	m, _ = update(m, key("2"))
+	text := m.confirmDescription()
+	if !strings.Contains(text, "full history sync") || !strings.Contains(text, "READ, SEND, REPLY and REACT in any chat") || !strings.Contains(text, "SYNC ALL") {
+		t.Fatalf("summary:\n%s", text)
+	}
+	for _, r := range "sync all" { // wrong case must not confirm
+		m, _ = update(m, key(string(r)))
+	}
+	if _, cmd := update(m, key("enter")); cmd != nil || len(b.set) != 0 {
+		t.Fatal("a wrong phrase confirmed")
+	}
+	m.confirmDraft = ""
+	for _, r := range "SYNC ALL" {
+		m, _ = update(m, key(string(r)))
+	}
+	_, cmd := update(m, key("enter"))
+	if cmd == nil {
+		t.Fatal("typed phrase did not apply")
+	}
+	cmd()
+	if len(b.set) != 1 || b.set[0].Mode != accessmode.All || b.set[0].History != accessmode.HistoryFull {
+		t.Fatalf("applied %+v", b.set)
+	}
+}
+
+func TestChoosingAskSavesAtOnce(t *testing.T) {
+	m, b := modeModel(false)
+	m, _ = update(m, snapshotMsg{snapshot: b.snapshot})
+	_, cmd := update(m, key("enter"))
+	if cmd == nil {
+		t.Fatal("Enter did not choose the default")
+	}
+	cmd()
+	if len(b.set) != 1 || b.set[0].Mode != accessmode.Ask || b.set[0].History != "" {
+		t.Fatalf("%+v", b.set)
+	}
+}
+
+func TestRequestThatMatchedNothingCanOnlyBeRejected(t *testing.T) {
+	m, b := accessModel()
+	m.confirmRequest.Access.Candidates = nil
+	text := m.confirmDescription()
+	if !strings.Contains(text, "No chat matched") || !strings.Contains(text, "alice") || !strings.Contains(m.View().Content, "AGENT ASKS FOR CHAT ACCESS") {
+		t.Fatalf("dialog:\n%s", text)
+	}
+	for _, r := range "ALLOW abc123" {
+		m, _ = update(m, key(string(r)))
+	}
+	if _, cmd := update(m, key("enter")); cmd != nil || b.requested != "" {
+		t.Fatal("a request that matched nothing could be approved")
+	}
+	if _, cmd := update(m, key("y")); cmd != nil {
+		t.Fatal("y approved a request that matched nothing")
+	}
+	_, cmd := update(m, key("n"))
+	if cmd == nil {
+		t.Fatal("n did not reject")
+	}
+}

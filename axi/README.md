@@ -56,15 +56,19 @@ Settings, all optional:
   no rules of its own and prints wasync's refusal unchanged. It sends once and never retries; offline
   (`wasync query`) never writes.
 - **Chats can be approved on demand.** If a read or write is refused because the chat is not allowed,
-  `whatsapp-axi access request (--chat JID | --match TEXT) [--send]` asks the person for it and
-  `whatsapp-axi access status REQUEST_ID` shows the answer. Asking grants nothing: wasync queues a
-  human approval (the TUI dialog or `wasync actions approve REQUEST_ID`, typed confirmation, five-minute
-  expiry, no replay) in which the person picks the chat, whether you may only read or also send, and
-  the history depth (from now on only, or a full history sync). The grant covers that one chat and
-  never exceeds the scopes of your credential; the candidate chats are shown to the person, not to you.
-  A rejection or expiry changes nothing and is not retried. Needs the running API and a credential
-  created with `wasync agents grant NAME --on-demand` (or with a chat allowlist). Direct chats often
-  have no synced contact name, so `--match` works best with a phone number.
+  `whatsapp-axi access request (--chat JID | --match TEXT) [--send] [--edit]` asks the person for it and
+  `whatsapp-axi access status REQUEST_ID` shows the answer. `--send` also asks to send, reply and react;
+  `--edit` also asks to edit your own messages. Asking grants nothing by itself: wasync queues a human
+  approval (the TUI dialog or `wasync actions approve REQUEST_ID`, typed confirmation, five-minute
+  expiry, no replay) in which the person picks the chat, the access and the history depth (from now on
+  only, or a full history sync). The grant covers that one chat and never exceeds the scopes of your
+  credential. wasync always answers `pending` and never says whether a name matched anything or which
+  chats it found; if it expires, try the phone number or the exact chat JID. If the person set wasync to
+  "sync all chats", a read, send, reply or react request for the one chat it matched is approved at
+  once (`status: approved` in the first reply); edit access and unmatched or ambiguous requests still
+  wait. A rejection or expiry changes nothing and is not retried. Needs the running API and a credential
+  created with `wasync agents grant NAME --on-demand` (or with a chat allowlist). Direct chats use the
+  saved contact name when WhatsApp provides one; a phone number always works.
 - **Offline reads are not scoped.** `wasync query` reads the archive as your OS user, like opening your
   own files. whatsapp-axi says so when it uses the offline transport.
 - **Loopback only.** The API address must be a literal loopback IP. whatsapp-axi does not use proxies,

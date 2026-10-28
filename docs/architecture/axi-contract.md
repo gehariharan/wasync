@@ -90,23 +90,33 @@ automatically. A ref that does not decode names no chat and is refused with
 
 | Endpoint | AXI command | Authorization |
 |---|---|---|
-| `POST /api/v1/access-requests` body `{"chat":JID}` or `{"match":TEXT}`, optional `"send":true` | `access request` | any active agent credential that is on-demand or has a chat allowlist; rate limited |
+| `POST /api/v1/access-requests` body `{"chat":JID}` or `{"match":TEXT}`, optional `"send":true`, `"edit":true` | `access request` | any active agent credential that is on-demand or has a chat allowlist; rate limited |
 | `GET /api/v1/access-requests/{id}` | `access status` | the credential that made the request |
 
-A request grants nothing. wasync resolves `chat`/`match` (JID, phone number, or name using the same tiers as
-`chats?match=`) to at most ten candidate chats across the whole archive, queues a
-`grant-chat-access` request in the human approval queue (five-minute expiry, no replay, one
-request per agent and query, at most three unanswered per agent) and returns `202` with the
-request ID, the access asked for (`read`, `read+send`; read is always included) and
-`approve_with`, the command the person runs. The agent never receives the candidates; its status
-is `pending`, `approved` (with `chat` and `history`), `rejected`, `expired` or `failed`.
-`already_allowed` (200) means the chat needs no approval. A request that matches no chat is
-answered `not_found` (404) at once and queues nothing, which is a small existence oracle bounded
-by the rate limit and the audit log. `400` for an unrestricted credential (nothing to approve),
-`403` when the credential lacks a read scope, or lacks every send-family scope for `send`, `429`
-when too many requests wait, `503` when no owner is running. On approval, `read` covers the
-read-family scopes the credential holds and `send` adds `send`, `react` and `edit.own` where held;
-other scopes are never requestable.
+A request grants nothing by itself. wasync resolves `chat`/`match` (JID, phone number, or name using the same
+tiers as `chats?match=`, which includes the saved contact name of direct chats) to at most ten candidate chats
+across the whole archive and queues a `grant-chat-access` request in the human approval queue (five-minute
+expiry, no replay, one request per agent and query, at most three unanswered per agent). It returns `202` with
+the request ID, the access asked for (`read`, `send`, `edit`; read is always included) and `approve_with`, the
+command the person runs. The agent never receives the candidates, and the reply is the same whether zero, one or
+several chats matched: a request that matched nothing is queued with no candidates, shown to the person as "no
+chat matched", cannot be approved and simply stays `pending` until it is rejected or expires, exactly like a
+request nobody has answered. Status is `pending`, `approved` (with `chat` and `history`), `rejected`,
+`expired` or `failed`. `already_allowed` (200) means a JID the agent already may use needs no approval.
+`400` for an unrestricted credential (nothing to approve) or a malformed body, `403` when the credential lacks a
+read scope, or lacks every scope of a requested send/edit family, `429` when too many requests wait or the rate
+limit is hit, `503` when no owner is running.
+
+On approval, `read` covers the read-family scopes the credential holds, `send` adds `send` and `react` where
+held, and `edit` adds `edit.own` where held; other scopes are never requestable.
+
+When the owner chose "sync all chats" (`wasync access mode all`, stored in `access-mode.json`), a request without
+`edit` that matched exactly one chat is approved at once: the same request is recorded, the chosen history depth
+is applied, the audit log records `access_grant_auto`, and the first reply is `200` with `status: approved`.
+That is the only case where an agent can tell a match from none, which is moot because that mode already lets it
+reach every chat. Requests with `edit`, no match or several matches still wait for a person, and destructive
+actions are never automatic. The mode is changed only through `POST /api/access/mode`, signed with the
+interactive approval credential; no `/api/v1` route and no agent credential reaches it.
 
 ### Message content safety
 

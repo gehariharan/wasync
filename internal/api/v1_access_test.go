@@ -337,17 +337,42 @@ func TestAccessRequestRejectionAndLimits(t *testing.T) {
 	if c, _ := f.do(t, "GET", "/api/v1/chats/"+familyChat+"/messages", f.jit, nil); c != 403 {
 		t.Fatalf("read after rejection: %d", c)
 	}
-	// No match is reported at once and queues nothing.
-	f.ask(t, f.jit, map[string]any{"match": "nobody by that name"}, 404)
-	f.ask(t, f.jit, map[string]any{"chat": "missing@g.us"}, 404)
-	if f.queue.Pending(f.account) != nil {
-		t.Fatal("a request with no match was queued")
+	// A request that matched nothing looks exactly like any other pending one,
+	// so the agent learns nothing about chats it was not given.
+	miss := f.ask(t, f.jit, map[string]any{"match": "nobody by that name"}, 202)
+	if miss.Status != "pending" || len(miss.RequestID) != 32 || miss.ApproveWith == "" || miss.ExpiresAt == nil {
+		t.Fatalf("no-match answer %+v", miss)
+	}
+	gone := f.ask(t, f.jit, map[string]any{"chat": "missing@g.us"}, 202)
+	for _, v := range []accessView{miss, gone} {
+		if code, st := f.status(t, f.jit, v.RequestID); code != 200 || st.Status != "pending" || st.Chat != "" {
+			t.Fatalf("no-match status %d %+v", code, st)
+		}
+	}
+	pendingMiss := f.queue.Get(f.account, miss.RequestID)
+	if pendingMiss == nil || !pendingMiss.NoMatch() {
+		t.Fatalf("queued %+v", pendingMiss)
+	}
+	if c := f.approve(t, miss.RequestID, map[string]string{"chat": familyChat, "history": "now"}); c == 200 {
+		t.Fatal("a request that matched nothing was approved")
+	}
+	if f.group(t, familyChat).Enabled {
+		t.Fatal("approving a no-match request enabled capture")
+	}
+	if err := f.session.RejectAction(f.account, miss.RequestID); err != nil {
+		t.Fatal(err)
+	}
+	if _, st := f.status(t, f.jit, miss.RequestID); st.Status != "rejected" {
+		t.Fatalf("rejected no-match status %+v", st)
+	}
+	if err := f.session.RejectAction(f.account, gone.RequestID); err != nil {
+		t.Fatal(err)
 	}
 	for _, body := range []any{map[string]any{}, map[string]any{"chat": familyChat, "match": "x"}, map[string]any{"chat": "not a jid"}, map[string]any{"match": "x", "extra": 1}} {
 		f.ask(t, f.jit, body, 400)
 	}
 	// An agent may hold only a few unanswered requests.
-	for _, n := range []string{"family", phoneChat, "15551234567"} {
+	for _, n := range []string{"family", phoneChat, "nothing like it"} {
 		f.ask(t, f.jit, map[string]any{"match": n}, 202)
 	}
 	f.ask(t, f.jit, map[string]any{"match": otherChat}, 429)
@@ -364,8 +389,10 @@ func TestAccessRequestRejectionAndLimits(t *testing.T) {
 	if c, _ := f.do(t, "POST", "/api/v1/access-requests", "", map[string]any{"chat": familyChat}); c != 401 {
 		t.Fatalf("anonymous request: %d", c)
 	}
-	if err := f.session.RejectAction(f.account, f.queue.Pending(f.account).ID); err != nil {
-		t.Fatal(err)
+	for _, r := range f.queue.PendingList(f.account) {
+		if err := f.session.RejectAction(f.account, r.ID); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 

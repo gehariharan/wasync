@@ -15,6 +15,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/mdp/qrterminal/v3"
@@ -77,6 +78,9 @@ type Model struct {
 	confirmRequest                   *approval.Request
 	confirmChoice                    int    // chat access: index of the chosen candidate
 	confirmHistory                   string // chat access: approval.HistoryNow or HistoryFull
+	modeStage                        int    // access mode screen: 0 choose, 1 history depth, 2 typed confirmation
+	modeHistory                      string // access mode screen: history depth picked for sync all
+	modePrompted                     bool   // the first-run screen was shown this session
 	help                             bool
 }
 
@@ -153,6 +157,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.confirmRequest = v.snapshot.Pending
 			m.confirmChoice, m.confirmHistory = 0, approval.HistoryNow
 		}
+		if m.confirm == "" && !m.writeBusy && !m.networkBusy && m.editing == "" && !m.modePrompted && v.snapshot.Account != 0 && !v.snapshot.ModeChosen && v.snapshot.Pending == nil {
+			// First run: ask once how agents should get chats.
+			m.modePrompted = true
+			m.openAccessMode()
+		}
 		if v.err != nil {
 			m.notice = "Archive read failed: " + v.err.Error()
 		}
@@ -179,7 +188,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch v.kind {
 		case "connect", "refresh":
 			m.networkBusy = false
-		case "media-policy", "media-download", "toggle", "bulk", "purge", "history", "clear-message", "agent-action", "revoke-message", "delete-whatsapp-chat", "action-rejected":
+		case "media-policy", "media-download", "toggle", "bulk", "purge", "history", "clear-message", "agent-action", "access-mode", "revoke-message", "delete-whatsapp-chat", "action-rejected":
 			m.writeBusy = false
 		}
 		if v.err != nil {
@@ -195,7 +204,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "agent-action", "revoke-message", "delete-whatsapp-chat":
 				m.notice = "Confirmed action finished. Inspect WhatsApp for remote changes; local chat deletion retains the archive."
 			case "action-rejected":
-				m.notice = "Destructive request rejected; no action performed."
+				m.notice = "Request rejected; nothing was granted or changed."
+			case "access-mode":
+				m.notice = "Saved. Switching back to ask-each-time stops future automatic approvals; access already given stays until you revoke the agent."
 			case "clear-message":
 				m.notice = "Message content removed locally. WhatsApp was not changed."
 				m.pageBusy = true
@@ -340,7 +351,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key == "ctrl+c" {
 			return m, tea.Quit
 		}
+		if m.confirm == "access-mode" {
+			return m.accessModeKey(v, key)
+		}
 		if m.confirm != "" {
+			if m.isNoMatch() && key != "n" && key != "esc" {
+				return m, nil // nothing to approve; it can only be rejected
+			}
 			if m.isAccessRequest() && (key == "up" || key == "down" || key == "tab") {
 				// Choices are shown above the typed confirmation, so they can be
 				// changed until the exact phrase is entered.
@@ -692,6 +709,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.networkBusy && !m.writeBusy {
 				m.confirm = "logout"
 			}
+		case "M":
+			if m.mode == "groups" && !m.writeBusy && !m.networkBusy && m.snapshot.Account != 0 {
+				m.openAccessMode()
+			}
 		case "n", "right":
 			if m.mode == "messages" && !m.pageBusy && m.page.Next.ID != 0 {
 				m.previous = append(m.previous, m.before)
@@ -789,12 +810,15 @@ func (m Model) View() tea.View {
 		top := header + "\n" + dim.Render(clip(status, w)) + "\n"
 		bodyHeight := h - 9
 		if m.help {
-			content = top + panel("KEYBOARD", "↑/↓ or j/k  Move selection\nMouse wheel  Scroll list\nPgUp/PgDn, Home/End  Jump\nSpace  Enable/disable selected chat\nm  Cycle chat media: manual / auto / inherit\nTab  Groups / Direct / All\nA/N  Enable/disable category (confirmation)\nEnter  Browse archived messages\n/  Filter groups or search message text\ne  Show enabled groups only\nr  Refresh group metadata\nh  Retry older history for this group\nc  Connect/pair again\nd  Clear selected message locally (confirmation)\nX  Revoke your message in WhatsApp (confirmation)\nW  Delete WhatsApp chat state (confirmation)\nD  Purge local chat archive (confirmation)\nL  Unlink device and quit (confirmation)\n\nMessages: m download selected attachment once · n/p older/newer · R latest\nCtrl+D / Ctrl+U scroll selected message body\nEsc  Back/clear filter · q quit (keeps session linked)\n?  Close help", w, bodyHeight)
+			content = top + panel("KEYBOARD", "↑/↓ or j/k  Move selection\nMouse wheel  Scroll list\nPgUp/PgDn, Home/End  Jump\nSpace  Enable/disable selected chat\nm  Cycle chat media: manual / auto / inherit\nTab  Groups / Direct / All\nA/N  Enable/disable category (confirmation)\nEnter  Browse archived messages\n/  Filter groups or search message text\ne  Show enabled groups only\nr  Refresh group metadata\nh  Retry older history for this group\nc  Connect/pair again\nd  Clear selected message locally (confirmation)\nX  Revoke your message in WhatsApp (confirmation)\nW  Delete WhatsApp chat state (confirmation)\nD  Purge local chat archive (confirmation)\nM  How agents get chats: ask each time or sync all\nL  Unlink device and quit (confirmation)\n\nMessages: m download selected attachment once · n/p older/newer · R latest\nCtrl+D / Ctrl+U scroll selected message body\nEsc  Back/clear filter · q quit (keeps session linked)\n?  Close help", w, bodyHeight)
 		} else if m.confirm != "" {
 			description := m.confirmDescription()
 			title := "CONFIRM DESTRUCTIVE ACTION"
-			if m.isAccessRequest() {
+			if m.isAccessRequest() || m.isNoMatch() {
 				title = "AGENT ASKS FOR CHAT ACCESS"
+			}
+			if m.confirm == "access-mode" {
+				title = "HOW SHOULD AGENTS GET CHATS?"
 			}
 			content = top + panel(title, ansi.Hardwrap(description, w-6, false), w, bodyHeight)
 		} else if m.mode == "messages" {
@@ -808,6 +832,12 @@ func (m Model) View() tea.View {
 			if m.isAccessRequest() {
 				prompt = "↑/↓ chat · Tab history depth · type the exact confirmation · n / Esc reject (nothing is granted)"
 			}
+			if m.isNoMatch() {
+				prompt = "n / Esc reject · nothing can be granted for this request"
+			}
+		}
+		if m.confirm == "access-mode" {
+			prompt = m.accessModePrompt()
 		}
 		if m.snapshot.Status.Error != "" {
 			prompt = m.snapshot.Status.Error
@@ -1049,9 +1079,14 @@ func (m Model) isAccessRequest() bool {
 func (m Model) accessDescription() string {
 	a := m.confirmRequest.Access
 	choice := min(max(m.confirmChoice, 0), len(a.Candidates)-1)
-	access := "READ the messages of"
-	if a.Send {
-		access = "READ and SEND messages (also reactions and edits of its own) in"
+	access, effect := "READ the messages of", "read access to"
+	switch {
+	case a.Send && a.Edit:
+		access, effect = "READ, SEND/REPLY/REACT and EDIT its own messages in", "read, send, reply, react and edit-own access to"
+	case a.Send:
+		access, effect = "READ and SEND/REPLY/REACT in", "read, send, reply and react access to"
+	case a.Edit:
+		access, effect = "READ and EDIT its own messages in", "read and edit-own access to"
 	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "Agent %s asks to %s one chat.\nIt asked for: %s\n\nChats it may mean (↑/↓ to choose):\n", oneLine(a.Agent), access, oneLine(a.Query))
@@ -1070,12 +1105,109 @@ func (m Model) accessDescription() string {
 		history = "FULL HISTORY SYNC: also ask your phone for this chat's older messages (best effort)"
 	}
 	chosen := a.Candidates[choice]
-	fmt.Fprintf(&b, "\nHistory (Tab to change): %s\n\nApproving will: turn on capture for %s, then give %s %s only this chat. Nothing else changes.\n", history, oneLine(chosen.Chat), oneLine(a.Agent), map[bool]string{false: "read access to", true: "read and send access to"}[a.Send])
+	fmt.Fprintf(&b, "\nHistory (Tab to change): %s\n\nApproving will: turn on capture for %s, then give %s %s only this chat. Nothing else changes.\n", history, oneLine(chosen.Chat), oneLine(a.Agent), effect)
 	fmt.Fprintf(&b, "\nType ALLOW %s then Enter to approve.\n> %s\nn / Esc reject", m.confirmID[max(0, len(m.confirmID)-6):], oneLine(m.confirmDraft))
 	return b.String()
 }
 
+// isNoMatch reports an open access request that matched no chat: the owner can
+// only reject it, so the agent learns nothing about what exists.
+func (m Model) isNoMatch() bool {
+	return m.confirm == "agent-action" && m.confirmRequest != nil && m.confirmRequest.NoMatch()
+}
+
+func (m *Model) openAccessMode() {
+	m.confirm, m.modeStage, m.modeHistory, m.confirmDraft = "access-mode", 0, "", ""
+}
+
+func (m Model) accessModePrompt() string {
+	switch m.modeStage {
+	case 0:
+		return "1 or Enter: ask me each time · 2: sync all chats · Esc: decide later"
+	case 1:
+		return "1: from now on only · 2: full history sync · Esc: back"
+	}
+	return "Type the exact phrase, then Enter · Esc: back"
+}
+
+// accessModeKey drives the three steps of the access mode screen: pick, pick
+// a history depth for sync all, then type SYNC ALL. Esc never changes anything.
+func (m Model) accessModeKey(v tea.KeyPressMsg, key string) (tea.Model, tea.Cmd) {
+	apply := func(mode accessmode.Mode) (tea.Model, tea.Cmd) {
+		account := m.snapshot.Account
+		m.confirm, m.writeBusy = "", true
+		return m, func() tea.Msg {
+			setter, ok := m.session.(interface {
+				SetAccessMode(int64, accessmode.Mode) error
+			})
+			if !ok {
+				return operationMsg{"access-mode", fmt.Errorf("access mode unavailable")}
+			}
+			return operationMsg{"access-mode", setter.SetAccessMode(account, mode)}
+		}
+	}
+	switch m.modeStage {
+	case 0:
+		switch key {
+		case "1", "enter":
+			return apply(accessmode.Mode{Mode: accessmode.Ask})
+		case "2":
+			m.modeStage = 1
+		case "esc":
+			m.confirm = ""
+		}
+	case 1:
+		switch key {
+		case "1":
+			m.modeHistory, m.modeStage, m.confirmDraft = accessmode.HistoryNow, 2, ""
+		case "2":
+			m.modeHistory, m.modeStage, m.confirmDraft = accessmode.HistoryFull, 2, ""
+		case "esc":
+			m.modeStage = 0
+		}
+	default:
+		switch {
+		case key == "esc":
+			m.modeStage, m.confirmDraft = 0, ""
+		case key == "enter" && m.confirmDraft == "SYNC ALL":
+			return apply(accessmode.Mode{Mode: accessmode.All, History: m.modeHistory})
+		case key == "backspace" && len(m.confirmDraft) > 0:
+			m.confirmDraft = m.confirmDraft[:len(m.confirmDraft)-1]
+		case key == "space" || key == " ":
+			m.confirmDraft += " "
+		case v.Text != "":
+			m.confirmDraft = truncateRunes(m.confirmDraft+oneLine(v.Text), 32)
+		}
+	}
+	return m, nil
+}
+
+func (m Model) accessModeDescription() string {
+	current := "Not chosen yet."
+	if m.snapshot.ModeChosen {
+		current = "Now: ask me each time."
+		if m.snapshot.Mode.Mode == accessmode.All {
+			current = "Now: sync all chats (history: " + map[string]string{accessmode.HistoryNow: "from now on only", accessmode.HistoryFull: "full history sync"}[m.snapshot.Mode.History] + ")."
+		}
+	}
+	switch m.modeStage {
+	case 1:
+		return "Sync all chats: capture every chat, and approve agents' requests without asking.\n\nHow much history should every chat get?\n\n  1) From now on only: new messages; nothing older is requested\n  2) Full history sync: also ask your phone for every chat's older messages (best effort, can be large)"
+	case 2:
+		depth := map[string]string{accessmode.HistoryNow: "from now on only", accessmode.HistoryFull: "full history sync"}[m.modeHistory]
+		return "SYNC ALL CHATS (history: " + depth + ")\n\nThis turns on capture for every chat now, and from now on any agent that asks for a chat is approved at once, without asking you: it can READ, SEND, REPLY and REACT in any chat. Editing its own messages and deleting always stay manual. Every approval is still recorded and audited.\n\nType SYNC ALL then Enter.\n> " + oneLine(m.confirmDraft) + "\nEsc back"
+	}
+	return current + "\n\n  1) Ask me each time (default)\n     An agent that wants a chat asks; you approve it here or with wasync actions approve, choosing the chat, read or send, and how much history. Nothing is granted until you confirm.\n\n  2) Sync all chats\n     Captures every chat, and agents that ask get read, send, reply and react access to a chat right away, WITHOUT asking you: in this mode agents can send, reply and react in any chat. Editing their own messages and deleting stay manual.\n\nYou can change this any time: press M here, or run wasync access mode. Switching back to ask-each-time stops future automatic approvals; access already given stays until you revoke the agent."
+}
+
 func (m Model) confirmDescription() string {
+	if m.confirm == "access-mode" {
+		return m.accessModeDescription()
+	}
+	if m.isNoMatch() {
+		a := m.confirmRequest.Access
+		return "Agent " + oneLine(a.Agent) + " asked for access to a chat matching \"" + oneLine(a.Query) + "\".\n\nNo chat matched, so there is nothing to grant. It can only be rejected; otherwise it expires on its own.\n\nn / Esc reject"
+	}
 	if m.isAccessRequest() {
 		return m.accessDescription()
 	}

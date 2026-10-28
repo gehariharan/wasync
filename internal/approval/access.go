@@ -27,13 +27,11 @@ const (
 	maxPendingPerAgent = 3
 )
 
-// ErrNoCandidates means a request matched no chat, so there is nothing for a
-// human to approve. It is reported to the agent at once rather than queued.
-var ErrNoCandidates = fmt.Errorf("no chat matches the request")
-
 // Candidate is one concrete chat an access request could mean. Candidates are
 // resolved by wasync from the archive and shown only to the human, never to the
-// agent, so the agent learns nothing about which chats matched.
+// agent, so the agent learns nothing about which chats matched. A request that
+// matched nothing is queued with no candidates, exactly like any other, so the
+// agent cannot tell a missing chat from one the person has not answered yet.
 type Candidate struct {
 	Chat string `json:"chat"`
 	Name string `json:"name"`
@@ -43,9 +41,11 @@ type Candidate struct {
 type Access struct {
 	Agent      string      `json:"agent"`
 	AgentID    string      `json:"agent_id"`
-	Send       bool        `json:"send"`   // read is always included; send is the optional extra
-	Scopes     []string    `json:"scopes"` // exactly what approval grants, within the credential's own scopes
-	Query      string      `json:"query"`  // what the agent asked for; untrusted text for display
+	Send       bool        `json:"send"`           // read is always included; send (send, reply, react) is an extra
+	Edit       bool        `json:"edit"`           // edit.own is a further extra, always approved by hand
+	Auto       bool        `json:"auto,omitempty"` // approved by the owner's "sync all" setting rather than by hand
+	Scopes     []string    `json:"scopes"`         // exactly what approval grants, within the credential's own scopes
+	Query      string      `json:"query"`          // what the agent asked for; untrusted text for display
 	Candidates []Candidate `json:"candidates"`
 	Truncated  bool        `json:"truncated,omitempty"` // more chats matched than are listed
 	// Chosen and History are the human's decision, recorded while pending.
@@ -57,9 +57,6 @@ func (a Access) validate() error {
 	if a.Agent == "" || a.AgentID == "" || len(a.Scopes) == 0 {
 		return fmt.Errorf("agent and scopes required")
 	}
-	if len(a.Candidates) == 0 {
-		return ErrNoCandidates
-	}
 	if len(a.Query) > maxQueryLen || len(a.Candidates) > maxCandidates {
 		return fmt.Errorf("access request too large")
 	}
@@ -69,6 +66,12 @@ func (a Access) validate() error {
 		}
 	}
 	return nil
+}
+
+// NoMatch reports an access request that matched no chat. A person can only
+// reject it; it can never be approved.
+func (r Request) NoMatch() bool {
+	return r.Kind == KindChatAccess && r.Access != nil && len(r.Access.Candidates) == 0
 }
 
 func (r Request) clone() Request {
@@ -95,7 +98,7 @@ func (q *Queue) AddAccess(account int64, a Access) (Request, error) {
 	r, created, err := q.addAccessLocked(account, a)
 	notify := q.OnAccess
 	q.mu.Unlock()
-	if err == nil && created && notify != nil {
+	if err == nil && created && notify != nil && !a.Auto {
 		notify(r)
 	}
 	return r, err
@@ -111,7 +114,7 @@ func (q *Queue) addAccessLocked(account int64, a Access) (Request, bool, error) 
 		active++
 		if r.Account == account && r.Kind == KindChatAccess && r.Access.AgentID == a.AgentID {
 			perAgent++
-			if r.Access.Send == a.Send && normalizeQuery(r.Access.Query) == normalizeQuery(a.Query) {
+			if r.Access.Send == a.Send && r.Access.Edit == a.Edit && normalizeQuery(r.Access.Query) == normalizeQuery(a.Query) {
 				return r.clone(), false, nil
 			}
 		}
@@ -156,9 +159,24 @@ func (q *Queue) Decide(account int64, id, chat, history string) error {
 				return nil
 			}
 		}
+		if r.NoMatch() {
+			return fmt.Errorf("no chat matched this request; it can only be rejected")
+		}
 		return fmt.Errorf("chat is not one of the candidates for this request")
 	}
 	return fmt.Errorf("request expired or already handled")
+}
+
+// MarkAuto records that the owner's "sync all" setting, not a person at a
+// dialog, is approving this pending request, so the audit log says so.
+func (q *Queue) MarkAuto(account int64, id string) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for i, r := range q.requests {
+		if r.Account == account && r.ID == id && r.Status == StatusPending && r.Kind == KindChatAccess {
+			q.requests[i].Access.Auto = true
+		}
+	}
 }
 
 // Reject closes a pending request without acting on it.

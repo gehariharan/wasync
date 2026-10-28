@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/query"
@@ -22,7 +23,7 @@ import (
 // extends the agent's access. Asking grants nothing.
 func init() {
 	registerV1(v1Route{Pattern: "POST /api/v1/access-requests", Handle: (*handler).v1RequestAccess})
-	registerV1(v1Route{Pattern: "/api/v1/access-requests", Handle: v1MethodNotAllowed("POST", `use POST /api/v1/access-requests with {"chat":"JID"} or {"match":"name or phone"}, optionally "send":true`)})
+	registerV1(v1Route{Pattern: "/api/v1/access-requests", Handle: v1MethodNotAllowed("POST", `use POST /api/v1/access-requests with {"chat":"JID"} or {"match":"name or phone"}, optionally "send":true and "edit":true`)})
 	registerV1(v1Route{Pattern: "GET /api/v1/access-requests/{id}", Handle: (*handler).v1AccessStatus})
 	registerV1(v1Route{Pattern: "/api/v1/access-requests/{id}", Handle: v1MethodNotAllowed("GET, HEAD", "use GET /api/v1/access-requests/{id}")})
 	query.RegisterFeature("access.request")
@@ -31,26 +32,33 @@ func init() {
 type accessRequestBody struct {
 	Chat  string `json:"chat"`
 	Match string `json:"match"`
-	Send  bool   `json:"send"`
+	Send  bool   `json:"send"` // also send, reply and react
+	Edit  bool   `json:"edit"` // also edit own messages
 }
 
-// accessView is the agent-facing state of a request. It never names the chats
-// that matched; the chat appears only once a human approved it.
+// accessView is the agent-facing state of a request. It never says which chats
+// matched, or whether any did: a request that matched nothing looks like any
+// other pending request until it is rejected or expires. The chat appears only
+// once it was approved.
 type accessView struct {
 	RequestID   string     `json:"request_id"`
 	Status      string     `json:"status"` // pending, approved, rejected, expired, failed or already_allowed
-	Access      []string   `json:"access"` // read, and send when requested
+	Access      []string   `json:"access"` // read, plus send and edit when requested
 	ExpiresAt   *time.Time `json:"expires_at,omitempty"`
 	Chat        string     `json:"chat,omitempty"`    // approved only
 	History     string     `json:"history,omitempty"` // approved only: now or full
 	ApproveWith string     `json:"approve_with,omitempty"`
 }
 
-func accessLevels(send bool) []string {
+func accessLevels(send, edit bool) []string {
+	levels := []string{"read"}
 	if send {
-		return []string{"read", "send"}
+		levels = append(levels, "send")
 	}
-	return []string{"read"}
+	if edit {
+		levels = append(levels, "edit")
+	}
+	return levels
 }
 
 func agentStatus(status string) string {
@@ -96,7 +104,7 @@ func (h *handler) v1RequestAccess(w http.ResponseWriter, r *http.Request, id str
 		v1Fail(w, id, 400, query.CodeInvalidArgument, "this credential already reads every archived chat", "a chat that is not archived yet must be enabled by the person (wasync chats enable, or the TUI)")
 		return
 	}
-	scopes, err := c.AccessScopes(in.Send)
+	scopes, err := c.AccessScopes(in.Send, in.Edit)
 	if err != nil {
 		v1Fail(w, id, 403, query.CodeForbidden, err.Error(), "access requests only use scopes the credential already holds; a human must re-grant it with the scope in an interactive terminal (wasync agents grant)")
 		return
@@ -119,27 +127,44 @@ func (h *handler) v1RequestAccess(w http.ResponseWriter, r *http.Request, id str
 			allowed = allowed && c.AllowsChatScope(s, in.Chat)
 		}
 		if allowed {
-			writeJSON(w, 200, query.V1Response{RequestID: id, Data: accessView{Status: "already_allowed", Access: accessLevels(in.Send), Chat: in.Chat}})
+			writeJSON(w, 200, query.V1Response{RequestID: id, Data: accessView{Status: "already_allowed", Access: accessLevels(in.Send, in.Edit), Chat: in.Chat}})
 			return
 		}
 	}
 	candidates, truncated := resolveAccessCandidates(groups, in.Chat, in.Match)
-	if len(candidates) == 0 {
-		v1Fail(w, id, 404, query.CodeNotFound, "no chat in the archive matches that request", "WhatsApp contact names are often not synced for direct chats: ask with the phone number (match) or the exact chat JID (chat). Nothing was requested")
-		return
-	}
 	query_ := in.Chat
 	if query_ == "" {
 		query_ = in.Match
 	}
-	req, err := h.approvals.AddAccess(a.ID, approval.Access{Agent: c.Name, AgentID: c.ID, Send: in.Send, Scopes: scopes, Query: query_, Candidates: candidates, Truncated: truncated})
+	mode, _, modeErr := accessmode.Load(h.dataDir)
+	if modeErr != nil {
+		mode = accessmode.Mode{Mode: accessmode.Ask} // damaged setting: ask each time
+	}
+	// "Sync all" approves a read, send, reply or react request for the one chat it
+	// matched at once; edit access and any ambiguous or empty match wait for the owner.
+	auto := mode.AutoApproves() && !in.Edit && len(candidates) == 1 && h.approve != nil
+	req, err := h.approvals.AddAccess(a.ID, approval.Access{Agent: c.Name, AgentID: c.ID, Send: in.Send, Edit: in.Edit, Scopes: scopes, Query: query_, Candidates: candidates, Truncated: truncated, Auto: auto})
 	if err != nil {
 		v1Fail(w, id, 429, query.CodeRateLimited, err.Error(), "wait for the person to answer or for the requests to expire (five minutes)")
 		return
 	}
 	_ = h.agents.Audit(agentauth.AuditEntry{Event: "access_request", ClientID: c.ID, ClientName: c.Name, Scope: strings.Join(scopes, ","), Chat: onlyChat(candidates), Ref: req.ID[:8], Outcome: agentauth.OutcomeAllowed, RequestID: id})
+	if auto && req.Status == approval.StatusPending {
+		// Still a recorded approval request, decided by the owner's standing choice.
+		h.approvals.MarkAuto(a.ID, req.ID)
+		if err = h.approvals.Decide(a.ID, req.ID, candidates[0].Chat, mode.History); err == nil {
+			err = h.approve(a.ID, req.ID)
+		}
+		done := h.approvals.Get(a.ID, req.ID)
+		view := accessView{RequestID: req.ID, Status: agentStatus(done.Status), Access: accessLevels(in.Send, in.Edit)}
+		if view.Status == "approved" {
+			view.Chat, view.History = done.Access.Chosen, done.Access.History
+		}
+		writeJSON(w, http.StatusOK, query.V1Response{RequestID: id, Data: view})
+		return
+	}
 	exp := req.Expires
-	writeJSON(w, http.StatusAccepted, query.V1Response{RequestID: id, Data: accessView{RequestID: req.ID, Status: "pending", Access: accessLevels(in.Send), ExpiresAt: &exp, ApproveWith: "wasync actions approve " + req.ID}})
+	writeJSON(w, http.StatusAccepted, query.V1Response{RequestID: id, Data: accessView{RequestID: req.ID, Status: "pending", Access: accessLevels(in.Send, in.Edit), ExpiresAt: &exp, ApproveWith: "wasync actions approve " + req.ID}})
 }
 
 func onlyChat(c []approval.Candidate) string {
@@ -164,7 +189,7 @@ func (h *handler) v1AccessStatus(w http.ResponseWriter, r *http.Request, id stri
 		v1Fail(w, id, 404, query.CodeNotFound, "no such access request for this credential", "requests are forgotten when wasync restarts; ask again with `whatsapp-axi access request`")
 		return
 	}
-	view := accessView{RequestID: req.ID, Status: agentStatus(req.Status), Access: accessLevels(req.Access.Send)}
+	view := accessView{RequestID: req.ID, Status: agentStatus(req.Status), Access: accessLevels(req.Access.Send, req.Access.Edit)}
 	switch view.Status {
 	case "pending":
 		exp := req.Expires

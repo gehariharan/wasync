@@ -22,14 +22,14 @@ func TestAccessRequestPostsOnceAndExplainsTheNextStep(t *testing.T) {
 	h, srv := writerHarness(t)
 	srv.Routes[accessEndpoint] = pendingEnvelope()
 	srv.Codes[accessEndpoint] = 202
-	out, code := h.run(t, "access", "request", "--match", "+15551234567", "--send")
+	out, code := h.run(t, "access", "request", "--match", "+15551234567", "--send", "--edit")
 	if code != ExitOK {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "transport: api", "access_request:", "request_id: "+accessID, "status: pending", "access: read+send", "Nothing is granted yet", "wasync actions approve "+accessID, "whatsapp-axi access status "+accessID, "expires after five minutes")
+	mustContain(t, out, "transport: api", "access_request:", "request_id: "+accessID, "status: pending", "access: read+send", "Nothing is granted yet", "does not say whether the name matched", "wasync actions approve "+accessID, "whatsapp-axi access status "+accessID, "expires after five minutes")
 	n, body := posts(srv)
 	var sent map[string]any
-	if n != 1 || json.Unmarshal([]byte(body), &sent) != nil || sent["match"] != "+15551234567" || sent["send"] != true || sent["chat"] != nil {
+	if n != 1 || json.Unmarshal([]byte(body), &sent) != nil || sent["match"] != "+15551234567" || sent["send"] != true || sent["edit"] != true || sent["chat"] != nil {
 		t.Fatalf("posts %d body %s", n, body)
 	}
 	out, code = h.run(t, "access", "request", "--chat", "one@g.us", "--json")
@@ -41,7 +41,7 @@ func TestAccessRequestPostsOnceAndExplainsTheNextStep(t *testing.T) {
 		t.Fatalf("json %d %s", code, out)
 	}
 	_, body = posts(srv)
-	if !strings.Contains(body, `"chat":"one@g.us"`) || !strings.Contains(body, `"send":false`) {
+	if !strings.Contains(body, `"chat":"one@g.us"`) || !strings.Contains(body, `"send":false`) || !strings.Contains(body, `"edit":false`) {
 		t.Fatalf("body %s", body)
 	}
 }
@@ -89,7 +89,6 @@ func TestAccessUsageErrorsAndWasyncRefusals(t *testing.T) {
 		code   string
 		help   string
 	}{
-		{404, "not_found", "ask with the phone number"},
 		{429, "rate_limited", "wait for the person"},
 		{503, "owner_offline", "start wasync"},
 		{403, "forbidden", "re-grant"},

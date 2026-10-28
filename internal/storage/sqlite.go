@@ -5,6 +5,7 @@ import (
 	"context"
 	"database/sql"
 	_ "embed"
+	"errors"
 	"fmt"
 	"github.com/gehariharan/wasync/internal/localfs"
 	_ "github.com/mattn/go-sqlite3"
@@ -242,6 +243,42 @@ func (s *Store) EnableCapture(ctx context.Context, account int64, chat string, w
 	return s.setEnabled(ctx, account, []string{chat}, true, mode)
 }
 
+// EnableAllCapture turns capture on for every cached chat, groups and direct
+// chats alike, and returns how many were off before. withHistory also queues a
+// request for older messages for each of them; without it capture starts from
+// now on only.
+func (s *Store) EnableAllCapture(ctx context.Context, account int64, withHistory bool) (int, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT group_id,sync_enabled FROM groups WHERE account_id=? ORDER BY group_id", account)
+	if err != nil {
+		return 0, err
+	}
+	var ids []string
+	newly := 0
+	for rows.Next() {
+		var id string
+		var enabled bool
+		if err = rows.Scan(&id, &enabled); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		ids = append(ids, id)
+		if !enabled {
+			newly++
+		}
+	}
+	if err = errors.Join(rows.Err(), rows.Close()); err != nil {
+		return 0, err
+	}
+	mode := historyNever
+	if withHistory {
+		mode = historyAlways
+	}
+	if err = s.setEnabled(ctx, account, ids, true, mode); err != nil {
+		return 0, err
+	}
+	return newly, nil
+}
+
 func (s *Store) setEnabled(ctx context.Context, account int64, ids []string, enabled bool, history historyMode) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -288,6 +325,11 @@ func (s *Store) setEnabled(ctx context.Context, account int64, ids []string, ena
 			}
 		} else if !enabled {
 			if _, err = tx.ExecContext(ctx, "UPDATE history_jobs SET state='disabled',request_id='',updated_at=? WHERE account_id=? AND group_id=?", time.Now().UnixMilli(), account, id); err != nil {
+				return err
+			}
+		} else if !wasEnabled {
+			// Capture from now on only: drop the "paused" marker left by an earlier disable.
+			if _, err = tx.ExecContext(ctx, "DELETE FROM history_jobs WHERE account_id=? AND group_id=? AND state='disabled'", account, id); err != nil {
 				return err
 			}
 		}

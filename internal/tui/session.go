@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/storage"
@@ -29,10 +30,13 @@ type Client interface {
 }
 type Snapshot struct {
 	Pending *approval.Request
-	APIURL  string
-	Status  whatsapp.CaptureStatus
-	Groups  []storage.Group
-	Account int64
+	// Mode is how agents get chats; ModeChosen is false until the owner picks.
+	Mode       accessmode.Mode
+	ModeChosen bool
+	APIURL     string
+	Status     whatsapp.CaptureStatus
+	Groups     []storage.Group
+	Account    int64
 }
 type Session struct {
 	Approvals *approval.Queue
@@ -111,6 +115,11 @@ func (s *Session) Snapshot() (Snapshot, error) {
 	if account != nil {
 		snap.Account = account.ID
 		snap.Pending = s.Approvals.Pending(account.ID)
+		if mode, chosen, modeErr := accessmode.Load(s.DataDir); modeErr == nil {
+			snap.Mode, snap.ModeChosen = mode, chosen
+		} else {
+			snap.Mode, snap.ModeChosen = accessmode.Mode{Mode: accessmode.Ask}, true // damaged file: ask each time, do not nag
+		}
 		snap.Groups, err = s.store.GroupSummaries(ctx, account.ID)
 	}
 	return snap, err
@@ -290,6 +299,23 @@ func (s *Session) RejectAction(account int64, id string) error {
 	return nil
 }
 
+// SetAccessMode applies the owner's choice of how agents get chats. Choosing
+// sync all enables capture for every cached chat first; see accessmode.Apply.
+func (s *Session) SetAccessMode(account int64, m accessmode.Mode) error {
+	if s.DataDir == "" {
+		return fmt.Errorf("data directory unknown; nothing changed")
+	}
+	current, err := s.store.Account(s.ctx)
+	if err != nil {
+		return err
+	}
+	if current == nil || current.ID != account {
+		return fmt.Errorf("account changed; nothing changed")
+	}
+	_, err = accessmode.Apply(s.ctx, s.store, s.DataDir, account, m)
+	return err
+}
+
 // DecideAccess records the human's chat and history-depth choice on a pending
 // access request; ApproveAction then applies exactly that choice.
 func (s *Session) DecideAccess(account int64, id, chat, history string) error {
@@ -322,7 +348,11 @@ func (s *Session) grantChatAccess(account int64, request approval.Request) error
 		return err
 	}
 	audit := agentauth.NewAuditLog(s.DataDir)
-	entry := agentauth.AuditEntry{Event: "access_grant", ClientID: a.AgentID, ClientName: a.Agent, Scope: strings.Join(a.Scopes, ","), Chat: chat, Ref: request.ID[:8], Outcome: agentauth.OutcomeAllowed}
+	event := "access_grant"
+	if a.Auto {
+		event = "access_grant_auto" // the owner's "sync all" setting approved it
+	}
+	entry := agentauth.AuditEntry{Event: event, ClientID: a.AgentID, ClientName: a.Agent, Scope: strings.Join(a.Scopes, ","), Chat: chat, Ref: request.ID[:8], Outcome: agentauth.OutcomeAllowed}
 	if err := audit.Append(entry); err != nil {
 		return fmt.Errorf("audit log unavailable; access not granted: %w", err)
 	}

@@ -11,16 +11,17 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/output"
 )
 
-const accessUsage = "whatsapp-axi access request (--chat JID | --match TEXT) [--send] [--json]; whatsapp-axi access status REQUEST_ID [--json]"
+const accessUsage = "whatsapp-axi access request (--chat JID | --match TEXT) [--send] [--edit] [--json]; whatsapp-axi access status REQUEST_ID [--json]"
 
 var accessCommand = &command{
 	name:        "access",
 	usage:       accessUsage,
-	description: "Ask the person for access to a chat this credential may not use yet, and check the answer (running wasync only). Asking grants nothing: the person picks the chat, the access and the history depth in wasync and confirms; the request expires after five minutes",
+	description: "Ask the person for access to a chat this credential may not use yet, and check the answer (running wasync only). Asking grants nothing unless the person set wasync to sync all chats: otherwise they pick the chat, the access and the history depth in wasync and confirm, and the request expires after five minutes. wasync never says whether a name matched anything",
 	flags: []flagSpec{
 		{name: "--chat", value: "JID", description: "request: the exact chat JID"},
 		{name: "--match", value: "TEXT", description: "request: a phone number or contact/group name; wasync resolves it to candidate chats that only the person sees"},
-		{name: "--send", description: "request: also ask to send (reply, react, edit), not only read; needs a send scope on the credential"},
+		{name: "--send", description: "request: also ask to send, reply and react, not only read; needs a send or react scope on the credential"},
+		{name: "--edit", description: "request: also ask to edit your own messages; needs the edit.own scope and is always approved by hand"},
 		jsonFlag,
 	},
 	minArgs:  1,
@@ -73,7 +74,7 @@ func (a *App) runAccessRequest(ctx context.Context, inv invocation) error {
 	if hasChat == hasMatch || strings.TrimSpace(chat+match) == "" {
 		return usageErr("usage: "+accessUsage, "`access request` needs exactly one of --chat or --match")
 	}
-	body := map[string]any{"send": inv.has("--send")}
+	body := map[string]any{"send": inv.has("--send"), "edit": inv.has("--edit")}
 	if hasChat {
 		body["chat"] = chat
 	} else {
@@ -138,7 +139,7 @@ func (a *App) accessResult(inv invocation, transportName string, resp contract.R
 		o.Help(
 			"Nothing is granted yet. Ask the person to open the wasync terminal UI (a dialog appears) or to run `"+d.ApproveWith+"` in a terminal",
 			"Check the answer with `whatsapp-axi access status "+d.RequestID+"`; do not retry the read until it says approved",
-			"The request expires after five minutes; ask again if it does")
+			"The request expires after five minutes; ask again if it does. wasync does not say whether the name matched anything, so if it expires try the phone number or exact chat JID")
 	case "approved":
 		o.Help("Access was granted for this chat only; retry your read, e.g. `whatsapp-axi messages " + d.Chat + "`")
 	case "already_allowed":

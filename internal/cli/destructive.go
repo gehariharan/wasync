@@ -187,11 +187,17 @@ func (a *App) runActionsList(ctx context.Context, cfg config.Config) error {
 			if r.Access.Send {
 				asks += "+send"
 			}
+			if r.Access.Edit {
+				asks += "+edit"
+			}
 			chats := make([]string, 0, len(r.Access.Candidates))
 			for _, c := range r.Access.Candidates {
 				chats = append(chats, printable(c.Name)+" ("+printable(c.Chat)+")")
 			}
 			detail = "asked for " + strconv.Quote(printable(r.Access.Query)) + " -> " + strings.Join(chats, "; ")
+			if r.NoMatch() {
+				detail = "no chat matched " + strconv.Quote(printable(r.Access.Query)) + " (nothing to approve; reject it in the TUI or let it expire)"
+			}
 		} else if r.Message != "" {
 			detail += " message " + printable(r.Message)
 		}
@@ -210,11 +216,16 @@ func (a *App) runActionsList(ctx context.Context, cfg config.Config) error {
 func (a *App) approveChatAccess(ctx context.Context, cfg config.Config, request approval.Request) error {
 	acc := request.Access
 	if acc == nil || len(acc.Candidates) == 0 {
-		return fmt.Errorf("request has no chat to approve; no data changed")
+		return fmt.Errorf("no chat matched this request, so there is nothing to approve; reject it in the TUI or let it expire; no data changed")
 	}
 	level, effect := "READ", "read access to"
-	if acc.Send {
-		level, effect = "READ and SEND", "read and send access (including reactions and edits of its own messages) to"
+	switch {
+	case acc.Send && acc.Edit:
+		level, effect = "READ, SEND/REPLY/REACT and EDIT-OWN", "read, send, reply, react and edit-own access to"
+	case acc.Send:
+		level, effect = "READ and SEND/REPLY/REACT", "read, send, reply and react access to"
+	case acc.Edit:
+		level, effect = "READ and EDIT-OWN", "read and edit-own access to"
 	}
 	fmt.Fprintf(a.Err, "Agent %s asks for %s access to one WhatsApp chat.\nIt asked for: %s\n", printable(acc.Agent), level, printable(acc.Query))
 	pick := 0

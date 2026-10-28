@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/api"
 	"github.com/gehariharan/wasync/internal/approval"
@@ -116,7 +117,7 @@ func TestActionsApproveChatAccessChoosesChatAndHistory(t *testing.T) {
 	if err != nil {
 		t.Fatalf("approve: %v\n%s", err, prompts)
 	}
-	for _, want := range []string{"jit", "READ and SEND", "1) First", "2) Second", "full history sync", "read and send access", "two@g.us", code} {
+	for _, want := range []string{"jit", "READ and SEND/REPLY/REACT", "1) First", "2) Second", "full history sync", "read, send, reply and react access", "two@g.us", code} {
 		if !strings.Contains(prompts, want) {
 			t.Fatalf("prompt lacks %q:\n%s", want, prompts)
 		}
@@ -251,4 +252,94 @@ func freePort(t *testing.T) string {
 	}
 	defer l.Close()
 	return strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
+}
+
+func ownerFixture(t *testing.T) (app *App, output *bytes.Buffer, run func(args ...string) error, store *storage.Store, account int64, queue *approval.Queue, dir string) {
+	t.Helper()
+	app, output, store, account, dir = queryFixture(t)
+	ctx := context.Background()
+	queue = &approval.Queue{}
+	session := tui.NewSession(ctx, store, nil)
+	session.Approvals, session.DataDir = queue, dir
+	server, err := api.StartControlled("127.0.0.1:0", dir, store, nil, queue, session.ApproveAction, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { server.Close() })
+	flags := []string{"--data-dir", dir, "--api-addr", strings.TrimPrefix(server.URL, "http://")}
+	run = func(args ...string) error {
+		output.Reset()
+		return app.Run(ctx, append(append([]string{}, flags...), args...))
+	}
+	return
+}
+
+func TestAccessModeCommandIsHumanOnlyAndNeedsTheTypedPhrase(t *testing.T) {
+	app, output, run, store, account, _, dir := ownerFixture(t)
+	if err := run("access", "mode"); err != nil || !strings.Contains(output.String(), "ask each time (default; not chosen yet)") {
+		t.Fatalf("show default: %v %q", err, output.String())
+	}
+	if err := run("access", "mode", "all", "--history", "now"); err == nil || !strings.Contains(err.Error(), "interactive terminal") {
+		t.Fatalf("non-interactive change: %v", err)
+	}
+	app.Interactive, app.Err = true, &bytes.Buffer{}
+	for _, tc := range [][]string{{"sync all"}, {"yes"}, {""}} { // wrong phrases change nothing
+		app.In = &lineReader{tc}
+		if err := run("access", "mode", "all", "--history", "now"); err == nil {
+			t.Fatalf("accepted %v", tc)
+		}
+	}
+	for _, bad := range [][]string{{"access", "mode", "everything"}, {"access", "mode", "ask", "--history", "now"}, {"access", "mode", "all", "--history", "forever"}} {
+		app.In = &lineReader{[]string{"SYNC ALL", "ASK"}}
+		if err := run(bad...); err == nil {
+			t.Fatalf("accepted %v", bad)
+		}
+	}
+	if groupByID(t, store, account, "two@g.us").Enabled {
+		t.Fatal("a refused change enabled capture")
+	}
+	// The history depth is asked for when it is not given, then the phrase.
+	errs := &bytes.Buffer{}
+	app.Err, app.In = errs, &lineReader{[]string{"2", "SYNC ALL"}}
+	if err := run("access", "mode", "all"); err != nil {
+		t.Fatalf("change: %v\n%s", err, errs)
+	}
+	for _, want := range []string{"full history sync", "READ, SEND, REPLY and REACT in any chat", "Editing its own messages and deleting stay manual", "Type SYNC ALL"} {
+		if !strings.Contains(errs.String(), want) {
+			t.Fatalf("warning lacks %q:\n%s", want, errs)
+		}
+	}
+	if g := groupByID(t, store, account, "two@g.us"); !g.Enabled || g.HistoryRequest != "queued" {
+		t.Fatalf("two@g.us %+v", g)
+	}
+	if err := run("access", "mode"); err != nil || !strings.Contains(output.String(), "sync all chats, history: full history sync") || !strings.Contains(output.String(), "approved automatically") {
+		t.Fatalf("show: %v %q", err, output.String())
+	}
+	app.Err, app.In = &bytes.Buffer{}, &lineReader{[]string{"ASK"}}
+	if err := run("access", "mode", "ask"); err != nil {
+		t.Fatal(err)
+	}
+	if m, _, _ := accessmode.Load(dir); m.Mode != accessmode.Ask || !groupByID(t, store, account, "two@g.us").Enabled {
+		t.Fatalf("back to ask: %+v", m)
+	}
+}
+
+func TestRequestThatMatchedNothingIsListedAndCannotBeApproved(t *testing.T) {
+	app, output, run, _, account, queue, _ := ownerFixture(t)
+	r, err := queue.AddAccess(account, approval.Access{Agent: "jit", AgentID: "0123abcd", Scopes: []string{"read.chats"}, Query: "Ghost\x1b[2J", Candidates: nil})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app.Interactive = true
+	if err = run("actions", "list"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), r.ID) || !strings.Contains(output.String(), `no chat matched "Ghost[2J"`) || strings.Contains(output.String(), "\x1b") {
+		t.Fatalf("list:\n%q", output.String())
+	}
+	app.Err, app.In = &bytes.Buffer{}, &lineReader{[]string{"1", "1", "ALLOW " + r.ID[len(r.ID)-6:]}}
+	err = run("actions", "approve", r.ID)
+	if err == nil || !strings.Contains(err.Error(), "no chat matched") || queue.Get(account, r.ID).Status != approval.StatusPending {
+		t.Fatalf("approve: %v", err)
+	}
 }

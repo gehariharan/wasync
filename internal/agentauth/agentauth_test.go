@@ -595,19 +595,26 @@ func TestGrantChatAccessRefusesWhatTheCredentialCannotDo(t *testing.T) {
 }
 
 func TestAccessScopesStayWithinTheCredential(t *testing.T) {
-	read := &Client{Scopes: []string{ScopeReadChats, ScopeReadMessages, ScopeSend, ScopeCaptureManage}}
-	got, err := read.AccessScopes(false)
+	read := &Client{Scopes: []string{ScopeReadChats, ScopeReadMessages, ScopeSend, ScopeEditOwn, ScopeCaptureManage}}
+	got, err := read.AccessScopes(false, false)
 	if err != nil || strings.Join(got, ",") != "read.chats,read.messages" {
 		t.Fatalf("read %v %v", got, err)
 	}
-	got, err = read.AccessScopes(true)
+	got, err = read.AccessScopes(true, false)
 	if err != nil || strings.Join(got, ",") != "read.chats,read.messages,send" {
 		t.Fatalf("send %v %v", got, err)
 	}
-	if _, err = (&Client{Scopes: []string{ScopeReadChats}}).AccessScopes(true); err == nil {
+	got, err = read.AccessScopes(true, true)
+	if err != nil || strings.Join(got, ",") != "read.chats,read.messages,send,edit.own" {
+		t.Fatalf("send and edit %v %v", got, err)
+	}
+	if _, err = (&Client{Scopes: []string{ScopeReadChats}}).AccessScopes(true, false); err == nil {
 		t.Fatal("send requested without holding a send scope")
 	}
-	if _, err = (&Client{Scopes: []string{ScopeSend}}).AccessScopes(false); err == nil {
+	if _, err = (&Client{Scopes: []string{ScopeReadChats, ScopeSend}}).AccessScopes(false, true); err == nil {
+		t.Fatal("edit requested without holding edit.own")
+	}
+	if _, err = (&Client{Scopes: []string{ScopeSend}}).AccessScopes(false, false); err == nil {
 		t.Fatal("read requested without holding a read scope")
 	}
 }

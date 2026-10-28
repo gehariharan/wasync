@@ -46,6 +46,8 @@ func notAllowedHelp(c *Client, scope, chat string) string {
 	send := ""
 	if contains(sendFamily, scope) {
 		send = " --send"
+	} else if contains(editFamily, scope) {
+		send = " --edit"
 	}
 	return fmt.Sprintf("Chat %s is not allowed for scope %s. Ask the person to approve it: run `whatsapp-axi access request --chat %s%s` (or POST /api/v1/access-requests); nothing is granted until they confirm in wasync. Otherwise: %s", chat, scope, chat, send, regrant)
 }

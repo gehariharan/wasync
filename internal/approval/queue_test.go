@@ -106,9 +106,20 @@ func TestAccessRequestDedupeCapAndValidation(t *testing.T) {
 		t.Fatalf("another agent was blocked: %v", err)
 	}
 	empty := testAccess("none")
+	empty.AgentID = "eeee1111"
 	empty.Candidates = nil
-	if _, err = q.AddAccess(1, empty); err != ErrNoCandidates {
-		t.Fatalf("no candidates: %v", err)
+	none, err := q.AddAccess(1, empty)
+	if err != nil || !none.NoMatch() || none.Chat != "" {
+		t.Fatalf("a request that matched nothing must queue like any other: %+v %v", none, err)
+	}
+	if q.Decide(1, none.ID, "one@g.us", HistoryNow) == nil {
+		t.Fatal("decided a request with no candidates")
+	}
+	if _, err = q.Take(1, none.ID); err == nil {
+		t.Fatal("approved a request that matched nothing")
+	}
+	if q.Reject(1, none.ID) != nil {
+		t.Fatal("a no-match request cannot be rejected")
 	}
 	bad := testAccess("x")
 	bad.Candidates = []Candidate{{Chat: "not a jid"}}

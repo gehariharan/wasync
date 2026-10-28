@@ -209,6 +209,13 @@ func TestEnableCaptureHistoryDepth(t *testing.T) {
 	if err = s.SetEnabled(ctx, account, []string{"two@g.us"}, true); err != nil || state("two@g.us") != "on:queued" {
 		t.Fatalf("SetEnabled history: %v %q", err, state("two@g.us"))
 	}
+	// Re-enabling from now on only must not leave the old "paused" marker behind.
+	if err = s.SetEnabled(ctx, account, []string{"two@g.us"}, false); err != nil || state("two@g.us") != "off:disabled" {
+		t.Fatalf("disable: %v %q", err, state("two@g.us"))
+	}
+	if err = s.EnableCapture(ctx, account, "two@g.us", false); err != nil || state("two@g.us") != "on:" {
+		t.Fatalf("re-enable from now on: %v %q", err, state("two@g.us"))
+	}
 	if err = s.EnableCapture(ctx, account, "missing@g.us", false); err == nil {
 		t.Fatal("enabled an uncached chat")
 	}
