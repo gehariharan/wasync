@@ -776,7 +776,8 @@ then first name, then the person's own profile (push) name, then a business name
 then the number. Names come from whatsmeow's contact store, which WhatsApp fills
 through the linked-device contact sync, and from contact, push-name and
 business-name events; `@lid` chats are looked up through whatsmeow's LID-to-phone
-mapping. They are refreshed on every connect and when a contact changes, and appear
+mapping. They are refreshed on every connect and when a contact changes (a failed
+refresh never stops message capture; it is retried on the next such event), and appear
 in `query chats` (including `--v1 --match`, which is case-insensitive and matches
 part of a name), the terminal UI, the local API and `whatsapp-axi`. Names are
 personal data: they are stored in the local archive only, never logged, and
