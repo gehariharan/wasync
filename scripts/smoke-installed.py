@@ -85,9 +85,15 @@ with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
     try:
         # A fresh data directory has no access mode yet, so the first screen asks
         # how agents get chats and covers the chat list until it is dismissed.
-        assert wait_for(b"HOW SHOULD AGENTS GET CHATS"), "offline TUI did not show the first-run access mode screen"
-        captured = b""
-        os.write(master, b"\x1b")  # Esc: decide later, which saves nothing
+        # Only the Homebrew e2e job sets this opt-in, because it tests the last
+        # published release, which may predate that screen. Remove the opt-in
+        # once a release containing the first-run screen is published.
+        allow_missing = os.environ.get("WASYNC_SMOKE_ALLOW_MISSING_FIRST_RUN") == "1"
+        if wait_for(b"HOW SHOULD AGENTS GET CHATS"):
+            captured = b""
+            os.write(master, b"\x1b")  # Esc: decide later, which saves nothing
+        else:
+            assert allow_missing, "offline TUI did not show the first-run access mode screen"
         assert wait_for(b"Synthetic Group"), "offline TUI did not render the synthetic group"
         os.write(master, b"q")
         # Drain the terminal while the renderer restores terminal state; a full
