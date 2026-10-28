@@ -730,7 +730,8 @@ wasync reply --chat '123456789@g.us' --message-id 'ABCDEF123' \
 ```
 
 Each `--mention` (repeatable, up to 20) is a user JID, and the text must contain
-`@NUMBER` for it so a mention is never invisible. Like `send`, `reply` reuses a
+`@NUMBER` for it, not followed by another letter or digit, so a mention is never
+invisible. Like `send`, `reply` reuses a
 running owner or connects with the saved session, sends exactly once and prints
 `result.status`, `result.message_id` and `result.target_message_id` as JSON.
 The owner route is the signed `POST /api/reply` with `{ "chat", "message_id",
