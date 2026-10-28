@@ -18,7 +18,7 @@ import time
 binary, version, architecture = sys.argv[1:]
 reported = subprocess.check_output([binary, "version"], text=True, timeout=10)
 assert f"wasync {version} " in reported, reported
-assert f"darwin/{architecture}" in reported, reported
+assert f"{'darwin' if sys.platform == 'darwin' else 'linux'}/{architecture}" in reported, reported
 
 with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
     data = str(Path(directory) / "data")
@@ -65,9 +65,12 @@ with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
                           stdin=slave, stdout=slave, stderr=slave, env=environment, start_new_session=True)
     os.close(slave)
     captured = b""
-    try:
+
+    def wait_for(text):
+        """Read terminal output until text appears; False if it never does."""
+        global captured
         deadline = time.monotonic() + 15
-        while time.monotonic() < deadline and b"Synthetic Group" not in captured:
+        while time.monotonic() < deadline and text not in captured:
             ready, _, _ = select.select([master], [], [], 0.25)
             if ready:
                 chunk = os.read(master, 65536)
@@ -77,7 +80,15 @@ with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
                     os.write(master, b"\x1b[1;1R")
             if ui.poll() is not None:
                 break
-        assert b"Synthetic Group" in captured, "offline TUI did not render the synthetic group"
+        return text in captured
+
+    try:
+        # A fresh data directory has no access mode yet, so the first screen asks
+        # how agents get chats and covers the chat list until it is dismissed.
+        assert wait_for(b"HOW SHOULD AGENTS GET CHATS"), "offline TUI did not show the first-run access mode screen"
+        captured = b""
+        os.write(master, b"\x1b")  # Esc: decide later, which saves nothing
+        assert wait_for(b"Synthetic Group"), "offline TUI did not render the synthetic group"
         os.write(master, b"q")
         # Drain the terminal while the renderer restores terminal state; a full
         # PTY output buffer otherwise blocks shutdown even after q is handled.
