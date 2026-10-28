@@ -35,6 +35,7 @@ func TestReplyRequestValidation(t *testing.T) {
 		"invisible tag":   func(r *ReplyRequest) { r.Mentions = []string{"15552223333@s.whatsapp.net"} },
 		"group mention":   func(r *ReplyRequest) { r.Text = "@123"; r.Mentions = []string{"123@g.us"} },
 		"device mention":  func(r *ReplyRequest) { r.Text = "@123"; r.Mentions = []string{"123:4@s.whatsapp.net"} },
+		"longer number":   func(r *ReplyRequest) { r.Text = "hi @1234567"; r.Mentions = []string{"123@s.whatsapp.net"} },
 		"too many":        func(r *ReplyRequest) { r.Mentions = make([]string, MaxMentions+1) },
 	} {
 		r := ok
@@ -44,6 +45,11 @@ func TestReplyRequestValidation(t *testing.T) {
 		}
 	}
 	r := ok
+	r.Text = "@1234 then @123, ok"
+	r.Mentions = []string{"123@s.whatsapp.net"}
+	if err := r.Validate(); err != nil {
+		t.Fatal(err)
+	}
 	r.Text = "hi @15552223333 and again @15552223333"
 	r.Mentions = []string{"15552223333@s.whatsapp.net", "15552223333@s.whatsapp.net"}
 	if err := r.Validate(); err != nil {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/gehariharan/wasync/internal/storage"
 	"go.mau.fi/whatsmeow/proto/waE2E"
@@ -71,7 +73,7 @@ func parseMentions(text string, mentions []string) ([]string, error) {
 		if err != nil || jid.Device != 0 || jid.User == "" || (jid.Server != types.DefaultUserServer && jid.Server != types.HiddenUserServer) || jid.String() != m {
 			return nil, fmt.Errorf("mention %q must be a user JID such as 123456789@s.whatsapp.net", m)
 		}
-		if !strings.Contains(text, "@"+jid.User) {
+		if !tagsUser(text, jid.User) {
 			return nil, fmt.Errorf("text must contain @%s for the mention of %s", jid.User, m)
 		}
 		if !seen[m] {
@@ -80,6 +82,24 @@ func parseMentions(text string, mentions []string) ([]string, error) {
 		}
 	}
 	return out, nil
+}
+
+func tagsUser(text, user string) bool {
+	tag := "@" + user
+	for i := 0; ; {
+		j := strings.Index(text[i:], tag)
+		if j < 0 {
+			return false
+		}
+		end := i + j + len(tag)
+		if end == len(text) {
+			return true
+		}
+		if r, _ := utf8.DecodeRuneInString(text[end:]); !unicode.IsLetter(r) && !unicode.IsDigit(r) {
+			return true
+		}
+		i = i + j + 1
+	}
 }
 
 // replyMessage builds a quoted text message. The quoted body is included only
