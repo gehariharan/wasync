@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"text/tabwriter"
+	"time"
 	"unicode"
 
 	"github.com/gehariharan/wasync/internal/approval"
@@ -87,8 +89,11 @@ func (a *App) runDestructiveRequest(ctx context.Context, cfg config.Config, args
 }
 
 func (a *App) runActionStatus(ctx context.Context, cfg config.Config, args []string) error {
+	if len(args) == 1 && args[0] == "list" {
+		return a.runActionsList(ctx, cfg)
+	}
 	if len(args) != 2 || (args[0] != "status" && args[0] != "approve") || len(args[1]) != 32 {
-		return fmt.Errorf("usage: wasync actions status|approve REQUEST_ID")
+		return fmt.Errorf("usage: wasync actions list | status|approve REQUEST_ID")
 	}
 	if _, err := hex.DecodeString(args[1]); err != nil {
 		return fmt.Errorf("invalid request ID")
@@ -145,6 +150,58 @@ func (a *App) runActionStatus(ctx context.Context, cfg config.Config, args []str
 		return fmt.Errorf("request status unavailable")
 	}
 	return nil
+}
+
+// runActionsList shows the requests waiting for the owner. Unlike what a serve
+// console line prints, it names the chats being asked for, so it needs an
+// interactive terminal like the other sensitive listings.
+func (a *App) runActionsList(ctx context.Context, cfg config.Config) error {
+	if !a.Interactive {
+		return fmt.Errorf("actions list requires an interactive terminal; no data changed")
+	}
+	token, err := os.ReadFile(filepath.Join(cfg.DataDir, "send.token"))
+	if err != nil || localfs.CheckPrivateFile(filepath.Join(cfg.DataDir, "send.token")) != nil {
+		return fmt.Errorf("start wasync serve or the TUI to receive requests")
+	}
+	response, err := commandRequest(ctx, cfg, "GET", "/api/actions", nil, token)
+	if err != nil {
+		return fmt.Errorf("command channel unavailable; start wasync serve or the TUI: %w", err)
+	}
+	defer response.Body.Close()
+	var list struct {
+		Items []approval.Request `json:"items"`
+	}
+	if response.StatusCode != 200 || json.NewDecoder(io.LimitReader(response.Body, 4<<20)).Decode(&list) != nil {
+		return fmt.Errorf("pending requests unavailable (HTTP %d)", response.StatusCode)
+	}
+	if len(list.Items) == 0 {
+		_, err = fmt.Fprintln(a.Out, "No requests are waiting.")
+		return err
+	}
+	w := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(w, "REQUEST_ID\tASKS\tEXPIRES\tDETAIL")
+	for _, r := range list.Items {
+		asks, detail := printable(r.Kind), printable(r.Chat)
+		if r.Kind == approval.KindChatAccess && r.Access != nil {
+			asks = "agent " + printable(r.Access.Agent) + ": read"
+			if r.Access.Send {
+				asks += "+send"
+			}
+			chats := make([]string, 0, len(r.Access.Candidates))
+			for _, c := range r.Access.Candidates {
+				chats = append(chats, printable(c.Name)+" ("+printable(c.Chat)+")")
+			}
+			detail = "asked for " + strconv.Quote(printable(r.Access.Query)) + " -> " + strings.Join(chats, "; ")
+		} else if r.Message != "" {
+			detail += " message " + printable(r.Message)
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", r.ID, asks, time.Until(r.Expires).Round(time.Second), detail)
+	}
+	if err = w.Flush(); err != nil {
+		return err
+	}
+	_, err = fmt.Fprintln(a.Err, "Approve one with: wasync actions approve REQUEST_ID")
+	return err
 }
 
 // approveChatAccess walks the human through an agent's chat access request:

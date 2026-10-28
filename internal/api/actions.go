@@ -66,6 +66,19 @@ func (h *handler) requestAction(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusAccepted, request)
 }
+
+// listActions returns the account's pending requests for `wasync actions list`.
+func (h *handler) listActions(w http.ResponseWriter, r *http.Request) {
+	if h.approvals == nil {
+		fail(w, 503, "approval queue unavailable")
+		return
+	}
+	account := h.account(w, r)
+	if account == nil {
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": h.approvals.PendingList(account.ID)})
+}
 func (h *handler) actionStatus(w http.ResponseWriter, r *http.Request) {
 	if h.approvals == nil {
 		fail(w, 503, "approval queue unavailable")

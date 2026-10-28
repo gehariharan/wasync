@@ -68,7 +68,7 @@ func TestCommandHelpIsDiscoverableWithoutLocalState(t *testing.T) {
 	}
 	// Independently require public command families so accidental catalog removal
 	// cannot make discovery tests pass simply by testing fewer entries.
-	for _, path := range []string{"tui", "run", "serve", "login", "logout", "groups list", "groups enable", "groups disable", "chats list", "chats enable", "chats disable", "sync", "media policy", "media download", "send", "clean", "delete", "actions status", "actions approve", "status", "query groups", "query chats", "query messages", "query search", "query status", "query version", "query message", "query thread", "query changes", "query checkpoint", "query doctor", "agents", "agents grant", "agents list", "agents revoke", "version", "help"} {
+	for _, path := range []string{"tui", "run", "serve", "login", "logout", "groups list", "groups enable", "groups disable", "chats list", "chats enable", "chats disable", "sync", "media policy", "media download", "send", "clean", "delete", "actions list", "actions status", "actions approve", "status", "query groups", "query chats", "query messages", "query search", "query status", "query version", "query message", "query thread", "query changes", "query checkpoint", "query doctor", "agents", "agents grant", "agents list", "agents revoke", "version", "help"} {
 		if !seen[path] {
 			t.Errorf("missing command %s", path)
 		}

@@ -80,6 +80,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   clean --chat CHAT_ID (--message-id ID|--all)  Request local cleanup; human CLI/TUI approval
   delete --chat CHAT_ID --scope SCOPE        Request WhatsApp deletion; human CLI/TUI approval
   sync [--wait 30s] [--history] [--chat ID]    Capture now, reusing any running owner
+  actions list                               Requests waiting for you (interactive)
   actions approve REQUEST_ID                 Interactive typed approval, no --yes
   actions status REQUEST_ID                  Inspect a pending/completed request
   media policy --chat ID [--mode auto|manual|inherit]  Saved per-chat media setting

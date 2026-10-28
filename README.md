@@ -1035,8 +1035,11 @@ request with the same rules as the destructive actions above: five-minute
 expiry, no replay, typed confirmation, no `--yes`.
 
 You see the request in the TUI, or run `wasync actions approve REQUEST_ID` in a
-terminal (a headless `wasync serve` has no dialog, so the agent tells you the
-ID). Before confirming you choose:
+terminal. A headless `wasync serve` has no dialog, so it prints (and logs) one
+line per new request naming only the agent and the request ID, never a chat or
+number; run `wasync actions list` in a terminal to see what each pending request
+asks for, including the candidate chats, then `wasync actions approve
+REQUEST_ID`. Before confirming you choose:
 
 - the chat, when several match;
 - the history depth: **from now on only** (new messages, nothing older is

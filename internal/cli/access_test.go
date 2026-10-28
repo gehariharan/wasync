@@ -3,7 +3,13 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io"
+	"log/slog"
+	"net"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -161,4 +167,88 @@ func groupByID(t *testing.T, store *storage.Store, account int64, id string) sto
 	}
 	t.Fatalf("%s missing", id)
 	return storage.Group{}
+}
+
+func TestServeAnnouncesAccessRequestsWithoutNamingChatsAndActionsListShowsThem(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	output := channelOutput{make(chan string, 20)}
+	app := &App{Out: output, Err: io.Discard, OpenClient: func(context.Context, string, *slog.Logger) (Client, error) {
+		t.Error("offline server opened WhatsApp")
+		return nil, errors.New("unexpected client")
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan error, 1)
+	api := "127.0.0.1:" + freePort(t)
+	go func() {
+		done <- app.Run(ctx, []string{"--data-dir", dir, "--api-addr", api, "serve", "--offline"})
+	}()
+	select {
+	case text := <-output.writes:
+		if !strings.Contains(text, "Local API") {
+			t.Fatalf("unexpected first output %q", text)
+		}
+	case err := <-done:
+		t.Fatalf("serve exited: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("serve did not start")
+	}
+	store, err := storage.Open(ctx, filepath.Join(dir, "archive.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	account, err := store.UseAccount(ctx, "synthetic@lid")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := app.Approvals.AddAccess(account, approval.Access{Agent: "jit", AgentID: "0123abcd", Send: true, Scopes: []string{"read.chats", "send"}, Query: "+15551234567",
+		Candidates: []approval.Candidate{{Chat: "15551234567@s.whatsapp.net", Name: "Secret Person"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	line := <-output.writes
+	if !strings.Contains(line, "agent jit") || !strings.Contains(line, "wasync actions approve "+r.ID) || strings.Contains(line, "15551234567") || strings.Contains(line, "Secret") {
+		t.Fatalf("console line %q", line)
+	}
+	// A repeated ask does not announce twice.
+	if _, err = app.Approvals.AddAccess(account, approval.Access{Agent: "jit", AgentID: "0123abcd", Send: true, Scopes: []string{"read.chats", "send"}, Query: "+15551234567",
+		Candidates: []approval.Candidate{{Chat: "15551234567@s.whatsapp.net", Name: "Secret Person"}}}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case extra := <-output.writes:
+		t.Fatalf("duplicate announcement %q", extra)
+	case <-time.After(100 * time.Millisecond):
+	}
+	// The owner's terminal listing does name what is asked for; scripts get nothing.
+	var out, errs bytes.Buffer
+	lister := &App{Out: &out, Err: &errs}
+	args := []string{"--data-dir", dir, "--api-addr", api, "actions", "list"}
+	if err = lister.Run(ctx, args); err == nil || out.Len() != 0 {
+		t.Fatalf("non-interactive list: %v %q", err, out.String())
+	}
+	lister.Interactive = true
+	if err = lister.Run(ctx, args); err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{r.ID, "agent jit: read+send", "Secret Person", "15551234567@s.whatsapp.net", "+15551234567"} {
+		if !strings.Contains(out.String(), want) {
+			t.Fatalf("list lacks %q:\n%s", want, out.String())
+		}
+	}
+	cancel()
+	if err = <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
+func freePort(t *testing.T) string {
+	t.Helper()
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	return strconv.Itoa(l.Addr().(*net.TCPAddr).Port)
 }

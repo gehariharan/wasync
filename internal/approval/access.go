@@ -71,13 +71,6 @@ func (a Access) validate() error {
 	return nil
 }
 
-// Visible reports whether a human can act on the request. A request that
-// matched no chat is kept, so the agent cannot tell "no such chat" from "the
-// person has not answered", but it is never shown and cannot be approved.
-func (r Request) visible() bool {
-	return r.Kind != KindChatAccess || (r.Access != nil && len(r.Access.Candidates) > 0)
-}
-
 func (r Request) clone() Request {
 	if r.Access != nil {
 		a := *r.Access
@@ -99,7 +92,16 @@ func (q *Queue) AddAccess(account int64, a Access) (Request, error) {
 	}
 	a.Chosen, a.History = "", ""
 	q.mu.Lock()
-	defer q.mu.Unlock()
+	r, created, err := q.addAccessLocked(account, a)
+	notify := q.OnAccess
+	q.mu.Unlock()
+	if err == nil && created && notify != nil {
+		notify(r)
+	}
+	return r, err
+}
+
+func (q *Queue) addAccessLocked(account int64, a Access) (Request, bool, error) {
 	q.expire()
 	active, perAgent := 0, 0
 	for _, r := range q.requests {
@@ -110,19 +112,19 @@ func (q *Queue) AddAccess(account int64, a Access) (Request, error) {
 		if r.Account == account && r.Kind == KindChatAccess && r.Access.AgentID == a.AgentID {
 			perAgent++
 			if r.Access.Send == a.Send && normalizeQuery(r.Access.Query) == normalizeQuery(a.Query) {
-				return r.clone(), nil
+				return r.clone(), false, nil
 			}
 		}
 	}
 	if perAgent >= maxPendingPerAgent {
-		return Request{}, fmt.Errorf("this agent already has %d access requests waiting for the person to answer", perAgent)
+		return Request{}, false, fmt.Errorf("this agent already has %d access requests waiting for the person to answer", perAgent)
 	}
 	if active >= 32 {
-		return Request{}, fmt.Errorf("too many pending requests")
+		return Request{}, false, fmt.Errorf("too many pending requests")
 	}
 	id := make([]byte, 16)
 	if _, err := rand.Read(id); err != nil {
-		return Request{}, err
+		return Request{}, false, err
 	}
 	in := Input{Kind: KindChatAccess}
 	if len(a.Candidates) == 1 {
@@ -131,7 +133,7 @@ func (q *Queue) AddAccess(account int64, a Access) (Request, error) {
 	r := Request{ID: hex.EncodeToString(id), Account: account, Input: in, Access: &a, Expires: time.Now().Add(5 * time.Minute), Status: StatusPending}
 	q.evictOld()
 	q.requests = append(q.requests, r)
-	return r.clone(), nil
+	return r.clone(), true, nil
 }
 
 // Decide records the human's choice of chat and history depth on a pending

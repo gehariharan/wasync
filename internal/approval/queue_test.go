@@ -147,3 +147,28 @@ func TestAccessRequestRejectAndExpiryChangeNothing(t *testing.T) {
 		t.Fatal("expired access request executed")
 	}
 }
+
+func TestAccessAnnouncementAndPendingList(t *testing.T) {
+	var seen []string
+	q := &Queue{OnAccess: func(r Request) { seen = append(seen, r.ID) }}
+	first, _ := q.AddAccess(1, testAccess("a"))
+	q.AddAccess(1, testAccess("A")) // repeat of the same ask
+	q.AddAccess(1, testAccess("b")) // a different ask
+	q.AddAccess(1, Access{})        // invalid, never announced
+	q.Add(1, Input{Kind: "purge-chat", Chat: "one@g.us"})
+	if len(seen) != 2 || seen[0] != first.ID {
+		t.Fatalf("announced %v", seen)
+	}
+	list := q.PendingList(1)
+	if len(list) != 3 || list[0].ID != first.ID || len(q.PendingList(2)) != 0 {
+		t.Fatalf("list %+v", list)
+	}
+	if err := q.Reject(1, first.ID); err != nil || len(q.PendingList(1)) != 2 {
+		t.Fatal("rejected request still listed")
+	}
+	list = q.PendingList(1)
+	list[0].Access.Candidates[0].Chat = "evil@g.us"
+	if q.PendingList(1)[0].Access.Candidates[0].Chat == "evil@g.us" {
+		t.Fatal("list exposed queue internals")
+	}
+}

@@ -189,6 +189,7 @@ func (h *handler) routes() http.Handler {
 	mux.HandleFunc("POST /api/chats/enable-all", h.enableAll)
 	mux.HandleFunc("POST /api/chats/disable-all", h.enableAll)
 	mux.HandleFunc("POST /api/actions", h.requestAction)
+	mux.HandleFunc("GET /api/actions", h.listActions)
 	mux.HandleFunc("GET /api/actions/{id}", h.actionStatus)
 	mux.HandleFunc("GET /api/groups", h.groups)
 	mux.HandleFunc("GET /api/chats", h.groups)

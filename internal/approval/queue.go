@@ -54,6 +54,26 @@ type Request struct {
 type Queue struct {
 	mu       sync.Mutex
 	requests []Request
+	// OnAccess, when set, is called (outside the lock) for each newly queued
+	// chat access request, so a headless owner can tell its operator.
+	OnAccess func(Request)
+}
+
+// PendingList returns every request still waiting for the account's human, oldest first.
+func (q *Queue) PendingList(account int64) []Request {
+	if q == nil {
+		return nil
+	}
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.expire()
+	out := []Request{}
+	for _, r := range q.requests {
+		if r.Account == account && r.Status == StatusPending {
+			out = append(out, r.clone())
+		}
+	}
+	return out
 }
 
 func (q *Queue) Add(account int64, in Input) (Request, error) {
