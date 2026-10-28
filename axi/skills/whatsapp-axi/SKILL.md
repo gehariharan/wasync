@@ -30,7 +30,7 @@ The implemented commands are:
 | `reply` | Quote the message REF in a reply (running wasync, scope send and an allowlisted chat); sends once, never retries |
 | `react` | React to the message REF with an emoji, or clear your reaction (running wasync, scope react and an allowlisted chat); sends once, never retries |
 | `edit` | Replace the text of one of your own recent messages REF (running wasync, scope edit.own and an allowlisted chat); wasync refuses other people's messages and edits past WhatsApp's window |
-| `access` | Ask the person for access to a chat this credential may not use yet, and check the answer (running wasync only). Asking grants nothing unless the person set wasync to sync all chats: otherwise they pick the chat, the access and the history depth in wasync and confirm, and the request expires after five minutes. wasync never says whether a name matched anything |
+| `access` | Ask the person for access to a chat this credential may not use yet, and check the answer (running wasync only). Asking grants nothing unless the person set wasync to sync all chats: otherwise they pick the chat, the access and the history depth in wasync and confirm, and the request expires after five minutes. in ask-each-time mode wasync never says whether a name matched anything |
 | `version` | Show the whatsapp-axi version and the detected wasync version, transport and compatibility |
 | `doctor` | Check installation, pairing, service, permissions, compatibility and hooks; each problem comes with repair guidance |
 | `help` | List commands, or show flags and examples for one command |

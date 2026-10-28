@@ -62,7 +62,7 @@ Settings, all optional:
   approval (the TUI dialog or `wasync actions approve REQUEST_ID`, typed confirmation, five-minute
   expiry, no replay) in which the person picks the chat, the access and the history depth (from now on
   only, or a full history sync). The grant covers that one chat and never exceeds the scopes of your
-  credential. wasync always answers `pending` and never says whether a name matched anything or which
+  credential. in ask-each-time mode wasync always answers `pending` and never says whether a name matched anything or which
   chats it found; if it expires, try the phone number or the exact chat JID. If the person set wasync to
   "sync all chats", a read, send, reply or react request for the one chat it matched is approved at
   once (`status: approved` in the first reply), so in that mode a name or number probe both reveals and grants that chat; edit access and unmatched or ambiguous requests still
