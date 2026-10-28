@@ -17,6 +17,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/storage"
 )
 
@@ -178,5 +179,27 @@ func TestSyncAllFullHistoryAndDamagedSettingFallsBackToAsk(t *testing.T) {
 	}
 	if got := f.ask(t, f.jit, map[string]any{"chat": familyChat}, 202); got.Status != "pending" {
 		t.Fatalf("a damaged setting auto approved: %+v", got)
+	}
+}
+
+func TestSyncAllKeepsAnEarlierPendingRequestPendingWhenItsCandidatesDiffer(t *testing.T) {
+	f := setupAccess(t)
+	earlier := f.ask(t, f.jit, map[string]any{"match": "family"}, 202)
+	if earlier.Status != "pending" {
+		t.Fatalf("earlier %+v", earlier)
+	}
+	if err := f.store.SaveGroups(context.Background(), f.account, []storage.Group{{ID: familyChat, Name: "Aunts"}, {ID: otherChat, Name: "Family Club"}}); err != nil {
+		t.Fatal(err)
+	}
+	f.setMode(t, map[string]string{"mode": "all", "history": "now"}, 200)
+	got := f.ask(t, f.jit, map[string]any{"match": "family"}, 202)
+	if got.Status != "pending" || got.RequestID != earlier.RequestID || got.ExpiresAt == nil || got.ApproveWith != "wasync actions approve "+earlier.RequestID || got.Chat != "" {
+		t.Fatalf("frozen candidates %+v", got)
+	}
+	if r := f.queue.Get(f.account, earlier.RequestID); r == nil || r.Status != approval.StatusPending || r.Access.Chosen != "" {
+		t.Fatalf("request after sync all %+v", r)
+	}
+	if err := agentauth.NewAuthorizer(f.dir).Authorize(mustClient(t, f.dir, "jit"), agentauth.ScopeReadMessages, otherChat); err == nil {
+		t.Fatal("a stale pending request granted a chat that was never chosen")
 	}
 }

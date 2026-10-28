@@ -83,7 +83,7 @@ func (a *App) runAccessMode(ctx context.Context, cfg config.Config, args []strin
 			return err
 		}
 		depth := map[string]string{accessmode.HistoryNow: "from now on only", accessmode.HistoryFull: "full history sync"}[mode.History]
-		fmt.Fprintf(a.Err, "\nSYNC ALL CHATS (history: %s)\nThis turns on capture for every chat now. From then on any agent that asks for a chat is\napproved at once, without asking you: it can READ, SEND, REPLY and REACT in any chat.\nEditing its own messages and deleting stay manual; every approval is audited.\n", depth)
+		fmt.Fprintf(a.Err, "\nSYNC ALL CHATS (history: %s)\nThis turns on capture for every chat now. From then on any agent that asks for a chat is\napproved at once, without asking you: it can find any chat by name or number (a match is granted at once, so a name probe both reveals and grants that chat) and READ, SEND, REPLY and REACT in any chat.\nEditing its own messages and deleting stay manual; every approval is audited.\n", depth)
 		phrase = "SYNC ALL"
 	} else {
 		fmt.Fprintln(a.Err, "Ask each time: agent requests for chats wait for your approval from now on.\nAccess already given stays until you revoke the agent.")

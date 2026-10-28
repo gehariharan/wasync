@@ -149,19 +149,16 @@ func (h *handler) v1RequestAccess(w http.ResponseWriter, r *http.Request, id str
 		return
 	}
 	_ = h.agents.Audit(agentauth.AuditEntry{Event: "access_request", ClientID: c.ID, ClientName: c.Name, Scope: strings.Join(scopes, ","), Chat: onlyChat(candidates), Ref: req.ID[:8], Outcome: agentauth.OutcomeAllowed, RequestID: id})
-	if auto && req.Status == approval.StatusPending {
+	if auto && req.Status == approval.StatusPending && len(req.Access.Candidates) == 1 && req.Access.Candidates[0].Chat == candidates[0].Chat {
 		// Still a recorded approval request, decided by the owner's standing choice.
 		h.approvals.MarkAuto(a.ID, req.ID)
-		if err = h.approvals.Decide(a.ID, req.ID, candidates[0].Chat, mode.History); err == nil {
-			err = h.approve(a.ID, req.ID)
+		if h.approvals.Decide(a.ID, req.ID, candidates[0].Chat, mode.History) == nil {
+			_ = h.approve(a.ID, req.ID)
 		}
-		done := h.approvals.Get(a.ID, req.ID)
-		view := accessView{RequestID: req.ID, Status: agentStatus(done.Status), Access: accessLevels(in.Send, in.Edit)}
-		if view.Status == "approved" {
-			view.Chat, view.History = done.Access.Chosen, done.Access.History
+		if done := h.approvals.Get(a.ID, req.ID); done != nil && done.Status == "completed" {
+			writeJSON(w, http.StatusOK, query.V1Response{RequestID: id, Data: accessView{RequestID: req.ID, Status: "approved", Access: accessLevels(in.Send, in.Edit), Chat: done.Access.Chosen, History: done.Access.History}})
+			return
 		}
-		writeJSON(w, http.StatusOK, query.V1Response{RequestID: id, Data: view})
-		return
 	}
 	exp := req.Expires
 	writeJSON(w, http.StatusAccepted, query.V1Response{RequestID: id, Data: accessView{RequestID: req.ID, Status: "pending", Access: accessLevels(in.Send, in.Edit), ExpiresAt: &exp, ApproveWith: "wasync actions approve " + req.ID}})

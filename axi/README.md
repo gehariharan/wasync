@@ -65,7 +65,7 @@ Settings, all optional:
   credential. wasync always answers `pending` and never says whether a name matched anything or which
   chats it found; if it expires, try the phone number or the exact chat JID. If the person set wasync to
   "sync all chats", a read, send, reply or react request for the one chat it matched is approved at
-  once (`status: approved` in the first reply); edit access and unmatched or ambiguous requests still
+  once (`status: approved` in the first reply), so in that mode a name or number probe both reveals and grants that chat; edit access and unmatched or ambiguous requests still
   wait. A rejection or expiry changes nothing and is not retried. Needs the running API and a credential
   created with `wasync agents grant NAME --on-demand` (or with a chat allowlist). Direct chats use the
   saved contact name when WhatsApp provides one; a phone number always works.

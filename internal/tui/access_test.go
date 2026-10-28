@@ -179,7 +179,7 @@ func TestFirstRunScreenAsksOnceAndEscChangesNothing(t *testing.T) {
 		t.Fatal("first run did not ask how agents should get chats")
 	}
 	text := m.confirmDescription()
-	for _, want := range []string{"Ask me each time", "Sync all chats", "agents can send, reply and react in any chat", "WITHOUT asking you", "stay manual", "access already given stays"} {
+	for _, want := range []string{"Ask me each time", "Sync all chats", "agents can discover any chat by name or number", "WITHOUT asking you", "stay manual", "access already given stays"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("screen lacks %q:\n%s", want, text)
 		}

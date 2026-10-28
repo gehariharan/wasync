@@ -113,8 +113,9 @@ held, and `edit` adds `edit.own` where held; other scopes are never requestable.
 When the owner chose "sync all chats" (`wasync access mode all`, stored in `access-mode.json`), a request without
 `edit` that matched exactly one chat is approved at once: the same request is recorded, the chosen history depth
 is applied, the audit log records `access_grant_auto`, and the first reply is `200` with `status: approved`.
-That is the only case where an agent can tell a match from none, which is moot because that mode already lets it
-reach every chat. Requests with `edit`, no match or several matches still wait for a person, and destructive
+That is the only case where an agent can tell a match from none: in sync-all mode agents can discover and access any
+chat by name or number, because a matching request is granted at once, so a name probe both reveals and grants that
+chat. Ask-each-time mode reveals nothing. Requests with `edit`, no match or several matches still wait for a person, and destructive
 actions are never automatic. The mode is changed only through `POST /api/access/mode`, signed with the
 interactive approval credential; no `/api/v1` route and no agent credential reaches it.
 

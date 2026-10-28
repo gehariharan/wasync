@@ -1071,7 +1071,7 @@ One setting decides how requests are answered. After you pair, the TUI asks once
   depth you pick (from now on only, or a full history sync), and from then on an
   agent's request for the one chat it matched is approved at once, without asking
   you. **In this mode agents can read, send, reply and react in any chat without
-  asking.** Editing their own messages (`--edit`) and deleting are never
+  asking, and can discover any chat by name or number: a matching request is granted at once, so a name probe both reveals and grants that chat (ask-each-time reveals nothing).** Editing their own messages (`--edit`) and deleting are never
   automatic. Each automatic approval is still recorded as an approval request
   and in the audit log (`access_grant_auto`), the agent's own rate limits still
   apply, and a request that matched nothing or several chats still waits for you.

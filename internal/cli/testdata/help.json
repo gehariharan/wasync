@@ -146,7 +146,7 @@
     },
     {
       "description": "Show or change how agents get chats: ask each time (default) or sync all chats.",
-      "details": "Human only: changing it needs an interactive terminal, a typed confirmation and a running owner; there is no --yes. ask makes every agent request wait for your approval. all turns on capture for every chat (--history now = from now on only, full = full history sync) and approves an agent's read, send, reply and react request for the one chat it matched at once, without asking; editing its own messages and deleting stay manual. Switching back to ask stops future automatic approvals and keeps access already given.",
+      "details": "Human only: changing it needs an interactive terminal, a typed confirmation and a running owner; there is no --yes. ask makes every agent request wait for your approval. all turns on capture for every chat (--history now = from now on only, full = full history sync) and approves an agent's read, send, reply and react request for the one chat it matched at once, without asking, so agents can discover any chat by name or number (a name probe both reveals and grants it); editing its own messages and deleting stay manual. Switching back to ask stops future automatic approvals and keeps access already given.",
       "path": "access",
       "usage": "access mode [ask|all [--history now|full]]"
     },
