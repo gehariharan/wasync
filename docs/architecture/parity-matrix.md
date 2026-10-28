@@ -24,11 +24,11 @@ Legend: ✅ have, 🟡 partial, ❌ missing. Permission class is what an agent w
 | Multi-account | 🟡 one per data dir | `config.yaml` accounts | – | – | F (ADR only) |
 | Reply/quote capture | ✅ `reply_to_message_id` | – | – | read | – |
 | Send text / file | ✅ | `send.go`, `send_file.go` | – | send | – |
-| Send reply/quote, mentions | ❌ | `send.go:158` | – | send | M |
+| Send reply/quote, mentions | ✅ `whatsapp/write_reply.go` | `send.go:158` | – | send | M (W-06) |
 | Reactions (capture) | ✅ event rows | – | – | read | – |
-| Send reaction | ❌ | `send_react_cmd.go` | – | send | M |
+| Send reaction | ✅ `whatsapp/write_react.go` | `send_react_cmd.go` | – | react | M (W-06) |
 | Edits / revokes capture | ✅ | `sync_edits.go` | – | read | – |
-| Edit own message | ❌ | `messages_edit.go` | – | send | M |
+| Edit own message | ✅ `whatsapp/write_edit.go` | `messages_edit.go` | – | edit.own | M (W-06) |
 | Revoke own message | ✅ via approval | `messages_delete.go` | – | destructive | – |
 | Forward | ❌ | `messages_forward.go` | – | send | M |
 | Delivery/read receipts | ❌ | `message_receipts.go`, `read_receipts.go` | yes | read / chat.state | M |

@@ -7,7 +7,7 @@ written in Go using [whatsmeow](https://github.com/tulir/whatsmeow) and
 The executable is named **`wasync`**: launch it for the terminal UI, or use
 **`wasync query …`** for read-only JSON queries from local agents.
 
-This monorepo also contains **whatsapp-axi**, the agent-facing reader in
+This monorepo also contains **whatsapp-axi**, the agent-facing CLI in
 [`axi/`](axi/). Both binaries, their documentation, release automation, and
 Homebrew definitions are maintained here. wasync owns the WhatsApp connection
 and archive; AXI reads it through the local API or `wasync query`.
@@ -346,7 +346,8 @@ wasync help                      # global flags and command overview
 ```
 
 Global flags such as `--data-dir` and `--timeout` must precede the command.
-`query` commands are read-only JSON interfaces; `send` explicitly sends a message,
+`query` commands are read-only JSON interfaces; `send`, `reply`, `react` and `edit`
+explicitly send a message, reaction or edit,
 and `clean` / `delete` only queue requests requiring a human's interactive approval.
 Per-chat `media policy` is persistent; `media download` requests one attachment
 without changing that policy.
@@ -797,6 +798,73 @@ local API. Supply the same `--api-addr` if you changed the default. With `--no-a
 quit capture before sending. When no owner runs, `send` acquires the device lock,
 reuses the paired session and closes it after the request. No test sends real
 messages automatically. Read-only `query` commands never send messages.
+
+### Replies
+
+`wasync reply` quotes an archived message and can mention people. The target
+must already be in the local archive of that chat (a disabled or purged chat
+cannot be replied into), and it must not be deleted or a reaction.
+
+```sh
+wasync reply --chat '123456789@g.us' --message-id 'ABCDEF123' --text 'On my way'
+wasync reply --chat '123456789@g.us' --message-id 'ABCDEF123' \
+  --text 'Can you check this, @15551234567?' --mention '15551234567@s.whatsapp.net'
+```
+
+Each `--mention` (repeatable, up to 20) is a user JID, and the text must contain
+`@NUMBER` for it, not followed by another letter or digit, so a mention is never
+invisible. Like `send`, `reply` reuses a
+running owner or connects with the saved session, sends exactly once and prints
+`result.status`, `result.message_id` and `result.target_message_id` as JSON.
+The owner route is the signed `POST /api/reply` with `{ "chat", "message_id",
+"text", "mentions" }`, using the same `send.token` signature as `/api/send`.
+Quoted text is copied into the reply only when the target is a text message.
+
+Agents reply through `POST /api/v1/messages/{ref}/reply` with `{ "text",
+"mentions" }`. That needs an agent credential holding the `send` scope and the
+target's chat in its allowlist (`wasync agents grant NAME --scope send --chat
+CHAT_JID`); wasync records the attempt, the chat and the ref, never the text, in
+the audit log. Errors use the v1 envelope: `target_unavailable` (deleted or a
+reaction), `not_found` (not archived or another account), `owner_offline`
+(wasync is not connected) and `send_failed`, whose outcome is unknown and must
+not be retried automatically. `whatsapp-axi reply REF --text TEXT` calls it.
+
+### Reactions
+
+```sh
+wasync react --chat '123456789@g.us' --message-id 'ABCDEF123' --emoji '👍'
+wasync react --chat '123456789@g.us' --message-id 'ABCDEF123' --remove
+```
+
+`react` sets your reaction on an archived message, or clears it with `--remove`;
+give exactly one of `--emoji` and `--remove`. WhatsApp keeps one reaction per person
+per message, so a new emoji replaces the old one. `--emoji` must be a single emoji
+(words, plain digits and ASCII punctuation are refused). The target rules, owner reuse
+and one-attempt behaviour are the same as for `reply`; the signed owner route is
+`POST /api/react` with `{ "chat", "message_id", "emoji" }` or `"remove": true`.
+Agents use `PUT /api/v1/messages/{ref}/reaction` with `{ "emoji" }` and `DELETE` on the
+same path to clear it. Both need the `react` scope (separate from `send`) and the
+chat in the credential's allowlist, and are audited by scope, chat and ref.
+`whatsapp-axi react REF EMOJI` and `whatsapp-axi react REF --remove` call them. Your
+own sent reactions are archived like incoming ones, including removals.
+
+### Editing your own messages
+
+```sh
+wasync edit --chat '123456789@g.us' --message-id 'ABCDEF123' --text 'Meet at 7, not 6'
+```
+
+`edit` replaces the text of a message you sent. wasync refuses, before connecting or
+sending anything, a message that is someone else's, is not plain text (media captions
+cannot be edited), was deleted, or was first sent more than WhatsApp's edit window ago
+(about 20 minutes, counted from the original send; later edits do not extend it). The
+error says which rule applied. The signed owner route is `POST /api/edit` with
+`{ "chat", "message_id", "text" }`. Agents use `POST /api/v1/messages/{ref}/edit` with
+`{ "text" }`, which needs the `edit.own` scope and the chat in the credential's
+allowlist; refusals use the codes `not_editable` and `edit_window_expired`, and an
+unknown outcome is `send_failed`, never retried automatically. `whatsapp-axi edit REF
+--text TEXT` calls it. Your edit is archived like one made on your phone, so
+`edited_at` and the new text appear in queries.
 
 REST aliases `/api/chats`, `/api/chats/{id}`, and the matching
 `/enable`, `/disable`, `/history`, `/messages` routes support both chat types.

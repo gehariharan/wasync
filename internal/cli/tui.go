@@ -71,6 +71,7 @@ func (a *App) tuiAction(offline bool) action {
 		}); ok {
 			send = active.Send
 		}
+		a.Operations = operationsOf(client)
 		session := tui.NewSession(clientCtx, store, live)
 		session.Approvals = a.Approvals
 		session.MediaRoot = filepath.Join(cfg.DataDir, "media")

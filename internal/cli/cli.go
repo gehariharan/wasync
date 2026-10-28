@@ -45,6 +45,7 @@ type App struct {
 	Approve       func(int64, string) error
 	MediaDownload whatsapp.MediaDownloader
 	Sync          whatsapp.Syncer
+	Operations    whatsapp.Operations
 	Approvals     *approval.Queue
 	In            io.Reader
 	Out, Err      io.Writer
@@ -81,6 +82,9 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   media policy --chat ID [--mode auto|manual|inherit]  Saved per-chat media setting
   media download --chat ID --message-id ID    One-time attachment download (live owner)
   send --to CHAT_ID [--text TEXT] [--file PATH --type image|document]
+  reply --chat CHAT_ID --message-id ID --text TEXT [--mention USER_JID ...]
+  react --chat CHAT_ID --message-id ID (--emoji EMOJI|--remove)
+  edit --chat CHAT_ID --message-id ID --text TEXT
   status                                     Inspect local pairing state
   query [groups|chats|messages|search|status]       Read-only JSON queries for agents
   query [version|message|thread|changes|checkpoint|doctor]  More queries; --v1 envelope
@@ -183,6 +187,15 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	}
 	if args[0] == "send" {
 		return a.runSend(parent, cfg, args[1:])
+	}
+	if args[0] == "reply" {
+		return a.runReply(parent, cfg, args[1:])
+	}
+	if args[0] == "react" {
+		return a.runReact(parent, cfg, args[1:])
+	}
+	if args[0] == "edit" {
+		return a.runEdit(parent, cfg, args[1:])
 	}
 	if args[0] == "query" {
 		ctx, cancel := context.WithTimeout(parent, cfg.Timeout)

@@ -29,6 +29,8 @@ type SendResult struct {
 	Status         string    `json:"status"`
 	Timestamp      time.Time `json:"timestamp,omitempty"`
 	ArchiveWarning string    `json:"archive_warning,omitempty"`
+	// TargetMessageID is the message a reply, reaction or edit refers to.
+	TargetMessageID string `json:"target_message_id,omitempty"`
 }
 type Sender func(context.Context, SendInput) (SendResult, error)
 

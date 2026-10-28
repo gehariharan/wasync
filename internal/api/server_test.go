@@ -17,6 +17,7 @@ import (
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/storage"
+	"github.com/gehariharan/wasync/internal/whatsapp"
 )
 
 type fixture struct {
@@ -28,7 +29,10 @@ type fixture struct {
 	agent   string // read-only agent credential (default scopes)
 }
 
-func setup(t *testing.T) fixture {
+func setup(t *testing.T) fixture { return setupOps(t, whatsapp.Operations{}) }
+
+// setupOps is setup with the owner's WhatsApp writes replaced by fakes.
+func setupOps(t *testing.T, ops whatsapp.Operations) fixture {
 	t.Helper()
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "private")
@@ -65,7 +69,7 @@ func setup(t *testing.T) fixture {
 			t.Fatal(err)
 		}
 	}
-	srv, err := Start("127.0.0.1:0", dir, store, nil)
+	srv, err := StartOperations("127.0.0.1:0", dir, store, nil, nil, nil, nil, nil, ops)
 	if err != nil {
 		t.Fatal(err)
 	}

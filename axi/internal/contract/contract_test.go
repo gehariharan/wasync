@@ -22,8 +22,8 @@ func TestEnvelopeShapes(t *testing.T) {
 	if !bad.IsError() || e.Code != CodeOwnerOffline || e.StateString() != "stopped" || e.Error() != "owner_offline: no owner" {
 		t.Fatalf("%+v", e)
 	}
-	if len(WasyncCodes) != 13 {
-		t.Fatalf("expected the 13 contract error codes, got %d", len(WasyncCodes))
+	if len(WasyncCodes) != 17 {
+		t.Fatalf("expected the 17 contract error codes, got %d", len(WasyncCodes))
 	}
 }
 
