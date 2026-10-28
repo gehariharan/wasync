@@ -5,12 +5,15 @@ written in Go using [whatsmeow](https://github.com/tulir/whatsmeow) and
 [Bubble Tea](https://github.com/charmbracelet/bubbletea).
 
 The executable is named **`wasync`**: launch it for the terminal UI, or use
-**`wasync query …`** for read-only JSON queries from local agents.
+**`wasync query …`** for read-only JSON queries from local agents. Sending is
+separate and always explicit: `send`, `reply`, `react` and `edit`.
 
 This monorepo also contains **whatsapp-axi**, the agent-facing CLI in
 [`axi/`](axi/). Both binaries, their documentation, release automation, and
 Homebrew definitions are maintained here. wasync owns the WhatsApp connection
-and archive; AXI reads it through the local API or `wasync query`.
+and archive; AXI reads it through the local API or `wasync query`. Reading is open to
+any credential with a read scope. Replies, reactions and edits need a scope a person
+granted, per chat; AXI never deletes anything.
 
 For development see [CONTRIBUTING.md](CONTRIBUTING.md). For releases see
 [docs/releasing.md](docs/releasing.md); for the one-time tap migration see
@@ -700,8 +703,11 @@ that replay is not guaranteed.
 
 This is an unofficial WhatsApp client: protocol compatibility, WhatsApp terms and
 account restriction risks apply. Obtain appropriate permission before archiving
-or sharing conversations. There are no features for posting messages to conversations, cloud services,
-AI processing or application web frontend. Attachment downloads are opt-in.
+or sharing conversations. wasync does post to conversations, but only when asked: `send`,
+`reply`, `react` and `edit` act on your command, or on an agent credential you granted
+the matching scope, and deletions are never sent automatically. There are no features
+for cloud services, AI processing or an application web frontend. Attachment downloads
+are opt-in.
 The original design and risk review are saved in
 [the HTML design artifact](.lavish/whatsapp-sync-design.html).
 
