@@ -16,7 +16,7 @@ const accessUsage = "whatsapp-axi access request (--chat JID | --match TEXT) [--
 var accessCommand = &command{
 	name:        "access",
 	usage:       accessUsage,
-	description: "Ask the person for access to a chat this credential may not use yet, and check the answer (running wasync only). Asking grants nothing unless the person set wasync to sync all chats: otherwise they pick the chat, the access and the history depth in wasync and confirm, and the request expires after five minutes. wasync never says whether a name matched anything",
+	description: "Ask the person for access to a chat this credential may not use yet, and check the answer (running wasync only). Asking grants nothing unless the person set wasync to sync all chats: otherwise they pick the chat, the access and the history depth in wasync and confirm, and the request expires after five minutes. in ask-each-time mode wasync never says whether a name matched anything",
 	flags: []flagSpec{
 		{name: "--chat", value: "JID", description: "request: the exact chat JID"},
 		{name: "--match", value: "TEXT", description: "request: a phone number or contact/group name; wasync resolves it to candidate chats that only the person sees"},
