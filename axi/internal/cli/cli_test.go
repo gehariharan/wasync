@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -30,6 +31,8 @@ var home = filepath.Join(string(filepath.Separator)+"home", "user")
 type harness struct {
 	env     map[string]string
 	homeDir string
+	stdin   io.Reader // session-end hook payload; nil is a terminal
+	cwd     string    // working directory of the session
 }
 
 func newHarness(t *testing.T) *harness {
@@ -49,6 +52,8 @@ func (h *harness) run(t *testing.T, args ...string) (string, int) {
 	a.Executable = func() (string, error) { return filepath.Join(home, "bin", "whatsapp-axi"), nil }
 	a.HomeDir = func() (string, error) { return h.homeDir, nil }
 	a.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	a.Stdin = h.stdin
+	a.Getwd = func() (string, error) { return h.cwd, nil }
 	a.ProbeTimeout = 2 * time.Second
 	code := a.Run(context.Background(), args)
 	return out.String(), code
@@ -142,11 +147,11 @@ func TestHelpCatalogListsOnlyImplementedCommands(t *testing.T) {
 			t.Errorf("%s advertises unimplemented work", c.Name)
 		}
 	}
-	if !reflect.DeepEqual(names, []string{"whatsapp-axi", "chats", "messages", "search", "thread", "message", "reply", "react", "edit", "access", "version", "doctor", "help", "observe", "setup"}) {
+	if !reflect.DeepEqual(names, []string{"whatsapp-axi", "chats", "messages", "search", "thread", "message", "reply", "react", "edit", "access", "version", "doctor", "help", "observe", "setup", "session-end"}) {
 		t.Fatalf("catalog %v", names)
 	}
 	text, _ := h.run(t, "help")
-	mustContain(t, text, "commands[15]{name,usage,description}:", "help[1]:")
+	mustContain(t, text, "commands[16]{name,usage,description}:", "help[1]:")
 	// Every command that talks to wasync has a compatibility entry.
 	if got := compat.Default().CommandNames(); !reflect.DeepEqual(got, []string{"access", "chats", "doctor", "edit", "home", "message", "messages", "observe", "react", "reply", "search", "thread", "version"}) {
 		t.Fatalf("compat entries %v", got)

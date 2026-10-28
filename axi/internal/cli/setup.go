@@ -17,8 +17,9 @@ import (
 )
 
 // `setup` installs whatsapp-axi's opt-in agent integrations (AXI principle
-// 7): a session-start hook that prints `whatsapp-axi --brief`, and the agent
-// skill shipped in skills/. Only a user-invoked setup command writes agent
+// 7): a session-start hook that prints `whatsapp-axi --brief`, a session-end
+// hook that runs `whatsapp-axi session-end`, and the agent skill shipped in
+// skills/. Only a user-invoked setup command writes agent
 // settings; no other command does. Setup never talks to wasync.
 
 const (
@@ -33,7 +34,7 @@ const (
 var setupCommand = &command{
 	name:        "setup",
 	usage:       setupUsage,
-	description: "Install (or --remove) the session-start hook that shows `whatsapp-axi --brief` in new agent sessions, or the whatsapp-axi agent skill; idempotent, keeps unrelated settings",
+	description: "Install (or --remove) the session hooks, or the whatsapp-axi agent skill: a session-start hook that shows `whatsapp-axi --brief` in new agent sessions and a session-end hook that records which whatsapp-axi commands a session ran (names and counts only); idempotent, keeps unrelated settings",
 	flags: []flagSpec{
 		{name: "--agent", value: "LIST", description: "claude, codex, opencode or all, comma-separated (default: detected config directories, else claude; with --remove: all)"},
 		{name: "--dir", value: "DIR", description: "project settings in DIR/.claude, DIR/.codex and DIR/.opencode; default $" + config.EnvAgentHome + " or the home directory (OpenCode: $XDG_CONFIG_HOME/opencode or ~/.config/opencode)"},
@@ -308,6 +309,7 @@ func setupHints(what string, remove, dryRun bool, pending int, changes []agentse
 	case what == setupHooks:
 		h = append(h,
 			"New agent sessions start with `whatsapp-axi --brief`: wasync state and the chat count, never message text",
+			"Ending a session runs `whatsapp-axi session-end`, which records command names and counts only, so the next brief can say what the last session did",
 			"Undo with `whatsapp-axi setup hooks --remove`; `whatsapp-axi doctor` checks the hook")
 	default:
 		h = append(h,
@@ -317,8 +319,8 @@ func setupHints(what string, remove, dryRun bool, pending int, changes []agentse
 	return h
 }
 
-// hookChecks are doctor's agent-integration checks: the session-start
-// hook in each agent's user settings, and the agent skill.
+// hookChecks are doctor's agent-integration checks: the session-start and
+// session-end hooks in each agent's user settings, and the agent skill.
 func (a *App) hookChecks() []doctorCheck {
 	hooks := doctorCheck{Area: areaHooks, Name: "hooks", Source: sourceAXI}
 	skill := doctorCheck{Area: areaHooks, Name: "skill", Source: sourceAXI}
@@ -376,16 +378,16 @@ func (a *App) hookChecks() []doctorCheck {
 		hooks.Detail = strings.Join(broken, "; ") + "; fix the file by hand, then run the fix"
 	case len(stale) > 0:
 		hooks.Status, hooks.Fix = statusWarn, setupHooksFix
-		hooks.Detail = "session-start hook does not run this binary (`" + cmd + "`): " + strings.Join(stale, "; ")
+		hooks.Detail = "session hooks are missing or do not run this binary (`" + cmd + "`): " + strings.Join(stale, "; ")
 	case len(featureOff) > 0:
 		hooks.Status, hooks.Fix = statusWarn, setupHooksFix+" --agent codex"
 		hooks.Detail = "Codex hook installed, but hooks are not enabled in " + strings.Join(featureOff, ", ")
 	case len(current) > 0:
 		hooks.Status = statusPass
-		hooks.Detail = "session-start hook runs `" + cmd + "` for " + strings.Join(current, ", ")
+		hooks.Detail = "session-start and session-end hooks run `" + cmd + "` for " + strings.Join(current, ", ")
 	case len(skillCurrent)+len(skillStale) > 0:
 		hooks.Status = statusSkip
-		hooks.Detail = "no session-start hook installed; the whatsapp-axi skill is installed instead"
+		hooks.Detail = "no session hooks installed; the whatsapp-axi skill is installed instead"
 	default:
 		hooks.Status, hooks.Fix = statusWarn, setupHooksFix
 		hooks.Detail = "not installed: agent sessions start without whatsapp-axi context (opt-in)"
