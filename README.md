@@ -936,8 +936,10 @@ The pinned whatsmeow implementation supports:
    not a completeness guarantee. It does not replay history for an existing link.
 
 Pair using the TUI or `wasync login` to seed persistent group cursor metadata
-when WhatsApp delivers history. The `login` command discards bodies even for
-already-enabled chats; the TUI can archive enabled chats during pairing. Changing pairing hints
+when WhatsApp delivers history. The diagnostic forms of `login` (see
+[Scriptable diagnostics](#scriptable-diagnostics)) discard bodies even for
+already-enabled chats; the TUI, including the one an interactive `login` opens,
+can archive enabled chats during pairing. Changing pairing hints
 never automatically logs you out or deletes your existing archive.
 
 ## Encryption at rest
