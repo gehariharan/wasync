@@ -55,6 +55,7 @@ type Client struct {
 	connection      atomic.Value
 	lastError       atomic.Value
 	health          healthFacts
+	names           nameSource // test seam; nil uses the device's contact and LID stores
 }
 
 func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {

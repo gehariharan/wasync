@@ -18,7 +18,7 @@ Scope: the local wasync owner (TUI or `serve`), its loopback API, the `wasync qu
 | Agent → wasync | Scoped agent credential checked by wasync on every `/api/v1` request; scopes, chat allowlist, rate limit, expiry; audit log |
 | Agent → destructive actions | Not grantable; human approval queue with typed confirmation |
 | Same OS user → archive | Not a boundary. `wasync query` offline reads are equivalent to the user reading their own files and are read-only |
-| WhatsApp content → agent | Message text is untrusted data; never rendered as instructions or hints |
+| WhatsApp content → agent | Message text and contact or chat names are untrusted data; never rendered as instructions or hints |
 
 ## Threats and mitigations
 
@@ -31,6 +31,7 @@ Scope: the local wasync owner (TUI or `serve`), its loopback API, the `wasync qu
 | Legacy read token mutating capture policy (existing behaviour) | Recorded in the baseline audit; unchanged for compatibility; agent credentials do not inherit it |
 | Duplicate WhatsApp session | Only wasync pairs; `device.lock`; AXI never connects to WhatsApp |
 | Data loss on upgrade | Additive-only migrations, automatic pre-migration backup, schema upgrade tests from every released schema |
+| Contact names in logs, or hostile names reaching an agent | Direct-chat names (address-book, push and business names) come from whatsmeow's contact store and events and are stored only in the local archive; they are never written to logs or diagnostics. Names are trimmed of control characters and capped at 256 characters when stored, shown in `whatsapp-axi` as sanitized `untrusted_` values, and visible to an agent only through the same `read.chats` scope and chat allowlist as the chat itself. Push names are chosen by other people, so a name can impersonate a contact or carry instruction-like text; agents must treat it as data, and a name is never an authorization input (allowlists use chat IDs). Residual risk: an agent with `read.chats` learns the owner's saved contact names for the chats it may see |
 | Secrets or bodies in logs | Audit and diagnostics record identifiers and outcomes only |
 | Change feed skipping events | Transactional journal with sequence cursors and an epoch; no timestamp cursors |
 | Webhook SSRF | Endpoints are registered only by a human (interactive terminal, typed confirmation; no scope, no API route). HTTPS only. The dialer resolves each name once, refuses the whole answer if any address is loopback, private, link-local (incl. cloud metadata), carrier-grade NAT, multicast, reserved or an IPv4-embedding IPv6 range, and connects to the vetted address, so DNS rebinding cannot change the target. Redirects are never followed and proxy variables are ignored |

@@ -135,6 +135,9 @@ func (c *Client) captureEvent(evt any) error {
 	if err := c.persistEventAnchors(evt, account); err != nil {
 		return err
 	}
+	if err := c.syncContactNames(evt, account); err != nil {
+		c.log.Warn("contact name refresh failed; capture continues", "event", fmt.Sprintf("%T", evt), "error_kind", fmt.Sprintf("%T", err))
+	}
 	if p.metadataOnly {
 		switch e := evt.(type) {
 		case *events.Message:

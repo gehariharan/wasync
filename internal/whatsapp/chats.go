@@ -27,6 +27,11 @@ func (c *Client) discoverDirect(ctx context.Context, account int64, jid types.JI
 	if !SupportedChat(jid) || jid.Server == types.GroupServer {
 		return nil
 	}
+	// The contact store (address book, then push, then business name) outranks
+	// the name carried by the event or history entry.
+	if resolved := resolveContactName(ctx, c.nameSource(), jid); resolved != "" {
+		name = resolved
+	}
 	if name == "" {
 		name = jid.String()
 	}

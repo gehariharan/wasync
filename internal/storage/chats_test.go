@@ -113,3 +113,34 @@ func TestLegacyMediaReferenceSurvivesWindowsPathRelocation(t *testing.T) {
 		t.Fatal("cleared media still referenced", err)
 	}
 }
+
+func TestSaveDirectNamesOnlyRenamesKnownDirectChats(t *testing.T) {
+	store, account := captureStore(t)
+	ctx := context.Background()
+	if err := store.SaveDiscoveredChat(ctx, account, Group{ID: "111@s.whatsapp.net", Name: "111@s.whatsapp.net"}); err != nil {
+		t.Fatal(err)
+	}
+	err := store.SaveDirectNames(ctx, account, map[string]string{
+		"111@s.whatsapp.net": "Synthetic Contact",
+		"999@s.whatsapp.net": "Not In Archive",
+		"one@g.us":           "Group Must Keep Its Name",
+		"222@lid":            "",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, err := store.Groups(ctx, account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := map[string]string{}
+	for _, g := range groups {
+		names[g.ID] = g.Name
+	}
+	if names["111@s.whatsapp.net"] != "Synthetic Contact" || names["one@g.us"] != "Enabled" {
+		t.Fatalf("unexpected names: %v", names)
+	}
+	if _, ok := names["999@s.whatsapp.net"]; ok || len(names) != 3 {
+		t.Fatalf("a chat was created: %v", names)
+	}
+}
