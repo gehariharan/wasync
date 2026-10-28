@@ -9,7 +9,8 @@ CLI. Repository and release ownership is defined in
 
 PR CI runs core tests on Linux x64/ARM64, macOS Intel/Apple Silicon and Windows,
 Windows installer/MSIX tests, AXI tests and reproducible packaging checks, the
-real synthetic API/offline pair smoke test, and Homebrew publisher tests.
+real synthetic API/offline pair smoke test, the offline terminal UI smoke check
+(`scripts/smoke-installed.py`, the same one that verifies signed releases), and Homebrew publisher tests.
 PRs touching Homebrew definitions, generators, module requirements or the
 installation workflow also run native Linux, Intel Mac and Apple Silicon
 installation checks against the PR checkout's tap definitions before merge.
