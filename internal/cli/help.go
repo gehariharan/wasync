@@ -63,6 +63,12 @@ var commandCatalog = []commandHelp{
 	{"agents grant", "agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--expires DURATION] [--rate N]", "Create a scoped agent credential; human only, interactive terminal required.", "NAME is 1-32 characters of a-z, 0-9 and -. Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own, chat.state, group.admin, capture.manage, export (default read.chats,read.messages). There is no destructive scope. --chat (repeatable) limits the client to listed chats and is required for send, react, edit.own, chat.state, group.admin and capture.manage. --rate is requests per minute (default 60); omit --expires for no expiry. The credential is printed once; only its hash is stored. Legacy api.token, send.token and approve.token are never accepted as agent credentials."},
 	{"agents list", "agents list [--json]", "List agent clients, scopes and limits.", "Never prints credentials or hashes. Does not require an interactive terminal."},
 	{"agents revoke", "agents revoke NAME", "Revoke an agent credential; human only, interactive terminal required.", "Requires typing the client name to confirm; there is no --yes. A running owner reloads the change."},
+	{"webhooks", "webhooks add|list|remove|test|deadletter", "Push identifier-only change notifications to HTTPS endpoints.", "Human only: every subcommand (add, list, remove, test, deadletter) must be run by a human in an interactive terminal; there is no --yes, no agent scope, and no API route. Events never carry message text; receivers fetch content through the scoped /api/v1. Delivery runs while tui or serve is running. Use help webhooks add, help webhooks list, help webhooks remove, help webhooks test, or help webhooks deadletter."},
+	{"webhooks add", "webhooks add NAME --url https://HOST/PATH [--chat CHAT_JID ...] [--op OP,OP]", "Register a webhook endpoint and print its signing secret once; human only.", "HTTPS with a public hostname only; loopback, private, link-local, carrier-grade NAT and metadata addresses are refused, redirects are not followed. --chat (repeatable) and --op limit events. Requires typing the endpoint name; there is no --yes. The secret is also stored in webhooks.json, readable only by your OS user."},
+	{"webhooks list", "webhooks list [--json]", "List webhook endpoints, filters and status.", "Never prints signing secrets. Requires an interactive terminal because endpoint URLs may carry tokens."},
+	{"webhooks remove", "webhooks remove NAME", "Stop delivery to an endpoint and delete its secret; human only.", "Requires typing the endpoint name; there is no --yes. A running owner reloads the change."},
+	{"webhooks test", "webhooks test NAME", "Send a signed ping event to an endpoint now; human only.", "Uses the same SSRF-guarded sender as delivery and reports the outcome. Requires an interactive terminal."},
+	{"webhooks deadletter", "webhooks deadletter [NAME] [--json] [--clear]", "List events that could not be delivered, or empty the list.", "Entries are identifiers and outcomes only. Requires an interactive terminal because entries include endpoint URLs and chat IDs."},
 	{"version", "version", "Show installed build information.", "Also available as wasync --version."},
 	{"help", "help [COMMAND [SUBCOMMAND]]\n       wasync help --json", "Discover all commands without connecting or opening the archive.", "Use wasync COMMAND [SUBCOMMAND] --help as an alternative. --json emits a versioned command catalog, root help, and query conventions. Global flags precede the command."},
 }
@@ -78,6 +84,13 @@ var extendedHelp = map[string]string{
 	"agents grant":     agentsUsage,
 	"agents list":      agentsUsage,
 	"agents revoke":    agentsUsage,
+
+	"webhooks":            webhooksUsage,
+	"webhooks add":        webhooksUsage,
+	"webhooks list":       webhooksUsage,
+	"webhooks remove":     webhooksUsage,
+	"webhooks test":       webhooksUsage,
+	"webhooks deadletter": webhooksUsage,
 }
 
 func (a *App) printHelp(path string) error {

@@ -24,6 +24,7 @@ import (
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/storage"
+	"github.com/gehariharan/wasync/internal/webhook"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 	"go.mau.fi/whatsmeow/types"
 	"golang.org/x/term"
@@ -50,6 +51,8 @@ type App struct {
 	Out, Err      io.Writer
 	Interactive   bool
 	OpenClient    func(context.Context, string, *slog.Logger) (Client, error)
+	// WebhookSender overrides the SSRF-guarded sender, for tests.
+	WebhookSender *webhook.Sender
 }
 
 func New() *App {
@@ -86,6 +89,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   query [groups|chats|messages|search|status]       Read-only JSON queries for agents
   query [version|message|thread|changes|checkpoint|doctor]  More queries; --v1 envelope
   agents grant|list|revoke                   Scoped agent credentials; human, interactive
+  webhooks add|list|remove|test|deadletter   HTTPS change notifications; human, interactive
   version                                    Show installed build information
   help [COMMAND [SUBCOMMAND]]                 Detailed command help, without connecting
   help --json                                Machine-readable command catalog for agents
@@ -143,6 +147,10 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	// the archive.
 	if len(args) > 0 && args[0] == "agents" {
 		return a.runAgents(parent, cfg, args[1:])
+	}
+	// Webhook management is file-based too; delivery runs inside the owner.
+	if len(args) > 0 && args[0] == "webhooks" {
+		return a.runWebhooks(parent, cfg, args[1:])
 	}
 	if *showVersion {
 		if len(args) != 0 {

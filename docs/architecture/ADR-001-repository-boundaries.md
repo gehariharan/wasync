@@ -73,7 +73,7 @@ wasync provides the facts (`GET /api/v1/diagnostics` plus offline `wasync query 
 
 ### D-6. Ordering
 
-Release ordering is superseded by [ADR-002](ADR-002-monorepo.md); see the [common release guide](../releasing.md). Optional webhook delivery (W-05) remains deferred until after the first AXI release.
+Release ordering is superseded by [ADR-002](ADR-002-monorepo.md); see the [common release guide](../releasing.md). Optional webhook delivery (W-05) shipped after the first AXI release as a human-managed, identifier-only feed over the change journal; see the [README](../../README.md#webhooks) and the [threat model](threat-model.md).
 
 ## Consequences
 
