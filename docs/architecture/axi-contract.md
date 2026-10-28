@@ -7,7 +7,7 @@ Locked by ADR-001 ([ADR-001](ADR-001-repository-boundaries.md)). Summary of what
 
 | Transport | When | Allowed |
 |---|---|---|
-| Local API `/api/v1` with a scoped agent credential | owner running and version compatible | reads, `observe`, checkpoint commits, and later the mutations the grant allows |
+| Local API `/api/v1` with a scoped agent credential | owner running and version compatible | reads, `observe`, checkpoint commits, and the writes the grant allows (reply, react, edit own; never deletes) |
 | `wasync query … --json` subprocess | no owner listening | reads and journal reads only; never checkpoint commits or mutations |
 
 AXI never touches WhatsApp, the SQLite archive, the session store or `device.lock`, and never imports `internal/`. Each AXI result states which transport served it.
