@@ -17,7 +17,7 @@ import (
 
 // agentsUsage is the full reference for agent credential management, appended
 // to the catalog help of agents and its subcommands.
-const agentsUsage = `Usage: wasync agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--expires 720h] [--rate N]
+const agentsUsage = `Usage: wasync agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--on-demand] [--expires 720h] [--rate N]
        wasync agents list [--json]
        wasync agents revoke NAME
 
@@ -34,6 +34,11 @@ gets read.chats,read.messages. There is no destructive scope: clean, delete,
 revoke and purge always need human approval.
 --chat (repeatable) limits the client to listed chats; it is required for
 send, react, edit.own, chat.state, group.admin and capture.manage.
+--on-demand starts the client with no chats instead of "all": it can only ask
+(whatsapp-axi access request) and you approve each chat, its access level (read,
+and separately send) and its history depth in the TUI or with wasync actions
+approve. --chat still pre-approves chats; the two combine. Granted chats show
+in agents list. Revoke and re-grant the client to remove them.
 --rate is requests per minute (default 60). --expires is a duration; omit it
 for no expiry.
 
@@ -92,6 +97,7 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	var scopes, chats stringList
 	fs.Var(&scopes, "scope", "comma-separated scopes (repeatable)")
 	fs.Var(&chats, "chat", "allowed chat JID (repeatable)")
+	onDemand := fs.Bool("on-demand", false, "start with no chats; approve each chat when the agent asks")
 	expires := fs.Duration("expires", 0, "credential lifetime, e.g. 720h")
 	rate := fs.Int("rate", agentauth.DefaultRatePerMinute, "requests per minute")
 	if err := a.parseFlags(fs, rest); err != nil {
@@ -100,12 +106,12 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	if name == "" && fs.NArg() == 1 {
 		name = fs.Arg(0)
 	} else if fs.NArg() != 0 || name == "" {
-		return fmt.Errorf("usage: wasync agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--expires 720h] [--rate N]")
+		return fmt.Errorf("usage: wasync agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--on-demand] [--expires 720h] [--rate N]")
 	}
 	if *expires < 0 || (*expires > 0 && *expires < time.Minute) {
 		return fmt.Errorf("--expires must be at least 1m")
 	}
-	req := agentauth.GrantRequest{Name: name, Scopes: scopes, Chats: chats, RatePerMinute: *rate, Expires: *expires}
+	req := agentauth.GrantRequest{Name: name, Scopes: scopes, Chats: chats, OnDemand: *onDemand, RatePerMinute: *rate, Expires: *expires}
 	if *rate == 0 {
 		return fmt.Errorf("--rate must be between 1 and %d", agentauth.MaxRatePerMinute)
 	}
@@ -127,7 +133,10 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	fmt.Fprintf(a.Err, "Grant agent client %s\nScopes: %s\n", name, strings.Join(normalizedScopes, ","))
 	if len(chats) > 0 {
 		fmt.Fprintf(a.Err, "Chats: %s\n", strings.Join(chats, ", "))
-	} else {
+	}
+	if *onDemand {
+		fmt.Fprintln(a.Err, "Chats: only those you approve when the agent asks (on demand)")
+	} else if len(chats) == 0 {
 		fmt.Fprintln(a.Err, "Chats: all (no allowlist)")
 	}
 	fmt.Fprintf(a.Err, "Rate: %d/min\n", *rate)
@@ -195,15 +204,24 @@ func (a *App) agentsRevoke(ctx context.Context, cfg config.Config, args []string
 }
 
 type agentView struct {
-	ID            string     `json:"id"`
-	Name          string     `json:"name"`
-	Status        string     `json:"status"`
-	Scopes        []string   `json:"scopes"`
-	Chats         []string   `json:"chats"`
-	RatePerMinute int        `json:"rate_per_minute"`
-	CreatedAt     time.Time  `json:"created_at"`
-	ExpiresAt     *time.Time `json:"expires_at"`
-	RevokedAt     *time.Time `json:"revoked_at"`
+	ID            string      `json:"id"`
+	Name          string      `json:"name"`
+	Status        string      `json:"status"`
+	Scopes        []string    `json:"scopes"`
+	Chats         []string    `json:"chats"`
+	OnDemand      bool        `json:"on_demand"`
+	Grants        []grantView `json:"granted_chats"`
+	RatePerMinute int         `json:"rate_per_minute"`
+	CreatedAt     time.Time   `json:"created_at"`
+	ExpiresAt     *time.Time  `json:"expires_at"`
+	RevokedAt     *time.Time  `json:"revoked_at"`
+}
+
+// grantView is one chat a human approved for an on-demand agent.
+type grantView struct {
+	Chat      string    `json:"chat"`
+	Scopes    []string  `json:"scopes"`
+	GrantedAt time.Time `json:"granted_at"`
 }
 
 func (a *App) agentsList(cfg config.Config, args []string) error {
@@ -230,7 +248,11 @@ func writeAgents(out io.Writer, clients []agentauth.Client, asJSON bool, now tim
 		if chats == nil {
 			chats = []string{}
 		}
-		views = append(views, agentView{ID: c.ID, Name: c.Name, Status: c.Status(now), Scopes: c.Scopes, Chats: chats, RatePerMinute: c.RatePerMinute, CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, RevokedAt: c.RevokedAt})
+		grants := []grantView{}
+		for _, g := range c.Grants {
+			grants = append(grants, grantView{Chat: g.Chat, Scopes: g.Scopes, GrantedAt: g.GrantedAt})
+		}
+		views = append(views, agentView{ID: c.ID, Name: c.Name, Status: c.Status(now), Scopes: c.Scopes, Chats: chats, OnDemand: c.OnDemand, Grants: grants, RatePerMinute: c.RatePerMinute, CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, RevokedAt: c.RevokedAt})
 	}
 	if asJSON {
 		return json.NewEncoder(out).Encode(struct {
@@ -243,6 +265,14 @@ func writeAgents(out io.Writer, clients []agentauth.Client, asJSON bool, now tim
 		chats := "all"
 		if len(v.Chats) > 0 {
 			chats = strings.Join(v.Chats, ",")
+		} else if v.OnDemand {
+			chats = "none yet"
+		}
+		if v.OnDemand {
+			chats += " (on demand)"
+		}
+		for _, g := range v.Grants {
+			chats += " +" + g.Chat + "[" + strings.Join(g.Scopes, "/") + "]"
 		}
 		expires := "never"
 		if v.ExpiresAt != nil {

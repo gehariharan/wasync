@@ -128,6 +128,7 @@ const (
 	FeatureWriteReply    = "write.reply"
 	FeatureWriteReact    = "write.react"
 	FeatureWriteEdit     = "write.edit"
+	FeatureAccessRequest = "access.request"
 )
 
 // MessageRefPrefix starts every opaque message ref.

@@ -66,6 +66,19 @@ func (h *handler) requestAction(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusAccepted, request)
 }
+
+// listActions returns the account's pending requests for `wasync actions list`.
+func (h *handler) listActions(w http.ResponseWriter, r *http.Request) {
+	if h.approvals == nil {
+		fail(w, 503, "approval queue unavailable")
+		return
+	}
+	account := h.account(w, r)
+	if account == nil {
+		return
+	}
+	writeJSON(w, 200, map[string]any{"items": h.approvals.PendingList(account.ID)})
+}
 func (h *handler) actionStatus(w http.ResponseWriter, r *http.Request) {
 	if h.approvals == nil {
 		fail(w, 503, "approval queue unavailable")
@@ -91,6 +104,24 @@ func (h *handler) approveAction(w http.ResponseWriter, r *http.Request) {
 	account := h.account(w, r)
 	if account == nil {
 		return
+	}
+	// Access requests carry the human's choice of chat and history depth in the
+	// signed body; it is recorded on the pending request just before approval.
+	if request := h.approvals.Get(account.ID, r.PathValue("id")); request != nil && request.Kind == approval.KindChatAccess {
+		var choice struct {
+			Chat    string `json:"chat"`
+			History string `json:"history"`
+		}
+		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+		decoder.DisallowUnknownFields()
+		if err := decoder.Decode(&choice); err != nil || decoder.Decode(new(any)) != io.EOF {
+			fail(w, 400, "access approval needs {\"chat\":...,\"history\":\"now\"|\"full\"}")
+			return
+		}
+		if err := h.approvals.Decide(account.ID, request.ID, choice.Chat, choice.History); err != nil {
+			fail(w, 409, err.Error())
+			return
+		}
 	}
 	if err := h.approve(account.ID, r.PathValue("id")); err != nil {
 		fail(w, 409, err.Error())

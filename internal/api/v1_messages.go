@@ -204,7 +204,12 @@ func (h *handler) v1List(w http.ResponseWriter, r *http.Request, id string, a *s
 		v1Fail(w, id, 503, query.CodeArchiveUnavailable, "archive query failed", "check wasync status")
 		return
 	}
-	total, err := h.store.CountMessages(r.Context(), a.ID, chat, q, v1Client(r).Chats)
+	var total int64
+	if client := v1Client(r); !client.Restricted() {
+		total, err = h.store.CountMessages(r.Context(), a.ID, chat, q, nil)
+	} else if allowed := client.AllowedChats(); len(allowed) > 0 {
+		total, err = h.store.CountMessages(r.Context(), a.ID, chat, q, allowed)
+	}
 	if err != nil {
 		v1Fail(w, id, 503, query.CodeArchiveUnavailable, "archive count failed", "check wasync status")
 		return

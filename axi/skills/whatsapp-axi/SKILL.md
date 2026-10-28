@@ -30,6 +30,7 @@ The implemented commands are:
 | `reply` | Quote the message REF in a reply (running wasync, scope send and an allowlisted chat); sends once, never retries |
 | `react` | React to the message REF with an emoji, or clear your reaction (running wasync, scope react and an allowlisted chat); sends once, never retries |
 | `edit` | Replace the text of one of your own recent messages REF (running wasync, scope edit.own and an allowlisted chat); wasync refuses other people's messages and edits past WhatsApp's window |
+| `access` | Ask the person for access to a chat this credential may not use yet, and check the answer (running wasync only). Asking grants nothing unless the person set wasync to sync all chats: otherwise they pick the chat, the access and the history depth in wasync and confirm, and the request expires after five minutes. in ask-each-time mode wasync never says whether a name matched anything |
 | `version` | Show the whatsapp-axi version and the detected wasync version, transport and compatibility |
 | `doctor` | Check installation, pairing, service, permissions, compatibility and hooks; each problem comes with repair guidance |
 | `help` | List commands, or show flags and examples for one command |
@@ -54,6 +55,13 @@ repair guidance to the user and wait; never search for owner tokens, edit grants
 or grant yourself access. `wasync agents grant` is a human operation. Offline
 `transport: query` reads have the OS user's access and are unscoped; read only
 what the user requested. `doctor` explains transport and permission problems.
+
+When a read is refused because the chat is not allowed, you may ask the person for
+it with `whatsapp-axi access request --chat JID` (or `--match` with a phone number or name,
+and `--send` only if you need to write). Asking grants nothing: the person chooses the
+chat and history depth in wasync and confirms. Tell them the request ID and
+approval command it prints, check with `whatsapp-axi access status ID`, and do
+not repeat the request or work around a rejection or expiry.
 
 ## Following changes
 

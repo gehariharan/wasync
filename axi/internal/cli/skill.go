@@ -55,6 +55,13 @@ or grant yourself access. ` + "`wasync agents grant`" + ` is a human operation. 
 ` + "`transport: query`" + ` reads have the OS user's access and are unscoped; read only
 what the user requested. ` + "`doctor`" + ` explains transport and permission problems.
 
+When a read is refused because the chat is not allowed, you may ask the person for
+it with ` + "`whatsapp-axi access request --chat JID`" + ` (or ` + "`--match`" + ` with a phone number or name,
+and ` + "`--send`" + ` only if you need to write). Asking grants nothing: the person chooses the
+chat and history depth in wasync and confirms. Tell them the request ID and
+approval command it prints, check with ` + "`whatsapp-axi access status ID`" + `, and do
+not repeat the request or work around a rejection or expiry.
+
 ## Following changes
 
 Read with ` + "`whatsapp-axi observe --consumer NAME`" + `. Process each page before

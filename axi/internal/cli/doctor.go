@@ -135,6 +135,7 @@ type diagnosticsAgent struct {
 	Name      string     `json:"name"`
 	Scopes    []string   `json:"scopes"`
 	Chats     []string   `json:"chats"`
+	OnDemand  bool       `json:"on_demand"`
 	ExpiresAt *time.Time `json:"expires_at"`
 }
 
@@ -498,7 +499,9 @@ func (a *App) permissionChecks(d detection, f facts) []doctorCheck {
 				scopes.Fix = upgradeWasyncFix
 			}
 		}
-		if len(agent.Chats) > 0 {
+		if agent.OnDemand {
+			scopes.Detail += "; chats are approved on demand (" + strconv.Itoa(len(agent.Chats)) + " so far; ask with `whatsapp-axi access request`)"
+		} else if len(agent.Chats) > 0 {
 			scopes.Detail += "; limited to " + strconv.Itoa(len(agent.Chats)) + " chat(s)"
 		}
 	}

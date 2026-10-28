@@ -35,6 +35,23 @@ func unauthorized(message string) *Error {
 	return &Error{Code: CodeUnauthorized, Status: 401, Message: message, Help: grantHelpDefault}
 }
 
+// notAllowedHelp tells an agent how to get a chat it may not use. A client that
+// can ask is pointed at the human-approval request first; re-granting stays the
+// pre-approval route.
+func notAllowedHelp(c *Client, scope, chat string) string {
+	regrant := fmt.Sprintf("A human must re-grant the client in an interactive terminal: %s", regrantCommand(c, scope, chat, 0))
+	if !requestable(scope) || c.ExpiresAt != nil {
+		return fmt.Sprintf("Chat %s is not in the allowlist for scope %s. %s", chat, scope, regrant)
+	}
+	send := ""
+	if contains(sendFamily, scope) {
+		send = " --send"
+	} else if contains(editFamily, scope) {
+		send = " --edit"
+	}
+	return fmt.Sprintf("Chat %s is not allowed for scope %s. Ask the person to approve it: run `whatsapp-axi access request --chat %s%s` (or POST /api/v1/access-requests); nothing is granted until they confirm in wasync. Otherwise: %s", chat, scope, chat, send, regrant)
+}
+
 // RegrantCommand documents the replacement policy shared by these error hints.
 func regrantCommand(c *Client, extraScope, extraChat string, rate int) string {
 	if c.ExpiresAt != nil {
@@ -63,7 +80,9 @@ func regrantCommand(c *Client, extraScope, extraChat string, rate int) string {
 	for s := range set {
 		needChat = needChat || RequiresAllowlist(s)
 	}
-	if len(chats) == 0 && needChat {
+	if c.OnDemand {
+		b.WriteString(" --on-demand")
+	} else if len(chats) == 0 && needChat {
 		b.WriteString(" --chat CHAT_JID")
 	}
 	for _, chat := range chats {

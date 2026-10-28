@@ -107,7 +107,7 @@ func StartOperations(addr, dir string, store *storage.Store, status func() whats
 	if err != nil {
 		return nil, fmt.Errorf("start local API (change --api-addr or use --no-api): %w", err)
 	}
-	h := &handler{agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, syncer: syncer, ops: ops}
+	h := &handler{dataDir: dir, agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, syncer: syncer, ops: ops}
 	if len(sender) > 0 {
 		h.sender = sender[0]
 	}
@@ -148,6 +148,7 @@ func (s *Server) Close() error {
 }
 
 type handler struct {
+	dataDir          string
 	v1Once           sync.Once
 	v1Mux            *http.ServeMux
 	agents           *agentauth.Authorizer
@@ -189,6 +190,9 @@ func (h *handler) routes() http.Handler {
 	mux.HandleFunc("POST /api/chats/enable-all", h.enableAll)
 	mux.HandleFunc("POST /api/chats/disable-all", h.enableAll)
 	mux.HandleFunc("POST /api/actions", h.requestAction)
+	mux.HandleFunc("GET /api/access/mode", h.getAccessMode)
+	mux.HandleFunc("POST /api/access/mode", h.setAccessMode)
+	mux.HandleFunc("GET /api/actions", h.listActions)
 	mux.HandleFunc("GET /api/actions/{id}", h.actionStatus)
 	mux.HandleFunc("GET /api/groups", h.groups)
 	mux.HandleFunc("GET /api/chats", h.groups)
@@ -231,13 +235,13 @@ func (h *handler) routes() http.Handler {
 			return
 		}
 		requiredToken := h.token
-		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") {
+		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") || r.URL.Path == accessModePath {
 			if r.URL.Path == "/api/send" && h.sender == nil || strings.HasPrefix(r.URL.Path, "/api/actions") && h.approvals == nil {
 				fail(w, 503, "sending unavailable")
 				return
 			}
 			requiredToken = h.sendToken
-			if strings.HasSuffix(r.URL.Path, "/approve") {
+			if strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath {
 				if h.approve == nil || h.approveToken == "" {
 					fail(w, 503, "interactive approval unavailable")
 					return
@@ -275,7 +279,7 @@ func (h *handler) routes() http.Handler {
 			return
 		}
 		timeout := 10 * time.Second
-		if r.URL.Path == "/api/sync" || strings.HasSuffix(r.URL.Path, "/approve") {
+		if r.URL.Path == "/api/sync" || strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath {
 			timeout = 90 * time.Second
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)

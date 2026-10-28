@@ -117,10 +117,15 @@ func (a *App) serveAction(offline bool) action {
 		}
 		a.MediaDownload = nil
 		a.Operations = operationsOf(client)
-		a.Approvals = &approval.Queue{}
+		a.Approvals = &approval.Queue{OnAccess: func(r approval.Request) {
+			// Headless there is no dialog: say who asked and which request to open,
+			// never the chat or number. `wasync actions list` shows the details.
+			log.Info("chat access requested", "agent", r.Access.Agent, "request_id", r.ID)
+			fmt.Fprintf(a.Out, "Chat access requested by agent %s. Review: wasync actions list; approve: wasync actions approve %s\n", printable(r.Access.Agent), r.ID)
+		}}
 		session := tui.NewSession(ctx, store, live)
 		session.Approvals = a.Approvals
-		session.MediaRoot = filepath.Join(cfg.DataDir, "media")
+		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
 		a.Approve = session.ApproveAction
 		a.Sync = session.Sync
 		if media, ok := client.(interface {

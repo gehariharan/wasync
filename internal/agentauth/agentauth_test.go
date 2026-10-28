@@ -520,3 +520,123 @@ func privateDir(t *testing.T) string {
 	}
 	return dir
 }
+
+func TestOnDemandClientStartsWithNoChatsAndGainsOnlyApprovedAccess(t *testing.T) {
+	dir := privateDir(t)
+	cred, c := grant(t, dir, GrantRequest{Name: "jit", Scopes: []string{"read.chats,read.messages,send"}, OnDemand: true})
+	if !c.OnDemand || !c.Restricted() || c.AllowsChat(chatA) || len(c.AllowedChats()) != 0 {
+		t.Fatalf("fresh client %+v", c)
+	}
+	if _, _, err := Grant(dir, GrantRequest{Name: "plain", Scopes: []string{"send"}}, time.Now()); err == nil {
+		t.Fatal("write scope without a chat and without --on-demand")
+	}
+	a := NewAuthorizer(dir)
+	client, err := a.Authenticate("Bearer " + cred)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, scope := range []string{ScopeReadMessages, ScopeSend} {
+		err = a.Authorize(client, scope, chatA)
+		var e *Error
+		if !errors.As(err, &e) || e.Status != 403 || !strings.Contains(e.Help, "whatsapp-axi access request --chat "+chatA) {
+			t.Fatalf("%s: %v", scope, err)
+		}
+	}
+	if err = a.Authorize(client, ScopeReadChats, ""); err != nil {
+		t.Fatalf("listing chats without a chat: %v", err)
+	}
+	if _, err = GrantChatAccess(dir, c.ID, chatA, []string{ScopeReadChats, ScopeReadMessages}, "req1", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// The running authorizer sees the grant without restarting, for read only.
+	if err = a.Authorize(client, ScopeReadMessages, chatA); err != nil {
+		t.Fatalf("read after grant: %v", err)
+	}
+	if code(a.Authorize(client, ScopeSend, chatA)) != CodeForbidden || code(a.Authorize(client, ScopeReadMessages, chatB)) != CodeForbidden {
+		t.Fatal("grant reached send or another chat")
+	}
+	// Send is added separately and merges with the earlier read grant.
+	updated, err := GrantChatAccess(dir, c.ID, chatA, []string{ScopeSend}, "req2", time.Now())
+	if err != nil || len(updated.Grants) != 1 || strings.Join(updated.Grants[0].Scopes, ",") != "read.chats,read.messages,send" {
+		t.Fatalf("merged %+v %v", updated, err)
+	}
+	if err = a.Authorize(client, ScopeSend, chatA); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustActive(t, dir, "jit").AllowedChats(); len(got) != 1 || got[0] != chatA {
+		t.Fatalf("allowed %v", got)
+	}
+}
+
+func TestGrantChatAccessRefusesWhatTheCredentialCannotDo(t *testing.T) {
+	dir := privateDir(t)
+	_, c := grant(t, dir, GrantRequest{Name: "reader", OnDemand: true})
+	for _, scopes := range [][]string{{ScopeSend}, {ScopeCaptureManage}, {ScopeExport}, {}} {
+		if _, err := GrantChatAccess(dir, c.ID, chatA, scopes, "r", time.Now()); err == nil {
+			t.Fatalf("granted %v", scopes)
+		}
+	}
+	if _, err := GrantChatAccess(dir, c.ID, "bad jid", []string{ScopeReadChats}, "r", time.Now()); err == nil {
+		t.Fatal("granted an invalid chat")
+	}
+	if _, err := GrantChatAccess(dir, "deadbeef", chatA, []string{ScopeReadChats}, "r", time.Now()); err == nil {
+		t.Fatal("granted to an unknown client")
+	}
+	if _, err := Revoke(dir, "reader", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := GrantChatAccess(dir, c.ID, chatA, []string{ScopeReadChats}, "r", time.Now()); err == nil {
+		t.Fatal("granted to a revoked client")
+	}
+	_, e := grant(t, dir, GrantRequest{Name: "short", OnDemand: true, Expires: time.Minute})
+	if _, err := GrantChatAccess(dir, e.ID, chatA, []string{ScopeReadChats}, "r", time.Now().Add(time.Hour)); err == nil {
+		t.Fatal("granted to an expired client")
+	}
+}
+
+func TestAccessScopesStayWithinTheCredential(t *testing.T) {
+	read := &Client{Scopes: []string{ScopeReadChats, ScopeReadMessages, ScopeSend, ScopeEditOwn, ScopeCaptureManage}}
+	got, err := read.AccessScopes(false, false)
+	if err != nil || strings.Join(got, ",") != "read.chats,read.messages" {
+		t.Fatalf("read %v %v", got, err)
+	}
+	got, err = read.AccessScopes(true, false)
+	if err != nil || strings.Join(got, ",") != "read.chats,read.messages,send" {
+		t.Fatalf("send %v %v", got, err)
+	}
+	got, err = read.AccessScopes(true, true)
+	if err != nil || strings.Join(got, ",") != "read.chats,read.messages,send,edit.own" {
+		t.Fatalf("send and edit %v %v", got, err)
+	}
+	if _, err = (&Client{Scopes: []string{ScopeReadChats}}).AccessScopes(true, false); err == nil {
+		t.Fatal("send requested without holding a send scope")
+	}
+	if _, err = (&Client{Scopes: []string{ScopeReadChats, ScopeSend}}).AccessScopes(false, true); err == nil {
+		t.Fatal("edit requested without holding edit.own")
+	}
+	if _, err = (&Client{Scopes: []string{ScopeSend}}).AccessScopes(false, false); err == nil {
+		t.Fatal("read requested without holding a read scope")
+	}
+}
+
+func TestPreApprovedChatsKeepEveryScopeAndRateLimitCoversRequests(t *testing.T) {
+	dir := privateDir(t)
+	cred, _ := grant(t, dir, GrantRequest{Name: "mixed", Scopes: []string{"read.messages,send"}, Chats: []string{chatA}, OnDemand: true, RatePerMinute: 2})
+	a := NewAuthorizer(dir)
+	client, _ := a.Authenticate("Bearer " + cred)
+	if a.Authorize(client, ScopeSend, chatA) != nil || a.Authorize(client, ScopeReadMessages, chatA) != nil {
+		t.Fatal("pre-approved chat lost a scope")
+	}
+	if code(a.AllowAccessRequest(client)) != CodeRateLimited {
+		t.Fatal("access requests are not rate limited")
+	}
+}
+
+func mustActive(t *testing.T, dir, name string) *Client {
+	t.Helper()
+	c, err := ActiveByName(dir, name)
+	if err != nil || c == nil {
+		t.Fatalf("no client %s: %v", name, err)
+	}
+	return c
+}
