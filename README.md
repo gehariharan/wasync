@@ -7,7 +7,7 @@ written in Go using [whatsmeow](https://github.com/tulir/whatsmeow) and
 The executable is named **`wasync`**: launch it for the terminal UI, or use
 **`wasync query …`** for read-only JSON queries from local agents.
 
-This monorepo also contains **whatsapp-axi**, the agent-facing reader in
+This monorepo also contains **whatsapp-axi**, the agent-facing CLI in
 [`axi/`](axi/). Both binaries, their documentation, release automation, and
 Homebrew definitions are maintained here. wasync owns the WhatsApp connection
 and archive; AXI reads it through the local API or `wasync query`.
@@ -346,7 +346,8 @@ wasync help                      # global flags and command overview
 ```
 
 Global flags such as `--data-dir` and `--timeout` must precede the command.
-`query` commands are read-only JSON interfaces; `send` explicitly sends a message,
+`query` commands are read-only JSON interfaces; `send`, `reply`, `react` and `edit`
+explicitly send a message, reaction or edit,
 and `clean` / `delete` only queue requests requiring a human's interactive approval.
 Per-chat `media policy` is persistent; `media download` requests one attachment
 without changing that policy.
