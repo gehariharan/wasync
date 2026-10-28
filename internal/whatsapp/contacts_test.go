@@ -216,3 +216,36 @@ func TestDiscoverDirectPrefersContactNameOverEventName(t *testing.T) {
 		t.Fatalf("got %q", got)
 	}
 }
+
+func TestNameRefreshFailureDoesNotStopCapture(t *testing.T) {
+	c, s, account := historyClient(t)
+	f := newFakeNames()
+	c.names = f
+	f.contacts[pnOne] = types.ContactInfo{Found: true, FullName: "Alex Example"}
+	if err := s.SaveDiscoveredChat(context.Background(), account, storage.Group{ID: pnOne.String(), Name: pnOne.String()}); err != nil {
+		t.Fatal(err)
+	}
+	c.capture.metadataOnly = true
+
+	live := c.capture.ctx
+	cancelled, cancel := context.WithCancel(live)
+	cancel()
+	c.capture.ctx = cancelled
+	if !c.handleEvent(&events.Connected{}) {
+		t.Fatal("a failed name refresh stopped capture")
+	}
+	if c.capture.failed.Load() {
+		t.Fatal("capture marked failed by a name refresh error")
+	}
+	if got, _ := nameOf(t, s, account, pnOne.String()); got != pnOne.String() {
+		t.Fatalf("name changed despite failed refresh: %q", got)
+	}
+
+	c.capture.ctx = live
+	if !c.handleEvent(&events.Contact{JID: pnOne}) {
+		t.Fatal("event rejected after recovery")
+	}
+	if got, _ := nameOf(t, s, account, pnOne.String()); got != "Alex Example" {
+		t.Fatalf("refresh did not retry on the next event: %q", got)
+	}
+}
