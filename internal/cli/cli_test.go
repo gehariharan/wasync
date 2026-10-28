@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 	"io"
@@ -42,9 +43,9 @@ func TestLoginSelectionAndOfflineCommands(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "data")
 	var out, logs bytes.Buffer
 	f := &fakeClient{}
-	app := &App{In: strings.NewReader("2,2\n"), Out: &out, Err: &logs, Interactive: true, OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return f, nil }}
+	app := &App{In: strings.NewReader("2,2\n"), Out: &out, Err: &logs, OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return f, nil }}
 	ctx := context.Background()
-	if err := app.Run(ctx, []string{"--data-dir", dir, "login"}); err != nil {
+	if err := app.Run(ctx, []string{"--data-dir", dir, "login", "--select=true"}); err != nil {
 		t.Fatal(err)
 	}
 	if !f.login || !f.closed {
@@ -165,5 +166,64 @@ func TestHeadlessOfflineLifecycle(t *testing.T) {
 	app.Out = io.Discard
 	if err := app.Run(context.Background(), []string{"--data-dir", dir, "status"}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInteractiveLoginOpensTUIInsteadOfGroupTable(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	var out, logs bytes.Buffer
+	f := &fakeClient{}
+	opened := 0
+	app := &App{In: strings.NewReader(""), Out: &out, Err: &logs, Interactive: true,
+		OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return f, nil },
+		OpenTUI: func(context.Context, config.Config, *storage.Store, *slog.Logger) error {
+			if !f.closed {
+				t.Error("login connection still open when the TUI started")
+			}
+			opened++
+			return nil
+		}}
+	if err := app.Run(context.Background(), []string{"--data-dir", dir, "login"}); err != nil {
+		t.Fatal(err)
+	}
+	if opened != 1 || !f.login {
+		t.Fatalf("login did not continue into the TUI: opened=%d login=%t", opened, f.login)
+	}
+	if strings.Contains(out.String(), "GROUP ID") || strings.Contains(out.String(), "Selected") {
+		t.Fatalf("group table printed on interactive login:\n%s", out.String())
+	}
+	if logs.Len() != 0 {
+		t.Fatalf("raw log lines reached the terminal: %q", logs.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "wasync.log")); err != nil {
+		t.Fatalf("login logs not written to wasync.log: %v", err)
+	}
+}
+
+func TestLoginKeepsDiagnosticOutputWhenNotOpeningTUI(t *testing.T) {
+	for name, tc := range map[string]struct {
+		interactive bool
+		args        []string
+	}{
+		"not a terminal":    {false, []string{"login"}},
+		"select disabled":   {true, []string{"login", "--select=false"}},
+		"observe requested": {true, []string{"login", "--observe", "1ms"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := filepath.Join(t.TempDir(), "data")
+			var out bytes.Buffer
+			app := &App{In: strings.NewReader(""), Out: &out, Err: io.Discard, Interactive: tc.interactive,
+				OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return &fakeClient{}, nil },
+				OpenTUI: func(context.Context, config.Config, *storage.Store, *slog.Logger) error {
+					t.Error("TUI opened")
+					return nil
+				}}
+			if err := app.Run(context.Background(), append([]string{"--data-dir", dir}, tc.args...)); err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(out.String(), "Selected") {
+				t.Fatalf("group table missing:\n%s", out.String())
+			}
+		})
 	}
 }

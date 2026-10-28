@@ -630,7 +630,13 @@ and outside Git.
 
 ## Scriptable diagnostics
 
-These commands remain useful for setup and scripting. They do not start capture:
+These commands remain useful for setup and scripting. They do not start capture.
+In an interactive terminal, plain `wasync login` is different: after pairing or
+reusing the saved session it caches your groups and opens the TUI, which captures
+enabled groups like running `wasync` with no command. `--select=false` or
+`--observe` keep the diagnostic output below; without a terminal, `login` always
+prints the group table and exits. Log lines go to `wasync.log` in the data
+directory during an interactive login.
 
 ```sh
 ./bin/wasync login --select=false
@@ -930,8 +936,10 @@ The pinned whatsmeow implementation supports:
    not a completeness guarantee. It does not replay history for an existing link.
 
 Pair using the TUI or `wasync login` to seed persistent group cursor metadata
-when WhatsApp delivers history. The `login` command discards bodies even for
-already-enabled chats; the TUI can archive enabled chats during pairing. Changing pairing hints
+when WhatsApp delivers history. The diagnostic forms of `login` (see
+[Scriptable diagnostics](#scriptable-diagnostics)) discard bodies even for
+already-enabled chats; the TUI, including the one an interactive `login` opens,
+can archive enabled chats during pairing. Changing pairing hints
 never automatically logs you out or deletes your existing archive.
 
 ## Encryption at rest
