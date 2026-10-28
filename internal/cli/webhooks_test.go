@@ -95,6 +95,10 @@ func TestWebhooksAddRemoveRequireInteractiveConfirmation(t *testing.T) {
 	}
 
 	app, out, _ = agentsApp("", false)
+	if err := run(app, "list", "--json"); err == nil || !strings.Contains(err.Error(), "interactive terminal") || out.Len() != 0 {
+		t.Fatalf("non-interactive list: %v %q", err, out.String())
+	}
+	app, out, _ = agentsApp("", true)
 	if err := run(app, "list", "--json"); err != nil {
 		t.Fatal(err)
 	}
@@ -107,7 +111,7 @@ func TestWebhooksAddRemoveRequireInteractiveConfirmation(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &listed); err != nil || len(listed.Webhooks) != 1 || listed.Webhooks[0].Status != "active" || listed.Webhooks[0].Chats[0] != "120363000000000001@g.us" {
 		t.Fatalf("list %s %v", out.String(), err)
 	}
-	app, out, _ = agentsApp("", false)
+	app, out, _ = agentsApp("", true)
 	if err := run(app, "list"); err != nil || !strings.Contains(out.String(), "crm") || strings.Contains(out.String(), secret) {
 		t.Fatalf("table list: %v %q", err, out.String())
 	}
@@ -189,11 +193,14 @@ func TestWebhooksDeadLetterCommand(t *testing.T) {
 		err := app.Run(context.Background(), append([]string{"--data-dir", dir, "webhooks", "deadletter"}, args...))
 		return out.String(), err
 	}
-	out, err := run(false, "crm", "--json")
+	if out, err := run(false, "crm", "--json"); err == nil || out != "" {
+		t.Fatalf("non-interactive deadletter: %v %q", err, out)
+	}
+	out, err := run(true, "crm", "--json")
 	if err != nil || !strings.Contains(out, `"event_id":"evt_1"`) {
 		t.Fatalf("%v %q", err, out)
 	}
-	if _, err = run(false, "ghost"); err == nil {
+	if _, err = run(true, "ghost"); err == nil {
 		t.Fatal("unknown endpoint accepted")
 	}
 	if _, err = run(false, "--clear"); err == nil {
@@ -202,7 +209,7 @@ func TestWebhooksDeadLetterCommand(t *testing.T) {
 	if out, err = run(true, "--clear"); err != nil || !strings.Contains(out, "cleared 1") {
 		t.Fatalf("%v %q", err, out)
 	}
-	if out, _ = run(false, "--json"); !strings.Contains(out, `"dead_letters":[]`) {
+	if out, _ = run(true, "--json"); !strings.Contains(out, `"dead_letters":[]`) {
 		t.Fatalf("after clear: %q", out)
 	}
 }

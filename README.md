@@ -430,7 +430,7 @@ wasync webhooks remove crm
 ```
 
 `add` prints a signing secret (`whsec_...`) once and asks you to type the endpoint
-name; `remove`, `test` and `deadletter --clear` need an interactive terminal too.
+name; `list`, `remove`, `test` and `deadletter` need an interactive terminal too.
 There is no `--yes`, no agent scope for webhooks and no API route that manages
 them. The secret is also stored in `webhooks.json`, readable only by your OS
 user, because HMAC signing needs the raw key. Delivery runs inside the owner

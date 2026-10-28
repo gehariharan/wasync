@@ -23,9 +23,9 @@ const webhooksUsage = `Usage: wasync webhooks add NAME --url https://HOST/PATH [
        wasync webhooks test NAME
        wasync webhooks deadletter [NAME] [--json] [--clear]
 
-Push change-journal notifications to an HTTPS endpoint. Human only: add,
-remove, test and --clear require an interactive terminal (add and remove also
-need the endpoint name typed back); there is no --yes, no agent scope grants
+Push change-journal notifications to an HTTPS endpoint. Human only: every
+subcommand (add, list, remove, test, deadletter) requires an interactive terminal
+(add and remove also need the endpoint name typed back); there is no --yes, no agent scope grants
 this, and none of these commands exists on the API. They edit webhooks.json in
 the data directory and never connect to WhatsApp. A running tui or serve owner
 reloads the list within seconds; delivery runs only while an owner is running.
@@ -205,6 +205,9 @@ func (a *App) webhooksList(cfg config.Config, args []string) error {
 	if fs.NArg() != 0 {
 		return fmt.Errorf("usage: wasync webhooks list [--json]")
 	}
+	if !a.Interactive {
+		return fmt.Errorf("webhooks list requires an interactive terminal; endpoint URLs may carry tokens")
+	}
 	endpoints, err := webhook.List(cfg.DataDir)
 	if err != nil {
 		return err
@@ -316,6 +319,9 @@ func (a *App) webhooksDeadLetter(cfg config.Config, args []string) error {
 		}
 		_, err = fmt.Fprintf(a.Out, "cleared %d dead-letter entries\n", n)
 		return err
+	}
+	if !a.Interactive {
+		return fmt.Errorf("webhooks deadletter requires an interactive terminal; entries include endpoint URLs and chat IDs")
 	}
 	id := ""
 	if name != "" {

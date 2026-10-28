@@ -242,7 +242,7 @@
     },
     {
       "description": "Push identifier-only change notifications to HTTPS endpoints.",
-      "details": "Human only: add, remove, test and deadletter --clear must be run by a human in an interactive terminal; there is no --yes, no agent scope, and no API route. Events never carry message text; receivers fetch content through the scoped /api/v1. Delivery runs while tui or serve is running. Use help webhooks add, help webhooks list, help webhooks remove, help webhooks test, or help webhooks deadletter.",
+      "details": "Human only: every subcommand (add, list, remove, test, deadletter) must be run by a human in an interactive terminal; there is no --yes, no agent scope, and no API route. Events never carry message text; receivers fetch content through the scoped /api/v1. Delivery runs while tui or serve is running. Use help webhooks add, help webhooks list, help webhooks remove, help webhooks test, or help webhooks deadletter.",
       "path": "webhooks",
       "usage": "webhooks add|list|remove|test|deadletter"
     },
@@ -254,7 +254,7 @@
     },
     {
       "description": "List webhook endpoints, filters and status.",
-      "details": "Never prints signing secrets. Does not require an interactive terminal.",
+      "details": "Never prints signing secrets. Requires an interactive terminal because endpoint URLs may carry tokens.",
       "path": "webhooks list",
       "usage": "webhooks list [--json]"
     },
@@ -272,7 +272,7 @@
     },
     {
       "description": "List events that could not be delivered, or empty the list.",
-      "details": "Entries are identifiers and outcomes only. --clear needs an interactive terminal.",
+      "details": "Entries are identifiers and outcomes only. Requires an interactive terminal because entries include endpoint URLs and chat IDs.",
       "path": "webhooks deadletter",
       "usage": "webhooks deadletter [NAME] [--json] [--clear]"
     },
