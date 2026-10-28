@@ -200,6 +200,9 @@ func (d *Dispatcher) deliver(ctx context.Context, account *storage.Account, ep E
 			d.fail("archive_error", err)
 			return
 		}
+		if page.Epoch != st.Epoch {
+			return
+		}
 		for _, c := range page.Changes {
 			if !ep.Matches(c) {
 				st.Sequence = c.Sequence
