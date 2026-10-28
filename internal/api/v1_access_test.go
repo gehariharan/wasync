@@ -423,3 +423,24 @@ func mustOpen(t *testing.T, path string) io.Reader {
 	}
 	return bytes.NewReader(b)
 }
+
+// Direct chats are named after the saved contact (see the chat name field), so
+// an agent can ask for a person by that name; the owner sees the candidate.
+func TestAccessRequestFindsADirectChatByItsContactName(t *testing.T) {
+	f := setupAccess(t)
+	const uncle = "15559876543@s.whatsapp.net"
+	if err := f.store.SaveDiscoveredChat(context.Background(), f.account, storage.Group{ID: uncle, Name: "RK Uncle"}); err != nil {
+		t.Fatal(err)
+	}
+	asked := f.ask(t, f.jit, map[string]any{"match": "rk uncle"}, 202)
+	pending := f.queue.Get(f.account, asked.RequestID)
+	if pending == nil || len(pending.Access.Candidates) != 1 || pending.Access.Candidates[0] != (approval.Candidate{Chat: uncle, Name: "RK Uncle"}) {
+		t.Fatalf("candidates %+v", pending)
+	}
+	if c := f.approve(t, asked.RequestID, map[string]string{"chat": uncle, "history": "now"}); c != 200 {
+		t.Fatalf("approval: %d", c)
+	}
+	if !f.group(t, uncle).Enabled {
+		t.Fatal("approved contact chat not enabled")
+	}
+}
