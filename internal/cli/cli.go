@@ -53,6 +53,9 @@ type App struct {
 	OpenClient    func(context.Context, string, *slog.Logger) (Client, error)
 	// WebhookSender overrides the SSRF-guarded sender, for tests.
 	WebhookSender *webhook.Sender
+	// OpenTUI replaces the full-screen TUI that an interactive login
+	// continues into, for tests.
+	OpenTUI action
 }
 
 func New() *App {
@@ -68,7 +71,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   tui [--offline]                            Full-screen group browser and capture (default)
   run                                        Start the TUI with capture
   serve [--offline]                          Headless capture and local API
-  login [--select=true|false] [--observe 30s]  Pair or reuse session, discover groups
+  login [--select=true|false] [--observe 30s]  Pair or reuse session, then open the TUI
   logout                                     Unlink device; preserve cached groups
   groups list [--refresh] [--json]            List cached groups; optionally connect
   groups enable GROUP_ID|--all               Enable selected or all cached groups
@@ -104,7 +107,7 @@ Global flags (before COMMAND):
   --version               Show installed build information
 
 The TUI captures enabled groups and imports history when WhatsApp delivers it.
-Login/observation commands remain diagnostics and discard message bodies.
+Non-interactive login and observation remain diagnostics and discard message bodies.
 Global flags precede the command. Ctrl-C cancels network operations.
 `
 
@@ -233,7 +236,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	}
 	defer func() { result = errors.Join(result, lock.Close()) }()
 	ctx := parent
-	if args[0] != "tui" && args[0] != "run" && args[0] != "serve" {
+	// Login bounds only its pairing and discovery phase; the TUI it may
+	// continue into runs until the user quits.
+	if args[0] != "tui" && args[0] != "run" && args[0] != "serve" && args[0] != "login" {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(parent, cfg.Timeout)
 		defer cancel()
@@ -243,7 +248,20 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 		return err
 	}
 	defer func() { result = errors.Join(result, store.Close()) }()
-	log := slog.New(slog.NewJSONHandler(a.Err, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	logOut := a.Err
+	if args[0] == "login" && a.Interactive {
+		// Raw JSON log lines would scribble over the QR code and the TUI.
+		file, err := localfs.OpenFile(filepath.Join(cfg.DataDir, "wasync.log"))
+		if err != nil {
+			return err
+		}
+		defer func() { result = errors.Join(result, file.Close()) }()
+		if _, err = file.Seek(0, io.SeekEnd); err != nil {
+			return err
+		}
+		logOut = file
+	}
+	log := slog.New(slog.NewJSONHandler(logOut, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	return action(ctx, cfg, store, log)
 }
 
@@ -274,21 +292,30 @@ func (a *App) parse(args []string) (action, error) {
 		if fs.NArg() != 0 || *observe < 0 {
 			return nil, fmt.Errorf("usage: wasync login [--select=true|false] [--observe 30s]")
 		}
+		// An interactive login continues into the TUI; --select=false or
+		// --observe keep the plain diagnostic output.
+		openTUI := a.Interactive && *selectGroups && *observe == 0
 		return func(ctx context.Context, cfg config.Config, s *storage.Store, l *slog.Logger) error {
-			return a.withClient(ctx, cfg, l, func(c Client) error {
+			phase, cancel := context.WithTimeout(ctx, cfg.Timeout)
+			defer cancel()
+			err := a.withClient(phase, cfg, l, func(c Client) error {
 				if discovery, ok := c.(interface {
 					EnableDiscovery(context.Context, *storage.Store) error
 				}); ok {
-					if err := discovery.EnableDiscovery(ctx, s); err != nil {
+					if err := discovery.EnableDiscovery(phase, s); err != nil {
 						return err
 					}
 				}
-				if err := c.Login(ctx, a.Out); err != nil {
+				if err := c.Login(phase, a.Out); err != nil {
 					return err
 				}
-				account, groups, err := discover(ctx, s, c)
+				account, groups, err := discover(phase, s, c)
 				if err != nil {
 					return fmt.Errorf("session saved, but group discovery failed; retry groups list --refresh: %w", err)
+				}
+				if openTUI {
+					fmt.Fprintf(a.Out, "Session authenticated. %d group(s) cached. Opening wasync...\n", len(groups))
+					return nil
 				}
 				fmt.Fprintln(a.Out, "Session authenticated. Groups cached; this diagnostic command does not archive messages.")
 				if err = a.printGroups(groups, false); err != nil {
@@ -296,7 +323,7 @@ func (a *App) parse(args []string) (action, error) {
 				}
 				if *selectGroups && len(groups) > 0 {
 					fmt.Fprintln(a.Out, "Enter group numbers to enable (comma separated), or press Enter to leave preferences unchanged:")
-					line, err := readLine(ctx, a.In)
+					line, err := readLine(phase, a.In)
 					if err != nil {
 						return err
 					}
@@ -304,7 +331,7 @@ func (a *App) parse(args []string) (action, error) {
 					if err != nil {
 						return err
 					}
-					if err = s.SetEnabled(ctx, account, ids, true); err != nil {
+					if err = s.SetEnabled(phase, account, ids, true); err != nil {
 						return err
 					}
 					fmt.Fprintf(a.Out, "Saved %d group preference(s). Launch wasync to start capture.\n", len(ids))
@@ -312,13 +339,22 @@ func (a *App) parse(args []string) (action, error) {
 				if *observe > 0 {
 					fmt.Fprintf(a.Out, "Observing connectivity for %s; event bodies are discarded. History replay is not guaranteed.\n", *observe)
 				}
-				if err = c.Observe(ctx, *observe); err != nil {
+				if err = c.Observe(phase, *observe); err != nil {
 					return err
 				}
 				o := c.Observation()
 				fmt.Fprintf(a.Out, "Observed events (all chats): live=%d history_batches=%d history_messages=%d. No content saved.\n", o.LiveEvents, o.HistoryBatches, o.HistoryMessages)
 				return nil
 			})
+			if err != nil || !openTUI {
+				return err
+			}
+			// The login connection is closed; the TUI opens its own with the
+			// saved session and captures enabled groups like plain wasync.
+			if a.OpenTUI != nil {
+				return a.OpenTUI(ctx, cfg, s, l)
+			}
+			return a.tuiAction(false)(ctx, cfg, s, l)
 		}, nil
 	case "logout":
 		if len(args) != 1 {

@@ -630,7 +630,13 @@ and outside Git.
 
 ## Scriptable diagnostics
 
-These commands remain useful for setup and scripting. They do not start capture:
+These commands remain useful for setup and scripting. They do not start capture.
+In an interactive terminal, plain `wasync login` is different: after pairing or
+reusing the saved session it caches your groups and opens the TUI, which captures
+enabled groups like running `wasync` with no command. `--select=false` or
+`--observe` keep the diagnostic output below; without a terminal, `login` always
+prints the group table and exits. Log lines go to `wasync.log` in the data
+directory during an interactive login.
 
 ```sh
 ./bin/wasync login --select=false
