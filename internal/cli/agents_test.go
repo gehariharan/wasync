@@ -8,19 +8,31 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/iotest"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 )
 
-func agentsApp(in string, interactive bool) (*App, *bytes.Buffer, *bytes.Buffer) {
+// agentsApp returns an App whose input is served one byte at a time (so each
+// prompt consumes only its own line) and whose whatsapp-axi config directory
+// is an empty temporary one, so a grant never saves into the real one.
+func agentsApp(t *testing.T, in string, interactive bool) (*App, *bytes.Buffer, *bytes.Buffer) {
+	t.Helper()
+	axiDir := filepath.Join(t.TempDir(), "axi-config")
 	var out, errs bytes.Buffer
-	return &App{In: strings.NewReader(in), Out: &out, Err: &errs, Interactive: interactive}, &out, &errs
+	return &App{In: iotest.OneByteReader(strings.NewReader(in)), Out: &out, Err: &errs, Interactive: interactive,
+		Getenv: func(k string) string {
+			if k == "WHATSAPP_AXI_CONFIG_DIR" {
+				return axiDir
+			}
+			return ""
+		}}, &out, &errs
 }
 
 func TestAgentsHelpWithoutLocalState(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
 	for _, args := range [][]string{{"agents", "--help"}, {"agents"}, {"help", "agents"}, {"agents", "grant", "--help"}} {
-		app, out, _ := agentsApp("", false)
+		app, out, _ := agentsApp(t, "", false)
 		if err := app.Run(context.Background(), append([]string{"--data-dir", dir}, args...)); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
@@ -38,7 +50,7 @@ func TestAgentsGrantRevokeRequireInteractiveConfirmation(t *testing.T) {
 	run := func(app *App, args ...string) error {
 		return app.Run(context.Background(), append([]string{"--data-dir", dir, "agents"}, args...))
 	}
-	app, out, _ := agentsApp("axi\n", false)
+	app, out, _ := agentsApp(t, "axi\n", false)
 	if err := run(app, "grant", "axi"); err == nil || !strings.Contains(err.Error(), "interactive terminal") || out.Len() != 0 {
 		t.Fatalf("non-interactive grant: %v %q", err, out.String())
 	}
@@ -46,16 +58,16 @@ func TestAgentsGrantRevokeRequireInteractiveConfirmation(t *testing.T) {
 		t.Fatal("registry written without confirmation")
 	}
 	for _, args := range [][]string{{"grant", "axi", "--yes"}, {"grant", "Bad_Name"}, {"grant", "axi", "--scope", "destructive"}, {"grant", "axi", "--scope", "send"}, {"grant", "axi", "--rate", "0"}, {"grant"}} {
-		app, _, _ = agentsApp("axi\n", true)
+		app, _, _ = agentsApp(t, "axi\n", true)
 		if err := run(app, args...); err == nil {
 			t.Fatalf("accepted %v", args)
 		}
 	}
-	app, out, _ = agentsApp("wrong\n", true)
+	app, out, _ = agentsApp(t, "wrong\n", true)
 	if err := run(app, "grant", "axi"); err == nil || out.Len() != 0 {
 		t.Fatal("mismatched confirmation accepted")
 	}
-	app, out, errs := agentsApp("axi\n", true)
+	app, out, errs := agentsApp(t, "axi\nn\n", true)
 	if err := run(app, "grant", "axi", "--scope", "read.chats,send", "--chat", "120363000000000001@g.us", "--rate", "30", "--expires", "720h"); err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +84,7 @@ func TestAgentsGrantRevokeRequireInteractiveConfirmation(t *testing.T) {
 	}
 
 	// list never shows secrets or hashes.
-	app, out, _ = agentsApp("", false)
+	app, out, _ = agentsApp(t, "", false)
 	if err := run(app, "list", "--json"); err != nil {
 		t.Fatal(err)
 	}
@@ -86,23 +98,23 @@ func TestAgentsGrantRevokeRequireInteractiveConfirmation(t *testing.T) {
 	if strings.Contains(out.String(), secret) || strings.Contains(out.String(), "sha256") {
 		t.Fatal("list leaks secret material")
 	}
-	app, out, _ = agentsApp("", false)
+	app, out, _ = agentsApp(t, "", false)
 	if err := run(app, "list"); err != nil || !strings.Contains(out.String(), "NAME") || !strings.Contains(out.String(), "read.chats,send") || strings.Contains(out.String(), secret) {
 		t.Fatalf("%v %q", err, out.String())
 	}
 
-	app, _, _ = agentsApp("axi\n", false)
+	app, _, _ = agentsApp(t, "axi\n", false)
 	if err := run(app, "revoke", "axi"); err == nil || !strings.Contains(err.Error(), "interactive terminal") {
 		t.Fatal("non-interactive revoke")
 	}
-	app, _, _ = agentsApp("nope\n", true)
+	app, _, _ = agentsApp(t, "nope\n", true)
 	if err := run(app, "revoke", "axi"); err == nil {
 		t.Fatal("revoke without matching confirmation")
 	}
 	if _, err := a.Authenticate("Bearer " + cred); err != nil {
 		t.Fatal("refused revoke changed state")
 	}
-	app, out, _ = agentsApp("axi\n", true)
+	app, out, _ = agentsApp(t, "axi\n", true)
 	if err := run(app, "revoke", "axi"); err != nil || !strings.Contains(out.String(), "revoked axi") {
 		t.Fatal(err)
 	}
@@ -113,7 +125,7 @@ func TestAgentsGrantRevokeRequireInteractiveConfirmation(t *testing.T) {
 	if !strings.Contains(string(audit), `"event":"grant"`) || !strings.Contains(string(audit), `"event":"revoke"`) || strings.Contains(string(audit), secret) {
 		t.Fatalf("audit %s", audit)
 	}
-	app, out, _ = agentsApp("", false)
+	app, out, _ = agentsApp(t, "", false)
 	if err := run(app, "list", "--json"); err != nil || !strings.Contains(out.String(), `"status":"revoked"`) {
 		t.Fatalf("%v %s", err, out.String())
 	}

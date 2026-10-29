@@ -181,7 +181,7 @@ func (r *GrantRequest) normalize() error {
 	}
 	for _, s := range r.Scopes {
 		if RequiresAllowlist(s) && len(r.Chats) == 0 && !r.OnDemand {
-			return fmt.Errorf("scope %s requires a chat allowlist; add --chat CHAT_JID for each permitted chat, or --on-demand to approve chats as the agent asks for them", s)
+			return fmt.Errorf("scope %s needs a chat list; add --on-demand (recommended: the agent asks for a chat by name and you approve each one in the TUI or with `wasync actions approve`), or --chat NAME for each chat to allow now", s)
 		}
 	}
 	if r.RatePerMinute == 0 {

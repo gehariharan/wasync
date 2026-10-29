@@ -80,10 +80,8 @@ func regrantCommand(c *Client, extraScope, extraChat string, rate int) string {
 	for s := range set {
 		needChat = needChat || RequiresAllowlist(s)
 	}
-	if c.OnDemand {
+	if c.OnDemand || (len(chats) == 0 && needChat) {
 		b.WriteString(" --on-demand")
-	} else if len(chats) == 0 && needChat {
-		b.WriteString(" --chat CHAT_JID")
 	}
 	for _, chat := range chats {
 		b.WriteString(" --chat " + chat)

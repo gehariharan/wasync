@@ -32,7 +32,7 @@ Transport selection is deterministic: probe `GET /api/v1/version`; if it answers
 
 CLI flags, AXI confirmations, agent skills and hook instructions are UX only. They are not a security boundary. The boundary is the wasync API:
 
-- **Scoped agent clients.** The human creates an agent client in wasync (`wasync agents grant NAME --scope …`, interactive terminal or TUI only; no `--yes`, not available over the API). wasync stores a hashed credential and its scopes in a private file in the data dir and prints the credential once. AXI uses this credential, never `api.token`, `send.token` or `approve.token`.
+- **Scoped agent clients.** The human creates an agent client in wasync (`wasync agents grant NAME --scope …`, interactive terminal or TUI only; no `--yes`, not available over the API). wasync stores a hashed credential and its scopes in a private file in the data dir and either saves the credential into AXI's private credential file (if the human agrees) or prints it once. AXI uses this credential, never `api.token`, `send.token` or `approve.token`.
 - **Scopes:** `read.chats`, `read.messages`, `read.media`, `observe`, `send`, `react`, `edit.own`, `chat.state`, `group.admin`, `capture.manage`, `export`. `destructive` is not grantable: revoke, delete, purge and clean always go through the existing approval queue with typed human confirmation.
 - **Constraints per grant:** chat allowlist (required for `send`, `react`, `edit.own`, `chat.state`, `group.admin`), rate limit, expiry. Enforced inside the handler before any whatsmeow call.
 - **Audit:** every v1 mutation attempt (allowed or denied) is appended to a private audit log with client name, scope, chat JID, ref, outcome and request ID. No message bodies or tokens.

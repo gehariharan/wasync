@@ -56,6 +56,9 @@ type App struct {
 	// OpenTUI replaces the full-screen TUI that an interactive login
 	// continues into, for tests.
 	OpenTUI action
+	// Getenv replaces os.Getenv where a command reads the environment the
+	// user's agents will see (the whatsapp-axi credential location), for tests.
+	Getenv func(string) string
 }
 
 func New() *App {

@@ -36,8 +36,11 @@ const CredentialPrefix = "wsa_"
 // CredentialFile is the file name inside the AXI config dir.
 const CredentialFile = "credential"
 
+// SaveHelp says where a new credential goes; grant offers to save it.
+const SaveHelp = "; wasync offers to save the credential where whatsapp-axi reads it (or set " + EnvToken + ")"
+
 // GrantHelp is the human action that produces a credential.
-const GrantHelp = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages` and store the printed credential in " + EnvToken + " or the whatsapp-axi credential file"
+const GrantHelp = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages`" + SaveHelp
 
 // Getenv abstracts os.Getenv for tests.
 type Getenv func(string) string

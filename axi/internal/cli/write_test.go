@@ -122,7 +122,7 @@ func TestReplyNeedsCredentialWithWriteScopeHelp(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,send --chat <chat-jid>")
+	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,send --on-demand", "offers to save the credential")
 	if n, _ := posts(srv); n != 0 {
 		t.Fatalf("posted without a credential: %d", n)
 	}

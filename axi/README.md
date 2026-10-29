@@ -40,8 +40,9 @@ Settings, all optional:
 ## Security model
 
 - **A human grants access, in wasync.** Run `wasync agents grant <name> --scope read.chats,read.messages`
-  in a terminal. wasync prints an agent credential once. Put it in `WHATSAPP_AXI_TOKEN`, or in the file
-  `credential` inside the whatsapp-axi config directory with mode `600`.
+  in a terminal. wasync offers to save the new agent credential straight into the file `credential` in the
+  whatsapp-axi config directory (private, mode `600`), so you copy nothing by hand. If you decline, it
+  prints the credential once; put it in `WHATSAPP_AXI_TOKEN` or that file yourself.
 - **whatsapp-axi never uses wasync's own tokens.** It refuses anything that is not a `wsa_` agent
   credential, so `api.token`, `send.token` and `approve.token` stay with wasync.
 - **Read-only by default, enforced by wasync.** Scopes, chat allowlists, rate limits, expiry and the audit
@@ -49,7 +50,8 @@ Settings, all optional:
   convenience, not a security boundary.
 - **Writes need a scope you grant, per chat.** `whatsapp-axi reply REF --text TEXT` posts to wasync's API,
   which refuses it unless the credential holds `send` and the message's chat is in its allowlist
-  (`wasync agents grant <name> --scope read.chats,read.messages,send --chat <chat-jid>`).
+  (`wasync agents grant <name> --scope read.chats,read.messages,send --on-demand`, then the person
+  approves each chat when you ask for it).
   `whatsapp-axi react REF EMOJI|--remove` needs the separate `react` scope the same way, and
   `whatsapp-axi edit REF --text TEXT` the `edit.own` scope; wasync also checks that the message is yours,
   is text and is inside WhatsApp's edit window. whatsapp-axi adds

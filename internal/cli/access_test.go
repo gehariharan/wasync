@@ -40,14 +40,14 @@ func TestAgentsGrantOnDemandAndList(t *testing.T) {
 	run := func(app *App, args ...string) error {
 		return app.Run(context.Background(), append([]string{"--data-dir", dir, "agents"}, args...))
 	}
-	app, out, errs := agentsApp("jit\n", true)
+	app, out, errs := agentsApp(t, "jit\nn\n", true)
 	if err := run(app, "grant", "jit", "--scope", "read.chats,read.messages,send", "--on-demand"); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(errs.String(), "only those you approve") || !strings.HasPrefix(out.String(), "wsa_") {
 		t.Fatalf("grant output %q %q", out.String(), errs.String())
 	}
-	app, out, _ = agentsApp("", false)
+	app, out, _ = agentsApp(t, "", false)
 	if err := run(app, "list"); err != nil || !strings.Contains(out.String(), "none yet (on demand)") {
 		t.Fatalf("list: %v %q", err, out.String())
 	}
@@ -55,7 +55,7 @@ func TestAgentsGrantOnDemandAndList(t *testing.T) {
 	if _, err := agentauth.GrantChatAccess(dir, client.ID, "one@g.us", []string{agentauth.ScopeReadChats}, "r", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	app, out, _ = agentsApp("", false)
+	app, out, _ = agentsApp(t, "", false)
 	if err := run(app, "list", "--json"); err != nil || !strings.Contains(out.String(), `"granted_chats":[{"chat":"one@g.us","scopes":["read.chats"]`) || !strings.Contains(out.String(), `"on_demand":true`) {
 		t.Fatalf("json: %v %q", err, out.String())
 	}
