@@ -31,6 +31,14 @@ cleanup() {
 trap cleanup EXIT
 fail() { echo "test-macos-pkg: FAIL: $*" >&2; exit 1; }
 pass() { echo "test-macos-pkg: ok - $*"; }
+# Run Installer with its output visible; if it fails, show why from its own log.
+run_installer() {
+  sudo installer -pkg "$package" -target / -verboseR "$@" || {
+    status=$?
+    sudo tail -n 60 /var/log/install.log >&2 || true
+    fail "installer exited with status $status"
+  }
+}
 
 pkgutil --expand-full "$package" "$work/expanded"
 [[ -x "$work/expanded/wasync.pkg/Payload/usr/local/bin/wasync" ]] || fail "wasync is not in the wasync component"
@@ -64,7 +72,7 @@ fi
 if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]]; then
   if [[ -e /usr/local/bin/wasync || -e /usr/local/bin/whatsapp-axi ]]; then fail "refusing to install over an existing wasync"; fi
   installed=1
-  sudo installer -pkg "$package" -target / >/dev/null
+  run_installer
   [[ -x /usr/local/bin/wasync ]] || fail "default install did not provide wasync"
   [[ ! -e /usr/local/bin/whatsapp-axi ]] || fail "default install added whatsapp-axi"
   pass "default install provides wasync only"
@@ -77,7 +85,7 @@ if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hoste
 <key>choiceIdentifier</key><string>axi</string>
 </dict></array></plist>
 PLIST
-  sudo installer -pkg "$package" -target / -applyChoiceChangesXML "$work/choose-axi.plist" >/dev/null
+  run_installer -applyChoiceChangesXML "$work/choose-axi.plist"
   [[ "$(/usr/local/bin/whatsapp-axi --version)" == "$version" ]] || fail "installed whatsapp-axi is not version $version"
   /usr/local/bin/wasync version | grep -qF "wasync $version " || fail "installed wasync is not version $version"
   python3 "$project_dir/scripts/smoke-installed.py" /usr/local/bin/wasync "$version" "$architecture" /usr/local/bin/whatsapp-axi
