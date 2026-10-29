@@ -4,11 +4,13 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"testing/iotest"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/storage"
 )
 
@@ -39,7 +41,7 @@ func grantArgs(dir string, args ...string) []string {
 func seedArchive(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "data")
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := localfs.EnsureDir(dir); err != nil {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
@@ -200,11 +202,13 @@ func TestGrantSavesCredentialForAxiPrivately(t *testing.T) {
 	if !strings.Contains(errs.String(), credPath) {
 		t.Fatalf("saved path not reported: %q", errs.String())
 	}
-	if fi, _ := os.Stat(credPath); fi.Mode().Perm() != 0o600 {
-		t.Fatalf("mode %v", fi.Mode().Perm())
-	}
-	if di, _ := os.Stat(filepath.Dir(credPath)); di.Mode().Perm() != 0o700 {
-		t.Fatalf("dir mode %v", di.Mode().Perm())
+	if runtime.GOOS != "windows" {
+		if fi, _ := os.Stat(credPath); fi.Mode().Perm() != 0o600 {
+			t.Fatalf("mode %v", fi.Mode().Perm())
+		}
+		if di, _ := os.Stat(filepath.Dir(credPath)); di.Mode().Perm() != 0o700 {
+			t.Fatalf("dir mode %v", di.Mode().Perm())
+		}
 	}
 	if _, err := agentauth.NewAuthorizer(dir).Authenticate("Bearer " + secret); err != nil {
 		t.Fatalf("saved credential does not authenticate: %v", err)
@@ -264,7 +268,12 @@ func TestGrantSaveFailureStillPrintsCredential(t *testing.T) {
 	if err := app.Run(context.Background(), grantArgs(dir, "helper", "--on-demand")); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(strings.TrimSpace(out.String()), "wsa_") || !strings.Contains(errs.String(), "not saving there") {
+	// Unix fails reading the old credential, Windows fails creating the
+	// directory; either way nothing is saved and the credential is printed.
+	if !strings.HasPrefix(strings.TrimSpace(out.String()), "wsa_") || strings.Contains(errs.String(), "Saved the credential") {
 		t.Fatalf("out=%q err=%q", out.String(), errs.String())
+	}
+	if b, _ := os.ReadFile(filepath.Dir(credPath)); string(b) != "x" {
+		t.Fatalf("blocking file changed: %q", b)
 	}
 }
