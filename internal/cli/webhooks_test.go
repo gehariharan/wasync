@@ -19,7 +19,7 @@ import (
 func TestWebhooksHelpWithoutLocalState(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "absent")
 	for _, args := range [][]string{{"webhooks", "--help"}, {"webhooks"}, {"help", "webhooks"}, {"webhooks", "add", "--help"}, {"help", "webhooks", "deadletter"}} {
-		app, out, _ := agentsApp("", false)
+		app, out, _ := agentsApp(t, "", false)
 		if err := app.Run(context.Background(), append([]string{"--data-dir", dir}, args...)); err != nil {
 			t.Fatalf("%v: %v", args, err)
 		}
@@ -56,7 +56,7 @@ func TestWebhooksAddRemoveRequireInteractiveConfirmation(t *testing.T) {
 		return app.Run(context.Background(), append([]string{"--data-dir", dir, "webhooks"}, args...))
 	}
 	const target = "https://example.com/hook"
-	app, out, _ := agentsApp("crm\n", false)
+	app, out, _ := agentsApp(t, "crm\n", false)
 	if err := run(app, "add", "crm", "--url", target); err == nil || !strings.Contains(err.Error(), "interactive terminal") || out.Len() != 0 {
 		t.Fatalf("non-interactive add: %v %q", err, out.String())
 	}
@@ -73,16 +73,16 @@ func TestWebhooksAddRemoveRequireInteractiveConfirmation(t *testing.T) {
 		{"add", "crm", "--url", target, "--op", "message.deleted"},
 		{"add", "crm", "--url", target, "--chat", "nonsense"},
 	} {
-		app, _, _ = agentsApp("crm\n", true)
+		app, _, _ = agentsApp(t, "crm\n", true)
 		if err := run(app, args...); err == nil {
 			t.Fatalf("accepted %v", args)
 		}
 	}
-	app, out, _ = agentsApp("wrong\n", true)
+	app, out, _ = agentsApp(t, "wrong\n", true)
 	if err := run(app, "add", "crm", "--url", target); err == nil || out.Len() != 0 {
 		t.Fatal("mismatched confirmation accepted")
 	}
-	app, out, errs := agentsApp("crm\n", true)
+	app, out, errs := agentsApp(t, "crm\n", true)
 	if err := run(app, "add", "crm", "--url", target, "--chat", "120363000000000001@g.us", "--op", "message.created,message.updated"); err != nil {
 		t.Fatal(err)
 	}
@@ -94,11 +94,11 @@ func TestWebhooksAddRemoveRequireInteractiveConfirmation(t *testing.T) {
 		t.Fatalf("warning %q", errs.String())
 	}
 
-	app, out, _ = agentsApp("", false)
+	app, out, _ = agentsApp(t, "", false)
 	if err := run(app, "list", "--json"); err == nil || !strings.Contains(err.Error(), "interactive terminal") || out.Len() != 0 {
 		t.Fatalf("non-interactive list: %v %q", err, out.String())
 	}
-	app, out, _ = agentsApp("", true)
+	app, out, _ = agentsApp(t, "", true)
 	if err := run(app, "list", "--json"); err != nil {
 		t.Fatal(err)
 	}
@@ -111,20 +111,20 @@ func TestWebhooksAddRemoveRequireInteractiveConfirmation(t *testing.T) {
 	if err := json.Unmarshal(out.Bytes(), &listed); err != nil || len(listed.Webhooks) != 1 || listed.Webhooks[0].Status != "active" || listed.Webhooks[0].Chats[0] != "120363000000000001@g.us" {
 		t.Fatalf("list %s %v", out.String(), err)
 	}
-	app, out, _ = agentsApp("", true)
+	app, out, _ = agentsApp(t, "", true)
 	if err := run(app, "list"); err != nil || !strings.Contains(out.String(), "crm") || strings.Contains(out.String(), secret) {
 		t.Fatalf("table list: %v %q", err, out.String())
 	}
 
-	app, _, _ = agentsApp("crm\n", false)
+	app, _, _ = agentsApp(t, "crm\n", false)
 	if err := run(app, "remove", "crm"); err == nil || !strings.Contains(err.Error(), "interactive terminal") {
 		t.Fatalf("non-interactive remove: %v", err)
 	}
-	app, _, _ = agentsApp("nope\n", true)
+	app, _, _ = agentsApp(t, "nope\n", true)
 	if err := run(app, "remove", "crm"); err == nil {
 		t.Fatal("mismatched removal accepted")
 	}
-	app, out, _ = agentsApp("crm\n", true)
+	app, out, _ = agentsApp(t, "crm\n", true)
 	if err := run(app, "remove", "crm"); err != nil || !strings.Contains(out.String(), "removed crm") {
 		t.Fatalf("remove: %v %q", err, out.String())
 	}
@@ -159,7 +159,7 @@ func TestWebhooksTestSendsSignedPingThroughTheGuard(t *testing.T) {
 		w.WriteHeader(204)
 	}))
 	defer srv.Close()
-	app, out, _ := agentsApp("", true)
+	app, out, _ := agentsApp(t, "", true)
 	app.WebhookSender = testSender(t, srv)
 	if err = app.Run(context.Background(), []string{"--data-dir", dir, "webhooks", "test", "crm"}); err != nil {
 		t.Fatal(err)
@@ -167,12 +167,12 @@ func TestWebhooksTestSendsSignedPingThroughTheGuard(t *testing.T) {
 	if got.Type != "ping" || !strings.Contains(out.String(), "delivered ping") || !strings.Contains(out.String(), "204") {
 		t.Fatalf("ping %+v out %q", got, out.String())
 	}
-	app, out, _ = agentsApp("", false)
+	app, out, _ = agentsApp(t, "", false)
 	if err = app.Run(context.Background(), []string{"--data-dir", dir, "webhooks", "test", "crm"}); err == nil || out.Len() != 0 {
 		t.Fatalf("non-interactive test: %v", err)
 	}
 	// A name that resolves privately is refused without any connection.
-	app, _, _ = agentsApp("", true)
+	app, _, _ = agentsApp(t, "", true)
 	app.WebhookSender = webhook.NewSender(webhook.NewClient(webhook.ClientOptions{Resolver: privateResolver{}}))
 	if err = app.Run(context.Background(), []string{"--data-dir", dir, "webhooks", "test", "crm"}); err == nil || !strings.Contains(err.Error(), webhook.CodeBlocked) {
 		t.Fatalf("private resolution: %v", err)
@@ -189,7 +189,7 @@ func TestWebhooksDeadLetterCommand(t *testing.T) {
 		t.Fatal(err)
 	}
 	run := func(interactive bool, args ...string) (string, error) {
-		app, out, _ := agentsApp("", interactive)
+		app, out, _ := agentsApp(t, "", interactive)
 		err := app.Run(context.Background(), append([]string{"--data-dir", dir, "webhooks", "deadletter"}, args...))
 		return out.String(), err
 	}
