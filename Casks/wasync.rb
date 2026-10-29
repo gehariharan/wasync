@@ -2,9 +2,9 @@
 cask "wasync" do
   arch arm: "arm64", intel: "amd64"
 
-  version "0.1.0-preview.20261029001709"
-  sha256 arm:   "17076d8ebb9d19354ee32ed61c9431b82c5a6e2fb6d12147bc87e55610b5a007",
-         intel: "f40b2d52acfafedb71148b1573d3cd85153a6374f6afb7651215561e91b3b735"
+  version "0.1.0-preview.20261029004218"
+  sha256 arm:   "bed471809f23f9a187a6eff9be0b6ede0e88d65b44b76f2d743db759c21cec30",
+         intel: "2ba66c2194671066615b7cb6a398d24280173965e9325c565324d7727ca106e0"
 
   url "https://github.com/gehariharan/wasync/releases/download/v#{version}/wasync_#{version}_darwin_#{arch}.tar.gz"
   name "wasync"
@@ -15,4 +15,10 @@ cask "wasync" do
 
 
   binary "wasync"
+
+  caveats <<~EOS
+    wasync is installed. To let AI agents such as Claude Code, Codex or OpenCode use it,
+    also install the optional AXI for agents tool (it changes no agent settings by itself):
+      brew install gehariharan/tap/whatsapp-axi
+  EOS
 end
