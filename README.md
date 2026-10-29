@@ -187,7 +187,7 @@ credential file.
 
    `--on-demand` starts the agent with no chats at all; it asks for each chat by
    name and you decide. Type the agent's name to confirm. wasync then asks
-   **"Save this credential for whatsapp-axi now? [Y/n]"**. Press Enter: it writes
+   **"Save this credential for whatsapp-axi now, at …? [Y/n]"**. Press Enter: it writes
    the credential into whatsapp-axi's private credential file (owner-only, in
    whatsapp-axi's config folder) and does not print it. If you say no, it prints
    the credential once so you can put it in `WHATSAPP_AXI_TOKEN` or your agent's
@@ -1128,9 +1128,10 @@ whatsapp-axi's credential file, so there is nothing to copy by hand (see
 When the agent needs a chat it cannot use, its refusal points at
 `whatsapp-axi access request --chat JID` for that exact chat; an agent can also ask
 by name with `--match NAME` (a contact or group name, or a phone number). `--send`
-also asks to send, reply and react; `--edit` also asks to edit its own messages. wasync resolves the request to concrete candidate chats that
-only you see and queues a pending request with the same rules as the destructive
-actions above: five-minute expiry, no replay, typed confirmation, no `--yes`.
+also asks to send, reply and react; `--edit` also asks to edit its own messages.
+wasync resolves the request to concrete candidate chats that only you see and
+queues a pending request with the same rules as the destructive actions above:
+five-minute expiry, no replay, typed confirmation, no `--yes`.
 The agent is always told "pending", whether or not anything matched, so it
 cannot use a request to find out which chats you have. A request that matched
 nothing shows as "no chat matched" in the TUI and `wasync actions list`; you can
