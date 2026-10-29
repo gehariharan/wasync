@@ -225,7 +225,7 @@ func (a *App) hints(d detection) []string {
 			h = append(h, "Credential problem: "+ce.Message+"; "+ce.Help)
 		}
 	} else if d.cred == nil && (d.state == StateOnline || d.state == StateOffline) {
-		h = append(h, "Ask the user to run `wasync agents grant <name> --scope read.chats,read.messages`, then set "+config.EnvToken+" or save it to "+a.collapseHome(d.settings.ConfigDir)+"/"+config.CredentialFile+" (mode 600)")
+		h = append(h, "Ask the user to run `wasync agents grant <name> --scope read.chats,read.messages`"+config.SaveHelp)
 	}
 	if d.compatErr != nil && d.state != StateIncompatible {
 		if c := compatOf(d); c.Help != "" {

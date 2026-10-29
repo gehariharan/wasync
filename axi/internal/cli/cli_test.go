@@ -210,7 +210,10 @@ func TestHomeOnlineWithoutCredentialHintsGrant(t *testing.T) {
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
 	out, _ := h.run(t)
-	mustContain(t, out, "credential: missing", "wasync agents grant <name> --scope read.chats,read.messages", "WHATSAPP_AXI_TOKEN")
+	mustContain(t, out, "credential: missing", "wasync agents grant <name> --scope read.chats,read.messages", "wasync offers to save the credential where whatsapp-axi reads it", "WHATSAPP_AXI_TOKEN")
+	if strings.Contains(out, "mode 600") {
+		t.Fatalf("home hint still asks for a manual credential save:\n%s", out)
+	}
 }
 
 func TestHomeOfflineUsesQuery(t *testing.T) {
