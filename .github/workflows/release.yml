@@ -88,6 +88,16 @@ jobs:
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
         run: bash scripts/package.sh "$PACKAGE_VERSION"
+      - name: Check the installers offer AXI for agents as an opt-in, at the release version
+        env:
+          PACKAGE_VERSION: ${{ needs.version.outputs.value }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            bash scripts/test-macos-pkg.sh "dist/$PACKAGE_VERSION/$PLATFORM/wasync_${PACKAGE_VERSION}_${PLATFORM}.pkg" "$PACKAGE_VERSION" "${PLATFORM#darwin_}"
+          else
+            bash scripts/test-install-linux.sh "dist/$PACKAGE_VERSION/$PLATFORM/wasync_${PACKAGE_VERSION}_${PLATFORM}.tar.gz" "$PACKAGE_VERSION"
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ matrix.platform }}
@@ -123,6 +133,11 @@ jobs:
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
         run: ./scripts/package-windows.ps1 -Version $env:PACKAGE_VERSION
+      - name: Check Setup offers AXI for agents as an opt-in, and the ZIP carries it
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.version.outputs.value }}
+        run: ./scripts/test-windows-installer.ps1 -Version $env:PACKAGE_VERSION
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-windows_amd64
@@ -247,8 +262,9 @@ jobs:
           cat > dist/release/RELEASE_NOTES.md <<'NOTES'
           Prebuilt preview packages. No Go compiler is required on the user's computer.
 
-          - macOS 15+: download the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .pkg and open it. Then run `wasync` in Terminal.
-          - Linux: download the matching linux archive; extract and install the executable into a directory on PATH. Builds target glibc 2.35 or newer.
+          - macOS 15+: download the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .pkg and open it. The installer lists "AXI for agents" (whatsapp-axi) as an optional part, off unless you tick it. Then run `wasync` in Terminal.
+          - Linux: download the matching linux archive, extract it and run `./install.sh`. It asks whether to also install whatsapp-axi (AXI for agents); the answer is no unless you say yes (`--with-axi` or `--without-axi` skips the question). Builds target glibc 2.35 or newer.
+          - Windows: Setup has an unticked "AXI for agents" option; the portable ZIP includes whatsapp-axi.exe.
           - `wasync query --help` documents the agent query interface.
           - Verify downloads against checksums.txt.
 

@@ -26,16 +26,27 @@ jobs:
       - run: go vet -tags sqlite_fts5 ./...
       - name: Exercise the real wasync and AXI pair with synthetic data
         run: |
-          go build -tags sqlite_fts5 -o "$RUNNER_TEMP/wasync" ./cmd/wasync
-          (cd axi && CGO_ENABLED=0 go build -o "$RUNNER_TEMP/whatsapp-axi" ./cmd/whatsapp-axi)
+          # Stamp both tools with one version, as a release does.
+          go build -tags sqlite_fts5 -ldflags "-X github.com/gehariharan/wasync/internal/buildinfo.Version=0.0.0-ci" -o "$RUNNER_TEMP/wasync" ./cmd/wasync
+          (cd axi && CGO_ENABLED=0 go build -ldflags "-X github.com/gehariharan/wasync/axi/internal/buildinfo.Version=0.0.0-ci" -o "$RUNNER_TEMP/whatsapp-axi" ./cmd/whatsapp-axi)
           python3 scripts/smoke-pair.py "$RUNNER_TEMP/wasync" "$RUNNER_TEMP/whatsapp-axi"
       - name: Exercise the offline terminal UI in a real terminal, as the release check does
-        run: python3 scripts/smoke-installed.py "$RUNNER_TEMP/wasync" dev "$(go env GOARCH)"
-      - name: Build the release archive as release.yml does (unsigned)
+        run: python3 scripts/smoke-installed.py "$RUNNER_TEMP/wasync" 0.0.0-ci "$(go env GOARCH)" "$RUNNER_TEMP/whatsapp-axi"
+      - name: Check the Linux install script and its prompts
+        if: runner.os == 'Linux'
+        run: bash scripts/test-install-linux.sh
+      - name: Build the release archive as release.yml does (unsigned), then install it both ways
         if: runner.os == 'Linux'
         run: |
           scripts/package.sh 0.0.0-ci.1
-          tar -tzf dist/0.0.0-ci.1/linux_*/wasync_0.0.0-ci.1_linux_*.tar.gz | grep -qx wasync
+          archive="$(ls dist/0.0.0-ci.1/linux_*/wasync_0.0.0-ci.1_linux_*.tar.gz)"
+          tar -tzf "$archive" | grep -qx wasync
+          bash scripts/test-install-linux.sh "$archive" 0.0.0-ci.1
+      - name: Build the macOS installer as release.yml does (unsigned), then install it both ways
+        if: runner.os == 'macOS'
+        run: |
+          scripts/package.sh 0.0.0-ci.1
+          bash scripts/test-macos-pkg.sh dist/0.0.0-ci.1/darwin_*/wasync_0.0.0-ci.1_darwin_*.pkg 0.0.0-ci.1 "$(go env GOARCH)"
   windows:
     runs-on: windows-2022
     timeout-minutes: 30
@@ -69,6 +80,9 @@ jobs:
       - name: Build review installer and portable ZIP
         shell: pwsh
         run: ./scripts/package-windows.ps1 -Version 0.1.0-preview.pr
+      - name: Install with and without AXI for agents, and check the ZIP
+        shell: pwsh
+        run: ./scripts/test-windows-installer.ps1 -Version 0.1.0-preview.pr
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-review-installer

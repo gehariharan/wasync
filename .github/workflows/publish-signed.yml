@@ -82,9 +82,9 @@ jobs:
           cat > dist/release-notes.md <<'NOTES'
           Prebuilt preview packages. No Go compiler is required.
 
-          macOS 15+: Apple Silicon and Intel executables are Developer ID signed and notarized. The matching .pkg installers are signed, notarized, and carry stapled tickets.
-          Windows 10/11 x64: download the windows_amd64-setup.exe for a per-user installation, or extract the portable ZIP. Windows previews are currently unsigned; Microsoft Artifact Signing integration is pending.
-          Linux: extract the matching archive and install wasync on PATH (glibc 2.35+).
+          macOS 15+: Apple Silicon and Intel executables are Developer ID signed and notarized. The matching .pkg installers are signed, notarized, and carry stapled tickets. Each installer lists "AXI for agents" (whatsapp-axi) as an optional part that is off unless you tick it.
+          Windows 10/11 x64: download the windows_amd64-setup.exe for a per-user installation (AXI for agents is an unticked option), or extract the portable ZIP, which includes whatsapp-axi.exe. Windows previews are currently unsigned; Microsoft Artifact Signing integration is pending.
+          Linux: extract the matching archive and run ./install.sh (glibc 2.35+). It asks before installing whatsapp-axi (AXI for agents); the default is no.
           Homebrew: follow the platform-specific installation and dependency-trust instructions in https://github.com/gehariharan/wasync#homebrew-installation. Linux installs both tools through the AXI formula; macOS uses the signed core cask alongside the AXI formula. Intel and Apple Silicon downloads select the native architecture automatically.
           Run wasync for the TUI, or wasync query --help for the agent query interface.
           Verify downloads against checksums.txt. Installation preserves per-user archives and pairing credentials.

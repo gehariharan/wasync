@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-"""Exercise an installed release using temporary synthetic data, never WhatsApp."""
+"""Exercise an installed release using temporary synthetic data, never WhatsApp.
+
+Usage: smoke-installed.py WASYNC VERSION ARCHITECTURE [WHATSAPP_AXI]
+
+With the optional whatsapp-axi path, the same release's agent CLI must report the
+same version and read the synthetic archive through wasync.
+"""
 import fcntl
 import json
 import os
@@ -15,7 +21,9 @@ import tempfile
 import termios
 import time
 
-binary, version, architecture = sys.argv[1:]
+binary, version, architecture, *optional = sys.argv[1:]
+axi = optional[0] if optional else None
+assert len(optional) <= 1, "at most one optional argument: the whatsapp-axi path"
 reported = subprocess.check_output([binary, "version"], text=True, timeout=10)
 assert f"wasync {version} " in reported, reported
 assert f"{'darwin' if sys.platform == 'darwin' else 'linux'}/{architecture}" in reported, reported
@@ -55,6 +63,23 @@ with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
         service.send_signal(signal.SIGTERM)
         _, errors = service.communicate(timeout=10)
         assert service.returncode == 0, errors
+
+    if axi:
+        # Both tools come from one release. With no owner running, whatsapp-axi
+        # reads the archive by calling the installed wasync, so no credential is used.
+        assert subprocess.check_output([axi, "--version"], text=True, timeout=10).strip() == version
+        environment = os.environ.copy()
+        environment.update({"WASYNC_BIN": binary, "WASYNC_DATA_DIR": data,
+                            "WHATSAPP_AXI_CONFIG_DIR": str(Path(directory) / "axi-config"),
+                            "WHATSAPP_AXI_AGENT_HOME": str(Path(directory) / "agents")})
+        result = subprocess.run([axi, "messages", "synthetic@g.us", "--json"], capture_output=True, text=True,
+                                env=environment, timeout=15)
+        assert result.returncode == 0, result.stdout + result.stderr
+        answer = json.loads(result.stdout)
+        assert answer["transport"] == "query", answer
+        assert answer["data"]["items"][0]["text_content"] == "synthetic content", answer
+        # Installing the tool must not have configured any agent.
+        assert not (Path(directory) / "agents").exists(), "whatsapp-axi wrote agent settings on its own"
 
     # A real terminal is required to validate offline TUI startup and exit.
     master, slave = pty.openpty()
@@ -122,4 +147,5 @@ with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
                 ui.wait(timeout=5)
         os.close(master)
 
-print(f"Installed {version} ({architecture}): version, concurrent JSON queries, FTS5 search, pagination, shutdown and offline TUI passed.")
+suffix = " Matching whatsapp-axi read the archive." if axi else ""
+print(f"Installed {version} ({architecture}): version, concurrent JSON queries, FTS5 search, pagination, shutdown and offline TUI passed.{suffix}")

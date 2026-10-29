@@ -19,8 +19,54 @@ explicitly trusts only the owned formulas and cask it installs, including the
 Linux core dependency. See [Homebrew installation](../README.md#homebrew-installation)
 for dependency trust and source-build toolchain behavior.
 
+Installer checks cover AXI for agents (see [Installers and the AXI choice](#installers-and-the-axi-choice)):
+PR CI builds the unsigned macOS installer and installs it twice on the hosted Mac
+runners (default choices, then with AXI ticked), builds the Linux archive and runs its
+`install.sh` with and without `--with-axi`, and builds the Windows Setup program and
+ZIP and runs Setup silently with and without the `installaxi` task. The release
+workflow repeats those checks on the packages it is about to publish, and
+`scripts/verify-signed-release.sh` repeats the Mac ones on the signed installer.
+
 Locally use `bash scripts/check.sh` with Go 1.27.2 on PATH. CI and packaging
 never use a paired account. Review both modules and run no-mistakes before merge.
+
+## Installers and the AXI choice
+
+wasync (the app and engine) and `whatsapp-axi` (the agent command) stay separate
+programs, as in [ADR-002](architecture/ADR-002-monorepo.md), but every installer that
+can offer a choice installs `whatsapp-axi` from the same release on request. It is
+always off by default. Both binaries get the same `VERSION`, and installers refuse to
+build or verify if they do not.
+
+| Channel | What ships | How AXI for agents is chosen |
+| --- | --- | --- |
+| macOS `.pkg` | A product archive with two components: `wasync` (locked on) and `whatsapp-axi` (starts unticked), defined by `packaging/macos/distribution.xml` | Installer's Customize step |
+| macOS Homebrew cask | `wasync` only | `brew install gehariharan/tap/whatsapp-axi` (the cask prints this) |
+| Linux archive | `wasync`, `whatsapp-axi`, `install.sh` (from `packaging/linux/`) | `install.sh` asks, default no; `--with-axi`/`--without-axi` |
+| Linux Homebrew | The `whatsapp-axi` formula depends on `wasync` | Install the formula or not |
+| Windows Setup | `whatsapp-axi.exe` is a file of the unticked `installaxi` task in `packaging/windows/wasync.iss` | Tasks page; silent `/MERGETASKS="installaxi"` |
+| Windows ZIP | Both executables | Portable; nothing is installed or configured by extracting |
+| Microsoft Store MSIX | `wasync` only | Not offered, by design |
+
+The MSIX stays wasync only. A Store package cannot prompt, so including
+`whatsapp-axi` would install it for every Store user and add a second executable to the
+certified package; a real choice there would mean a separate Store add-on, which needs
+a new Partner Center product and certification. That is an **owner-only action**
+and was not started. Nothing was submitted to the Store.
+
+No installer changes agent configuration. Where the installer can run a command as
+the user (the Linux script and Windows Setup's last page) it offers
+`whatsapp-axi setup skill` and `whatsapp-axi setup hooks` as separate, off-by-default
+steps; the macOS installer cannot, so its last page only says to run them.
+
+macOS details. `scripts/package.sh` builds `wasync.pkg` and `whatsapp-axi.pkg`
+with `pkgbuild` and joins them with `productbuild` (signed with the Developer ID
+Installer identity). The signing step expands the installer, replaces both executables
+with the signed ones, rebuilds both components with the same identifiers
+(`com.gehariharan.wasynctuicli` and `com.gehariharan.wasynctuicli.axi`) and the
+installer's own `Distribution` and `Resources`, then signs and notarizes it. The
+signed standalone `whatsapp-axi` is the one placed in the installer, so the two are
+byte-identical; `verify-signed-release.sh` checks that.
 
 ## Preview publication
 
@@ -31,6 +77,9 @@ increasing preview version, `0.1.0-preview.YYYYMMDDHHMMSS` (UTC), and invokes th
 common `release.yml`. That workflow creates `vVERSION` and `axi/vVERSION`
 at the same commit, tests/builds both binaries, executes native AXI smoke tests,
 generates both source formulas from the root source archive, and creates a draft.
+The native Mac and Linux jobs build `whatsapp-axi` themselves from the same checkout
+and version, so the macOS installer and the Linux archive can carry it; Windows does
+the same in `scripts/package-windows.ps1`.
 
 `auto-release.yml` then signs/notarizes both Mac binaries and the existing core
 installers on the `wasync-signing` Mac runner. Certificates and notary credentials
@@ -81,9 +130,10 @@ scripts/package.sh 0.1.0-preview.1
 ```
 
 Outputs are written under `dist/VERSION/OS_ARCH/` (ignored by Git). Each build
-contains version, commit and timestamp metadata, dependency license notices, a
-compressed executable archive and checksums. macOS builds additionally contain
-a native `.pkg`. The build compiles SQLite with FTS5 enabled and embeds the
+contains version, commit and timestamp metadata, dependency license notices (for both
+tools), a compressed executable archive and checksums. The Linux archive holds both
+executables and `install.sh`; the macOS archive holds `wasync` only. macOS builds
+additionally contain a native `.pkg` with the optional `whatsapp-axi` component. The build compiles SQLite with FTS5 enabled and embeds the
 result in the executable; it requires no separately installed SQLite package.
 Linux executables use the build platform's libc, so the workflow uses Ubuntu
 22.04 (glibc 2.35). macOS builds target macOS 15 or later.
@@ -153,8 +203,10 @@ does not make credentials available to later connections.
 
    Enter the Mac login password at the Keychain prompt. Approve signing-key
    access on that Mac if macOS requests it. The script verifies CPU types and
-   matching core archive/installer executables, signs and notarizes both binaries
-   on both architectures, validates Gatekeeper acceptance, and replaces the six
+   matching core archive/installer executables, requires the installer's AXI
+   component to match the release version and CPU, signs and notarizes both binaries
+   on both architectures, rebuilds the two-component installer around the signed
+   binaries, validates Gatekeeper acceptance, and replaces the six
    assets only after all checks succeed. No executable is launched during signing.
    For first-time signing-key approval, run this from Terminal directly on the
    signing Mac and choose Always Allow for the signing tools when prompted.
