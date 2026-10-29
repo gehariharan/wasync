@@ -38,6 +38,8 @@ type App struct {
 	Executable   func() (string, error)
 	HomeDir      func() (string, error)
 	LookPath     func(file string) (string, error) // PATH lookup for the hook command
+	Stdin        io.Reader                         // the session-end hook's payload; nil when stdin is a terminal
+	Getwd        func() (string, error)            // the directory the session record is kept for
 	ProbeTimeout time.Duration                     // API probe; default 750ms
 	QueryTimeout time.Duration                     // offline version probe; default 10s
 	Compat       *compat.Matrix
@@ -45,7 +47,16 @@ type App struct {
 
 // New returns an App wired to the real process.
 func New(out io.Writer) *App {
-	return &App{Out: out, Getenv: os.Getenv, Executable: os.Executable, HomeDir: os.UserHomeDir, LookPath: exec.LookPath, Compat: compat.Default()}
+	return &App{Out: out, Getenv: os.Getenv, Executable: os.Executable, HomeDir: os.UserHomeDir, LookPath: exec.LookPath, Stdin: pipedStdin(), Getwd: os.Getwd, Compat: compat.Default()}
+}
+
+// pipedStdin is stdin unless it is a terminal, where reading a hook payload
+// would only hang.
+func pipedStdin() io.Reader {
+	if info, err := os.Stdin.Stat(); err != nil || info.Mode()&os.ModeCharDevice != 0 {
+		return nil
+	}
+	return os.Stdin
 }
 
 // IsVersionFlag reports whether arg is one of the version flags.
@@ -150,6 +161,7 @@ func init() {
 		},
 		observeCommand(),
 		setupCommand,
+		sessionEndCommand,
 	}
 }
 

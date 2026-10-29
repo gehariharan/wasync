@@ -73,7 +73,7 @@ func TestSetupHooksIsIdempotentAndPreservesSettings(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	mustContain(t, out, "setup: hooks", "dry_run: false", "hook_command: "+harnessHook,
-		"changes[1]{agent,item,path,change}:", "claude,session_start_hook,", ",add", "written: 1", "whatsapp-axi setup hooks --remove")
+		"changes[1]{agent,item,path,change}:", "claude,session_hooks,", ",add", "written: 1", "whatsapp-axi setup hooks --remove")
 	installed := readFile(t, settings)
 	if !strings.Contains(installed, `"command": "echo hello"`) || !strings.Contains(installed, `"command": "notify"`) || !strings.Contains(installed, harnessHook) {
 		t.Fatalf("settings:\n%s", installed)
@@ -102,7 +102,7 @@ func TestSetupHooksIsIdempotentAndPreservesSettings(t *testing.T) {
 	if code != ExitOK || readFile(t, settings) != existingSettings {
 		t.Fatalf("remove: %d\n%s\n%s", code, out, readFile(t, settings))
 	}
-	mustContain(t, out, "claude,session_start_hook,", ",remove", "codex,session_start_hook,", ",none", "written: 1")
+	mustContain(t, out, "claude,session_hooks,", ",remove", "codex,session_hooks,", ",none", "written: 1")
 	out, _ = h.run(t, "setup", "hooks", "--remove")
 	mustContain(t, out, "written: 0", "Nothing to remove")
 }

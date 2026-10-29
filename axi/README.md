@@ -114,6 +114,7 @@ whatsapp-axi message REF [--full]           # one message; --full prints all of 
 whatsapp-axi observe [--consumer NAME]      # change journal by cursor; see below
 whatsapp-axi doctor                         # pass/warn/fail checks with repair guidance
 whatsapp-axi setup hooks|skill              # opt-in agent integration; see below
+whatsapp-axi session-end                    # run by the session-end hook, not by hand; see below
 whatsapp-axi version                        # whatsapp-axi version plus wasync version, features and transport
 whatsapp-axi help [COMMAND]                 # commands, or flags and examples for one command
 whatsapp-axi --version                      # bare version, no probing
@@ -188,14 +189,14 @@ Two optional ways to make agents aware of whatsapp-axi. You only need one; they 
 
 | | Session hook (`setup hooks`) | Skill (`setup skill`) |
 |---|---|---|
-| What the agent gets | `whatsapp-axi --brief` at the start of every session: wasync state, chat count, next step | [`skills/whatsapp-axi/SKILL.md`](skills/whatsapp-axi/SKILL.md), loaded when a task is about WhatsApp |
-| Cost | about 150 tokens per session | none until used |
+| What the agent gets | `whatsapp-axi --brief` at the start of every session: wasync state, chat count, next step, and a line on what the last session in this directory did | [`skills/whatsapp-axi/SKILL.md`](skills/whatsapp-axi/SKILL.md), loaded when a task is about WhatsApp |
+| Cost | about 150 tokens per session, plus about 25 once a previous session is recorded | none until used |
 | Agents | Claude Code (`~/.claude/settings.json`), Codex (`~/.codex/hooks.json`), OpenCode (paths below) | Skills under `.claude/skills/`, `.codex/skills/` or the OpenCode config root below |
 
 ```sh
 whatsapp-axi setup hooks --dry-run       # show what would change, write nothing
-whatsapp-axi setup hooks                 # install or repair the SessionStart hook
-whatsapp-axi setup hooks --remove        # remove it again
+whatsapp-axi setup hooks                 # install or repair the SessionStart and SessionEnd hooks
+whatsapp-axi setup hooks --remove        # remove them again
 whatsapp-axi setup skill                 # install or update the skill
 whatsapp-axi setup hooks --dir .         # project settings (.claude, .codex, .opencode)
 whatsapp-axi setup hooks --agent opencode # native ambient-context plugin
@@ -204,12 +205,12 @@ whatsapp-axi setup hooks --agent opencode # native ambient-context plugin
 Without `--agent`, setup targets the agents whose config directory exists (Claude Code if none does);
 `--agent claude,codex,opencode` or `--agent all` chooses explicitly. Setup only runs when you run it.
 
-- **Idempotent.** Rerunning changes nothing. If whatsapp-axi moved, the existing hook's path is repaired in
-  place. The hook runs the bare name `whatsapp-axi` when that is the binary on `PATH`, otherwise the full path.
+- **Idempotent.** Rerunning changes nothing. If whatsapp-axi moved, the existing hooks' path is repaired in
+  place; a start-only install from an older version gains the session-end hook. The hook runs the bare name `whatsapp-axi` when that is the binary on `PATH`, otherwise the full path.
 - **Your settings stay yours.** In Claude Code and Codex settings, only whatsapp-axi's
-  own hook entry is added, replaced or removed; every other byte of the file (other
+  own hook entries are added, replaced or removed; every other byte of the file (other
   settings, other hooks, key order, indentation) is kept. `--remove` takes out the
-  hook entry and any `hooks` container it leaves empty, and nothing else.
+  hook entries and any `hooks` container they leave empty, and nothing else.
 - **Safe writes.** Files are written through a temporary file and a rename, with mode `600`; a symlinked
   settings file is edited at its target.
 - **Refuses what it cannot parse.** A Claude Code or Codex hook settings file that
@@ -222,8 +223,20 @@ Without `--agent`, setup targets the agents whose config directory exists (Claud
   preserve safely, including inline or quoted feature definitions that need
   changing. It returns `config_invalid` before writing any agent's files; enable
   `features.hooks` manually and rerun setup in that case.
+- **Session-end capture.** When a session ends, the `SessionEnd` hook runs `whatsapp-axi session-end`
+  (Claude Code and Codex; OpenCode below). It reads the transcript the hook names, looks only at the
+  commands the agent ran (never tool output or messages), and counts how often each whatsapp-axi command
+  name ran, such as `messages 3, reply 1`. It stores that, per working directory, in `last-session.json`
+  in the whatsapp-axi config directory (mode `600`, at most 32 directories, no paths: the directory is
+  kept as a hash). The next `whatsapp-axi --brief` in that directory adds one line,
+  `last_session: 2026-10-27, 5 commands: messages 3, search 2`. Arguments, chat names, message text,
+  phone numbers and the transcript itself are never stored or printed, and a session that ran no
+  whatsapp-axi command records nothing. The command does not talk to wasync, and `setup hooks --remove`
+  stops new records (an existing `last-session.json` stays; delete it to clear it).
 - **OpenCode** uses its native system-context transform hook, calling the brief
-  view directly without a shell and with a timeout. It caches the brief by session,
+  view directly without a shell and with a timeout. For session-end capture the same plugin
+  notes the command names of the session's bash calls (never arguments) and passes only those names to
+  `whatsapp-axi session-end` when OpenCode reports the session idle or deleted. It caches the brief by session,
   retaining up to 128 sessions. It merges context into the existing system
   block, avoids duplicate injection, and reports short repair guidance on failure.
   Project plugins live in `.opencode/plugins/`; global plugins live in
@@ -232,7 +245,8 @@ Without `--agent`, setup targets the agents whose config directory exists (Claud
   `WHATSAPP_AXI_AGENT_HOME` overrides XDG and uses `.config/opencode/` under that
   synthetic home. Setup owns only
   `whatsapp-axi.js`; another file at that path is never overwritten or removed.
-- `doctor` reports both under `hooks`: installed, missing, pointing at another binary, or unreadable, each
+- `doctor` reports both under `hooks` (the session hooks count as installed only when both are present and
+  current): installed, missing, pointing at another binary, or unreadable, each
   with the `whatsapp-axi setup ...` command that fixes it.
 
 The skill tells agents about the security model above and the explicit checkpoint

@@ -2,6 +2,7 @@ package agentsetup
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,16 @@ import (
 func init() {
 	if os.Getenv("WHATSAPP_AXI_PLUGIN_TEST_CHILD") != "1" {
 		return
+	}
+	if len(os.Args) == 2 && os.Args[1] == "session-end" {
+		payload, _ := io.ReadAll(os.Stdin)
+		f, err := os.OpenFile(os.Getenv("WHATSAPP_AXI_PLUGIN_ENDS"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+		if err != nil {
+			os.Exit(3)
+		}
+		fmt.Fprintln(f, string(payload))
+		f.Close()
+		os.Exit(0)
 	}
 	f, err := os.OpenFile(os.Getenv("WHATSAPP_AXI_PLUGIN_CALLS"), os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
 	if err != nil {
@@ -135,5 +146,44 @@ func TestOpenCodeInstallRepairRemoveAndOwnership(t *testing.T) {
 		if ag.Name == "opencode" && !strings.Contains(ag.HookPath(root), filepath.Join(".opencode", "plugins")) {
 			t.Fatal("project plugin path", ag.HookPath(root))
 		}
+	}
+}
+
+func TestOpenCodePluginRecordsCommandNamesAtSessionEnd(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("Node required to execute the native OpenCode plugin interface")
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "whatsapp-axi.mjs"), OpenCodePlugin(os.Args[0]), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	script := `import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { WhatsappAXI } from "./whatsapp-axi.mjs";
+const hooks = await WhatsappAXI({ directory: process.cwd() });
+const before = hooks["tool.execute.before"];
+await before({ tool: "bash", sessionID: "one" }, { args: { command: "whatsapp-axi messages 999000111@s.whatsapp.net && whatsapp-axi search 'Dana Example'" } });
+await before({ tool: "bash", sessionID: "one" }, { args: { command: "ls -la" } });
+await before({ tool: "read", sessionID: "one" }, { args: { command: "whatsapp-axi chats" } });
+await before({ tool: "bash", sessionID: "two" }, { args: { command: "/usr/local/bin/whatsapp-axi react X" } });
+await before({ tool: "bash" }, { args: { command: "whatsapp-axi chats" } });
+await before({ tool: "bash", sessionID: "one" }, {});
+await hooks.event({ event: { type: "session.created", properties: { sessionID: "one" } } });
+await hooks.event({ event: { type: "session.idle", properties: { sessionID: "none" } } });
+await hooks.event({ event: { type: "session.deleted", properties: { info: { id: "one" } } } });
+await hooks.event({ event: { type: "session.deleted", properties: { info: { id: "one" } } } });
+const ends = (await readFile(process.env.WHATSAPP_AXI_PLUGIN_ENDS, "utf8")).trim().split("\n").map((l) => JSON.parse(l));
+assert.deepEqual(ends, [{ cwd: process.cwd(), commands: ["messages", "search"] }]);
+console.log("OpenCode session end: command names only, one record per ended session");
+`
+	if err := os.WriteFile(filepath.Join(root, "exercise.mjs"), []byte(script), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmd := exec.Command(node, "exercise.mjs")
+	cmd.Dir = root
+	cmd.Env = append(os.Environ(), "WHATSAPP_AXI_PLUGIN_TEST_CHILD=1", "WHATSAPP_AXI_PLUGIN_ENDS="+filepath.Join(root, "ends"))
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%v\n%s", err, out)
 	}
 }

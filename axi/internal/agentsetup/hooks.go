@@ -14,14 +14,26 @@ import (
 )
 
 // The managed session-start hook runs `whatsapp-axi --brief`, the compact
-// home view, with a timeout. A hook entry is whatsapp-axi's when its
-// command runs a binary named whatsapp-axi with HookFlag, wherever that
-// binary lives, so setup can repair the path after a reinstall.
+// home view, and the managed session-end hook runs `whatsapp-axi
+// session-end`, which records command names and counts; both have a timeout.
+// A hook entry is whatsapp-axi's when its command runs a binary named
+// whatsapp-axi with HookFlag (start) or EndWord (end), wherever that binary
+// lives, so setup can repair the path after a reinstall.
 const (
 	BinaryName  = "whatsapp-axi"
 	HookFlag    = "--brief"
+	EndWord     = "session-end"
 	HookTimeout = 10 // seconds
 	SkillName   = "whatsapp-axi"
+)
+
+// hookKind is one managed hook event: its key in the agent's settings and
+// the argument that marks a command as whatsapp-axi's.
+type hookKind struct{ event, arg string }
+
+var (
+	startKind = hookKind{event: "SessionStart", arg: HookFlag}
+	endKind   = hookKind{event: "SessionEnd", arg: EndWord}
 )
 
 // Agent is an agent tool whose session hooks and skills setup manages.
@@ -110,7 +122,7 @@ const (
 
 // Items a change applies to.
 const (
-	ItemHook         = "session_start_hook"
+	ItemHook         = "session_hooks"
 	ItemHooksFeature = "hooks_feature"
 	ItemSkill        = "skill"
 )
@@ -148,8 +160,18 @@ func (c Change) Apply() error {
 // whatsapp-axi found on PATH is exe itself, so the portable bare name is
 // used; otherwise the absolute path is quoted for the agent's shell.
 func HookCommand(exe string, onPath bool, goos string) string {
+	return hookCommandFor(startKind, exe, onPath, goos)
+}
+
+// EndCommand is the session-end hook's command line for a start command from
+// HookCommand: the same program, run as `session-end`.
+func EndCommand(command string) string {
+	return strings.TrimSuffix(command, " "+HookFlag) + " " + EndWord
+}
+
+func hookCommandFor(kind hookKind, exe string, onPath bool, goos string) string {
 	if onPath || exe == "" {
-		return BinaryName + " " + HookFlag
+		return BinaryName + " " + kind.arg
 	}
 	if goos == "windows" {
 		// Forward slashes work in cmd.exe, PowerShell and Git Bash alike.
@@ -157,9 +179,9 @@ func HookCommand(exe string, onPath bool, goos string) string {
 		if strings.ContainsAny(p, " &()^%!'\"") {
 			p = `"` + p + `"`
 		}
-		return p + " " + HookFlag
+		return p + " " + kind.arg
 	}
-	return shellQuote(exe) + " " + HookFlag
+	return shellQuote(exe) + " " + kind.arg
 }
 
 var shellSafe = regexp.MustCompile(`^[A-Za-z0-9._/~:@%+=-]+$`)
@@ -173,8 +195,11 @@ func shellQuote(s string) string {
 
 // IsManagedCommand reports whether a hook command runs whatsapp-axi's
 // session-start view: its program is named whatsapp-axi (any directory,
-// optional .exe) and its arguments include HookFlag.
-func IsManagedCommand(cmd string) bool {
+// optional .exe) and its arguments include HookFlag. The session-end hook is
+// recognized the same way by EndWord.
+func IsManagedCommand(cmd string) bool { return isManagedCommand(startKind, cmd) }
+
+func isManagedCommand(kind hookKind, cmd string) bool {
 	prog, rest := firstWord(strings.TrimSpace(cmd))
 	base := prog
 	if i := strings.LastIndexAny(base, `/\`); i >= 0 {
@@ -187,7 +212,7 @@ func IsManagedCommand(cmd string) bool {
 		return false
 	}
 	for _, f := range strings.Fields(rest) {
-		if f == HookFlag {
+		if f == kind.arg {
 			return true
 		}
 	}
@@ -239,15 +264,15 @@ func desiredEntry(command string) hookEntry {
 	return hookEntry{Type: "command", Command: command, Timeout: HookTimeout}
 }
 
-// hookLoc is a managed hook: SessionStart group g, entry h.
+// hookLoc is a managed hook: group g of the event's list, entry h.
 type hookLoc struct {
 	g, h    int
 	command string
 	entry   *node
 }
 
-// hookTree is the parsed path to the SessionStart list. hooks or ss is nil
-// when absent.
+// hookTree is the parsed path to the event's list (SessionStart or
+// SessionEnd). hooks or ss is nil when absent.
 type hookTree struct {
 	root, hooks, ss *node
 	managed         []hookLoc
@@ -255,7 +280,7 @@ type hookTree struct {
 
 // parseHooks parses settings and locates the managed hooks. It refuses
 // shapes it cannot edit without guessing.
-func parseHooks(path string, src []byte) (hookTree, error) {
+func parseHooks(path string, src []byte, kind hookKind) (hookTree, error) {
 	var t hookTree
 	if !json.Valid(src) {
 		return t, invalidJSON(path, src)
@@ -274,11 +299,11 @@ func parseHooks(path string, src []byte) (hookTree, error) {
 	if t.hooks.kind != '{' {
 		return t, shapeErr(path, `"hooks" is not an object`)
 	}
-	if t.ss, _ = t.hooks.get("SessionStart"); t.ss == nil {
+	if t.ss, _ = t.hooks.get(kind.event); t.ss == nil {
 		return t, nil
 	}
 	if t.ss.kind != '[' {
-		return t, shapeErr(path, `"hooks.SessionStart" is not an array`)
+		return t, shapeErr(path, `"hooks.`+kind.event+`" is not an array`)
 	}
 	for gi, g := range t.ss.elems {
 		if g.kind != '{' {
@@ -297,7 +322,7 @@ func parseHooks(path string, src []byte) (hookTree, error) {
 				continue
 			}
 			var cmd string
-			if json.Unmarshal(c.raw(src), &cmd) == nil && IsManagedCommand(cmd) {
+			if json.Unmarshal(c.raw(src), &cmd) == nil && isManagedCommand(kind, cmd) {
 				t.managed = append(t.managed, hookLoc{g: gi, h: hi, command: cmd, entry: h})
 			}
 		}
@@ -315,8 +340,8 @@ func isCurrent(src []byte, entry *node, command string) bool {
 }
 
 // removeHook deletes one managed entry, then each container it leaves
-// empty: its group, SessionStart, and hooks.
-func removeHook(src []byte, t hookTree, loc hookLoc) []byte {
+// empty: its group, the event's list, and hooks.
+func removeHook(src []byte, t hookTree, loc hookLoc, kind hookKind) []byte {
 	e := newEditor(src)
 	group := t.ss.elems[loc.g]
 	list, _ := group.get("hooks")
@@ -326,7 +351,7 @@ func removeHook(src []byte, t hookTree, loc hookLoc) []byte {
 	case len(t.ss.elems) > 1:
 		return e.removeElem(t.ss, loc.g)
 	case len(t.hooks.members) > 1:
-		_, i := t.hooks.get("SessionStart")
+		_, i := t.hooks.get(kind.event)
 		return e.removeMember(t.hooks, i)
 	default:
 		_, i := t.root.get("hooks")
@@ -336,25 +361,25 @@ func removeHook(src []byte, t hookTree, loc hookLoc) []byte {
 
 // installHook returns src with exactly one current managed hook. Extra
 // managed entries are removed and a stale one is replaced in place.
-func installHook(path string, src []byte, command string) ([]byte, error) {
+func installHook(path string, src []byte, command string, kind hookKind) ([]byte, error) {
 	if len(bytes.TrimSpace(src)) == 0 {
 		src = []byte("{}\n")
 	}
 	for range 64 {
-		t, err := parseHooks(path, src)
+		t, err := parseHooks(path, src, kind)
 		if err != nil {
 			return nil, err
 		}
 		e := newEditor(src)
 		switch {
 		case t.hooks == nil:
-			return e.addMember(t.root, "hooks", map[string][]hookGroup{"SessionStart": {{Hooks: []hookEntry{desiredEntry(command)}}}})
+			return e.addMember(t.root, "hooks", map[string][]hookGroup{kind.event: {{Hooks: []hookEntry{desiredEntry(command)}}}})
 		case t.ss == nil:
-			return e.addMember(t.hooks, "SessionStart", []hookGroup{{Hooks: []hookEntry{desiredEntry(command)}}})
+			return e.addMember(t.hooks, kind.event, []hookGroup{{Hooks: []hookEntry{desiredEntry(command)}}})
 		case len(t.managed) == 0:
 			return e.addElem(t.ss, hookGroup{Hooks: []hookEntry{desiredEntry(command)}})
 		case len(t.managed) > 1:
-			src = removeHook(src, t, t.managed[len(t.managed)-1])
+			src = removeHook(src, t, t.managed[len(t.managed)-1], kind)
 		case isCurrent(src, t.managed[0].entry, command):
 			return src, nil
 		default:
@@ -365,22 +390,25 @@ func installHook(path string, src []byte, command string) ([]byte, error) {
 }
 
 // uninstallHook returns src without any managed hook.
-func uninstallHook(path string, src []byte) ([]byte, error) {
+func uninstallHook(path string, src []byte, kind hookKind) ([]byte, error) {
 	for range 64 {
-		t, err := parseHooks(path, src)
+		t, err := parseHooks(path, src, kind)
 		if err != nil {
 			return nil, err
 		}
 		if len(t.managed) == 0 {
 			return src, nil
 		}
-		src = removeHook(src, t, t.managed[0])
+		src = removeHook(src, t, t.managed[0], kind)
 	}
 	return nil, shapeErr(path, "it holds too many whatsapp-axi hooks")
 }
 
 // PlanHook plans installing (or, with remove, removing) the managed
-// session-start hook in agent's settings under root. Nothing is written.
+// session-start hook, and the session-end hook that goes with it (command is
+// the start command; EndCommand derives the end one), in agent's settings
+// under root. Both land in one change because they share a file. Nothing is
+// written.
 func PlanHook(agent Agent, root, command string, remove bool) (Change, error) {
 	path := agent.HookPath(root)
 	c := Change{Agent: agent.Name, Item: ItemHook, Path: path, Action: ActionNone}
@@ -389,22 +417,27 @@ func PlanHook(agent Agent, root, command string, remove bool) (Change, error) {
 		return c, err
 	}
 	c.target = f.Target
+	commands := map[hookKind]string{startKind: command, endKind: EndCommand(command)}
 	if remove {
 		if !f.Exists || len(bytes.TrimSpace(f.Data)) == 0 {
 			return c, nil
 		}
-		out, err := uninstallHook(path, f.Data)
-		if err != nil {
-			return c, err
+		out := f.Data
+		for _, kind := range []hookKind{startKind, endKind} {
+			if out, err = uninstallHook(path, out, kind); err != nil {
+				return c, err
+			}
 		}
 		if !bytes.Equal(out, f.Data) {
 			c.Action, c.data = ActionRemove, out
 		}
 		return c, nil
 	}
-	out, err := installHook(path, f.Data, command)
-	if err != nil {
-		return c, err
+	out := f.Data
+	for _, kind := range []hookKind{startKind, endKind} {
+		if out, err = installHook(path, out, commands[kind], kind); err != nil {
+			return c, err
+		}
 	}
 	if !f.Exists || len(bytes.TrimSpace(f.Data)) == 0 {
 		if !bytes.HasSuffix(out, []byte("\n")) {
@@ -417,7 +450,13 @@ func PlanHook(agent Agent, root, command string, remove bool) (Change, error) {
 		return c, nil
 	}
 	c.Action, c.data = ActionUpdate, out
-	if t, err := parseHooks(path, f.Data); err == nil && len(t.managed) == 0 {
+	managed := 0
+	for _, kind := range []hookKind{startKind, endKind} {
+		if t, err := parseHooks(path, f.Data, kind); err == nil {
+			managed += len(t.managed)
+		}
+	}
+	if managed == 0 {
 		c.Action = ActionAdd
 	}
 	return c, nil
@@ -428,12 +467,13 @@ type HookStatus struct {
 	Path      string
 	Exists    bool
 	Installed bool   // a managed hook is present
-	Current   bool   // it is exactly the desired hook
-	Command   string // the first managed hook's command
+	Current   bool   // the session-start and session-end hooks are exactly the desired ones
+	Command   string // the first managed session-start hook's command, else the session-end one's
 	Err       error  // the file could not be read or parsed
 }
 
-// InspectHook reports the managed hook in agent's settings under root.
+// InspectHook reports the managed hooks in agent's settings under root.
+// Current needs both the session-start and the session-end hook.
 func InspectHook(agent Agent, root, command string) HookStatus {
 	s := HookStatus{Path: agent.HookPath(root)}
 	f, err := readFile(s.Path)
@@ -445,14 +485,26 @@ func InspectHook(agent Agent, root, command string) HookStatus {
 	if !f.Exists || len(bytes.TrimSpace(f.Data)) == 0 {
 		return s
 	}
-	t, err := parseHooks(s.Path, f.Data)
-	if err != nil {
-		s.Err = err
-		return s
-	}
-	if len(t.managed) > 0 {
-		s.Installed, s.Command = true, t.managed[0].command
-		s.Current = len(t.managed) == 1 && isCurrent(f.Data, t.managed[0].entry, command)
+	s.Current = true
+	for _, kind := range []hookKind{startKind, endKind} {
+		t, err := parseHooks(s.Path, f.Data, kind)
+		if err != nil {
+			s.Err = err
+			return s
+		}
+		want := command
+		if kind == endKind {
+			want = EndCommand(command)
+		}
+		if len(t.managed) > 0 {
+			s.Installed = true
+			if s.Command == "" {
+				s.Command = t.managed[0].command
+			}
+		}
+		if len(t.managed) != 1 || !isCurrent(f.Data, t.managed[0].entry, want) {
+			s.Current = false
+		}
 	}
 	return s
 }

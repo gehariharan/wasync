@@ -74,6 +74,18 @@ func TestInstallIntoMissingFile(t *testing.T) {
           }
         ]
       }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "whatsapp-axi session-end",
+            "timeout": 10
+          }
+        ]
+      }
     ]
   }
 }
@@ -188,7 +200,7 @@ func TestPathRepairAndDuplicates(t *testing.T) {
 	}
 	apply(t, c)
 	got := read(t, path)
-	if strings.Count(got, "whatsapp-axi") != 1 || !strings.Contains(got, "echo keep") || strings.Contains(got, "/usr/local/bin") {
+	if strings.Count(got, "whatsapp-axi") != 2 || !strings.Contains(got, "echo keep") || strings.Contains(got, "/usr/local/bin") {
 		t.Fatalf("got\n%s", got)
 	}
 	if st := InspectHook(claude, root, cmd); !st.Current {
@@ -437,5 +449,91 @@ func TestCodexFeatureRepresentations(t *testing.T) {
 		if enabled, err := InspectCodexFeature(root); err != nil || !enabled {
 			t.Fatalf("enabled feature not recognized: %v %v", enabled, err)
 		}
+	}
+}
+
+const foreignSessionEnd = `{"hooks": {"SessionEnd": [{"matcher": "", "hooks": [{"type": "command", "command": "cleanup-tool run"}]}]}}`
+
+func TestSessionEndHookInstallRepairAndRemove(t *testing.T) {
+	root := t.TempDir()
+	path := claude.HookPath(root)
+	write(t, path, foreignSessionEnd)
+	apply(t, plan(t, root, false))
+	got := read(t, path)
+	if !strings.Contains(got, "cleanup-tool run") || !strings.Contains(got, `"command": "whatsapp-axi session-end"`) || !strings.Contains(got, `"command": "whatsapp-axi --brief"`) {
+		t.Fatalf("install: %s", got)
+	}
+	if st := InspectHook(claude, root, cmd); !st.Current {
+		t.Fatalf("%+v", st)
+	}
+
+	// Only the end hook points at an old binary: setup repairs just that one.
+	moved := strings.Replace(got, `"whatsapp-axi session-end"`, `"/old/whatsapp-axi session-end"`, 1)
+	write(t, path, moved)
+	if st := InspectHook(claude, root, cmd); !st.Installed || st.Current {
+		t.Fatalf("stale end hook reported current: %+v", st)
+	}
+	c := plan(t, root, false)
+	if c.Action != ActionUpdate {
+		t.Fatalf("action %s", c.Action)
+	}
+	apply(t, c)
+	if fixed := read(t, path); strings.Contains(fixed, "/old/") || strings.Count(fixed, "whatsapp-axi") != 2 || !strings.Contains(fixed, "cleanup-tool run") {
+		t.Fatalf("repair:\n%s", fixed)
+	}
+	if st := InspectHook(claude, root, cmd); !st.Current {
+		t.Fatalf("%+v", st)
+	}
+	if c := plan(t, root, false); c.Action != ActionNone {
+		t.Fatalf("second install: %s", c.Action)
+	}
+
+	apply(t, plan(t, root, true))
+	if left := read(t, path); strings.Contains(left, "whatsapp-axi") || !strings.Contains(left, "cleanup-tool run") {
+		t.Fatalf("remove: %s", left)
+	}
+	if c := plan(t, root, true); c.Action != ActionNone {
+		t.Fatalf("second remove: %s", c.Action)
+	}
+}
+
+// A settings file from before the session-end hook existed has only the
+// start hook; setup adds the end hook and doctor sees the file as stale.
+func TestStartOnlyInstallGainsSessionEndHook(t *testing.T) {
+	root := t.TempDir()
+	path := claude.HookPath(root)
+	write(t, path, `{"hooks": {"SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "whatsapp-axi --brief", "timeout": 10}]}]}}`)
+	if st := InspectHook(claude, root, cmd); !st.Installed || st.Current {
+		t.Fatalf("%+v", st)
+	}
+	c := plan(t, root, false)
+	if c.Action != ActionUpdate {
+		t.Fatalf("action %s", c.Action)
+	}
+	apply(t, c)
+	if st := InspectHook(claude, root, cmd); !st.Current {
+		t.Fatalf("%+v", st)
+	}
+	if got := read(t, path); strings.Count(got, "whatsapp-axi --brief") != 1 || strings.Count(got, "whatsapp-axi session-end") != 1 {
+		t.Fatalf("got\n%s", got)
+	}
+}
+
+func TestEndCommandAndDetection(t *testing.T) {
+	for _, c := range []struct{ start, end string }{
+		{"whatsapp-axi --brief", "whatsapp-axi session-end"},
+		{"'/opt/my tools/whatsapp-axi' --brief", "'/opt/my tools/whatsapp-axi' session-end"},
+		{"C:/Program Files/whatsapp-axi.exe --brief", "C:/Program Files/whatsapp-axi.exe session-end"},
+	} {
+		if got := EndCommand(c.start); got != c.end {
+			t.Errorf("EndCommand(%q) = %q, want %q", c.start, got, c.end)
+		}
+	}
+	// Each hook is recognized by its own argument only.
+	if isManagedCommand(endKind, "whatsapp-axi --brief") || isManagedCommand(startKind, "whatsapp-axi session-end") {
+		t.Fatal("start and end commands mixed up")
+	}
+	if !isManagedCommand(endKind, "/x/whatsapp-axi.exe session-end") || isManagedCommand(endKind, "other-axi session-end") {
+		t.Fatal("end command detection")
 	}
 }

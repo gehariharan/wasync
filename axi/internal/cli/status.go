@@ -12,6 +12,7 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/contract"
 	"github.com/gehariharan/wasync/axi/internal/installhint"
 	"github.com/gehariharan/wasync/axi/internal/output"
+	"github.com/gehariharan/wasync/axi/internal/sessionlog"
 	"github.com/gehariharan/wasync/axi/internal/transport"
 )
 
@@ -390,10 +391,14 @@ func (a *App) writeBrief(d detection, chats *contract.ChatList, chatsErr error, 
 	hints = dedupe(append(hints, briefMoreHint, untrustedHint))
 	w := a.wasyncJSON(d)
 	c := compatOf(d)
+	last, hasLast := a.lastSession()
 	if jsonMode {
 		out := map[string]any{
 			"description": Description, "wasync": briefWasyncJSON{State: w.State, Transport: w.Transport, Credential: w.Credential},
 			"compatibility": c.Status, "chats_total": nil, "help": hints,
+		}
+		if hasLast {
+			out["last_session"] = last
 		}
 		if chats != nil {
 			out["chats_total"] = len(chats.Items)
@@ -415,6 +420,9 @@ func (a *App) writeBrief(d detection, chats *contract.ChatList, chatsErr error, 
 	if chatsErr != nil {
 		e := output.ToErrorJSON(chatsErr)
 		o.Field(0, "chats_error", e.ErrorCode)
+	}
+	if hasLast {
+		o.Field(0, "last_session", last.At.Format("2006-01-02")+", "+sessionlog.Summary(last))
 	}
 	o.Help(hints...)
 	return o.Err()
