@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gehariharan/wasync/axi/internal/config"
 	"github.com/gehariharan/wasync/axi/internal/contract"
 	"github.com/gehariharan/wasync/axi/internal/installhint"
 	"github.com/gehariharan/wasync/axi/internal/output"
@@ -327,7 +328,7 @@ func observeExplain(err error, o observeOptions) error {
 	case e.Code == contract.CodeInvalidArgument && strings.Contains(e.Message, "backwards"):
 		e.Help = "checkpoints only move forward; run `whatsapp-axi observe --consumer " + o.consumer + "` to see the stored checkpoint, then ack a later cursor"
 	case e.Code == contract.CodeCredentialAbsent:
-		e.Help = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages,observe` and store the printed credential in WHATSAPP_AXI_TOKEN or the whatsapp-axi credential file"
+		e.Help = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages,observe`" + config.SaveHelp
 	default:
 		return err
 	}

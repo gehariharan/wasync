@@ -69,7 +69,7 @@ func writeExplain(err error, scope string) error {
 		return err
 	}
 	e := *ce
-	e.Help = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages," + scope + " --chat <chat-jid>` and store the printed credential in " + config.EnvToken + " or the whatsapp-axi credential file"
+	e.Help = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages," + scope + " --on-demand`, then ask for each chat by name and they approve it" + config.SaveHelp
 	return &e
 }
 

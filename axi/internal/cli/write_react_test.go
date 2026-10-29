@@ -98,7 +98,7 @@ func TestReactNeedsReactScopeCredentialHelp(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,react --chat <chat-jid>")
+	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,react --on-demand", "offers to save the credential")
 	if methods, _ := mutations(srv); len(methods) != 0 {
 		t.Fatalf("sent without a credential: %v", methods)
 	}
