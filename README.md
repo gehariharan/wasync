@@ -168,6 +168,45 @@ precede the Homebrew binary; check `command -v wasync` and use
 `/usr/local/bin/wasync` on Intel or `/opt/homebrew/bin/wasync` on Apple Silicon to
 select the installed release explicitly.
 
+## Set up an agent, start to finish
+
+This is the whole first-run path for letting an agent such as Claude Code read
+(and, if you choose, reply in) your chats. No step needs a chat ID or a hand-made
+credential file.
+
+1. **Install** wasync and, when asked, **AXI for agents** (see
+   [Install a prebuilt package](#install-a-prebuilt-package)).
+2. **Pair your phone.** Run `wasync` and scan the QR code, then let the first
+   sync finish. Leave wasync running (the TUI, or `wasync serve` for a headless
+   service) whenever an agent should use it.
+3. **Create the agent's credential.** In a terminal, pick any name:
+
+   ```sh
+   wasync agents grant helper --scope read.chats,read.messages,observe,send,react,edit.own --on-demand
+   ```
+
+   `--on-demand` starts the agent with no chats at all; it asks for each chat by
+   name and you decide. Type the agent's name to confirm. wasync then asks
+   **"Save this credential for whatsapp-axi now? [Y/n]"**. Press Enter: it writes
+   the credential into whatsapp-axi's private credential file (owner-only, in
+   whatsapp-axi's config folder) and does not print it. If you say no, it prints
+   the credential once so you can put it in `WHATSAPP_AXI_TOKEN` or your agent's
+   own secret store. wasync never replaces a different saved credential without
+   asking.
+4. **Check the agent can reach wasync:** `whatsapp-axi doctor`.
+5. **The agent asks for a chat by name**, for example
+   `whatsapp-axi access request --match "Family" --send`. It is told the request is
+   pending whatever matched.
+6. **You approve it.** Open the request in the TUI, or run `wasync actions list`
+   and `wasync actions approve REQUEST_ID`. You choose the chat when several
+   match, the history depth, and see whether it may only read or also send. Only
+   then can the agent use that chat.
+
+If you would rather decide up front, `--chat "Family"` takes a chat name from
+your archive instead of a raw ID: wasync shows the matching chat with its ID and
+asks you to confirm, and refuses ambiguous or unknown names. The two options
+combine. Revoke an agent any time with `wasync agents revoke helper`.
+
 ## Build and launch (development)
 
 Requires macOS, Linux, or Windows x64, Go 1.27.1 or newer (the project selects Go 1.27.2), and a
@@ -899,8 +938,8 @@ Quoted text is copied into the reply only when the target is a text message.
 
 Agents reply through `POST /api/v1/messages/{ref}/reply` with `{ "text",
 "mentions" }`. That needs an agent credential holding the `send` scope and the
-target's chat in its allowlist (`wasync agents grant NAME --scope send --chat
-CHAT_JID`); wasync records the attempt, the chat and the ref, never the text, in
+target's chat approved for it (`wasync agents grant NAME --scope send
+--on-demand`, then approve the chat when the agent asks); wasync records the attempt, the chat and the ref, never the text, in
 the audit log. Errors use the v1 envelope: `target_unavailable` (deleted or a
 reaction), `not_found` (not archived or another account), `owner_offline`
 (wasync is not connected) and `send_failed`, whose outcome is unknown and must
@@ -1082,9 +1121,13 @@ You do not have to pick an agent's chats up front. Create the credential with
 wasync agents grant helper --scope read.chats,read.messages,send --on-demand
 ```
 
+After you confirm, wasync offers to save the credential straight into
+whatsapp-axi's credential file, so there is nothing to copy by hand (see
+[Set up an agent, start to finish](#set-up-an-agent-start-to-finish)).
+
 When the agent needs a chat it cannot use, its refusal points at
-`whatsapp-axi access request --chat JID` (or `--match` with a phone number or
-name; `--send` also asks to send, reply and react; `--edit` also asks to edit
+`whatsapp-axi access request --match NAME` (or `--chat` with an exact chat ID, or
+a phone number; `--send` also asks to send, reply and react; `--edit` also asks to edit
 its own messages). wasync resolves the request to concrete candidate chats that
 only you see and queues a pending request with the same rules as the destructive
 actions above: five-minute expiry, no replay, typed confirmation, no `--yes`.

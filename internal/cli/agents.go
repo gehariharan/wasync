@@ -3,21 +3,27 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/axicred"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/localfs"
+	"github.com/gehariharan/wasync/internal/query"
+	"github.com/gehariharan/wasync/internal/storage"
 )
 
 // agentsUsage is the full reference for agent credential management, appended
 // to the catalog help of agents and its subcommands.
-const agentsUsage = `Usage: wasync agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--on-demand] [--expires 720h] [--rate N]
+const agentsUsage = `Usage: wasync agents grant NAME [--scope S1,S2] [--chat NAME ...] [--on-demand] [--expires 720h] [--rate N]
        wasync agents list [--json]
        wasync agents revoke NAME
 
@@ -32,18 +38,24 @@ Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own,
 chat.state, group.admin, capture.manage, export. Without --scope the client
 gets read.chats,read.messages. There is no destructive scope: clean, delete,
 revoke and purge always need human approval.
---chat (repeatable) limits the client to listed chats; it is required for
-send, react, edit.own, chat.state, group.admin and capture.manage.
---on-demand starts the client with no chats instead of "all": it can only ask
-(whatsapp-axi access request) and you approve each chat, its access level (read,
-and separately send) and its history depth in the TUI or with wasync actions
-approve. --chat still pre-approves chats; the two combine. Granted chats show
-in agents list. Revoke and re-grant the client to remove them.
+The scopes send, react, edit.own, chat.state, group.admin and capture.manage need a chat
+list. Normally use --on-demand: the client starts with no chats and asks for
+one by name (whatsapp-axi access request); you approve each chat, its access
+level (read, and separately send) and its history depth in the TUI or with
+wasync actions approve. Granted chats show in agents list. Revoke and
+re-grant the client to remove them.
+--chat (repeatable) pre-approves a chat now. Give its name as it appears in
+your archive (e.g. --chat "Family"); grant shows the matching chat with its
+JID and asks you to confirm. A raw JID also works. An ambiguous or unknown
+name is refused. The two options combine.
 --rate is requests per minute (default 60). --expires is a duration; omit it
 for no expiry.
 
-grant prints the credential once. Only its hash is stored; it cannot be shown
-again. list never prints credentials or hashes. Legacy api.token, send.token
+After granting, wasync offers to save the credential where whatsapp-axi
+reads it (WHATSAPP_AXI_CONFIG_DIR, else the user config directory), private
+and written atomically, so you do not copy it by hand. It never replaces a
+different saved credential without asking. If you decline it is printed once
+instead. Only its hash is stored; it cannot be shown again. list never prints credentials or hashes. Legacy api.token, send.token
 and approve.token are never accepted as agent credentials.
 `
 
@@ -96,7 +108,7 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	fs.Usage = func() { fmt.Fprint(fs.Output(), agentsUsage) }
 	var scopes, chats stringList
 	fs.Var(&scopes, "scope", "comma-separated scopes (repeatable)")
-	fs.Var(&chats, "chat", "allowed chat JID (repeatable)")
+	fs.Var(&chats, "chat", "chat to allow, by name or JID (repeatable)")
 	onDemand := fs.Bool("on-demand", false, "start with no chats; approve each chat when the agent asks")
 	expires := fs.Duration("expires", 0, "credential lifetime, e.g. 720h")
 	rate := fs.Int("rate", agentauth.DefaultRatePerMinute, "requests per minute")
@@ -106,16 +118,30 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	if name == "" && fs.NArg() == 1 {
 		name = fs.Arg(0)
 	} else if fs.NArg() != 0 || name == "" {
-		return fmt.Errorf("usage: wasync agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--on-demand] [--expires 720h] [--rate N]")
+		return fmt.Errorf("usage: wasync agents grant NAME [--scope S1,S2] [--chat NAME ...] [--on-demand] [--expires 720h] [--rate N]")
 	}
 	if *expires < 0 || (*expires > 0 && *expires < time.Minute) {
 		return fmt.Errorf("--expires must be at least 1m")
 	}
-	req := agentauth.GrantRequest{Name: name, Scopes: scopes, Chats: chats, OnDemand: *onDemand, RatePerMinute: *rate, Expires: *expires}
 	if *rate == 0 {
 		return fmt.Errorf("--rate must be between 1 and %d", agentauth.MaxRatePerMinute)
 	}
-	if err := agentauth.ValidateGrant(req); err != nil {
+	// Chat names are looked up in the archive after the interactive check, so
+	// only validate now when every --chat is already a JID.
+	var chatNames, chatIDs []string
+	for _, c := range chats {
+		if agentauth.ValidChatJID(strings.TrimSpace(c)) == nil {
+			chatIDs = append(chatIDs, c)
+		} else {
+			chatNames = append(chatNames, strings.TrimSpace(c))
+		}
+	}
+	req := agentauth.GrantRequest{Name: name, Scopes: scopes, Chats: chatIDs, OnDemand: *onDemand, RatePerMinute: *rate, Expires: *expires}
+	if len(chatNames) == 0 {
+		if err := agentauth.ValidateGrant(req); err != nil {
+			return err
+		}
+	} else if _, err := agentauth.ParseScopes(scopes...); err != nil {
 		return err
 	}
 	if !a.Interactive {
@@ -128,6 +154,17 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 		return err
 	} else if existing != nil {
 		return fmt.Errorf("client %s already exists; revoke it first with wasync agents revoke %s", name, name)
+	}
+	if len(chatNames) > 0 {
+		resolved, err := a.resolveChatNames(ctx, cfg, chatNames)
+		if err != nil {
+			return err
+		}
+		req.Chats = append(req.Chats, resolved...)
+		chats = req.Chats
+		if err := agentauth.ValidateGrant(req); err != nil {
+			return err
+		}
 	}
 	normalizedScopes, _ := agentauth.ParseScopes(scopes...)
 	fmt.Fprintf(a.Err, "Grant agent client %s\nScopes: %s\n", name, strings.Join(normalizedScopes, ","))
@@ -156,14 +193,129 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 		return err
 	}
 	auditErr := agentauth.NewAuditLog(cfg.DataDir).Append(agentauth.AuditEntry{Event: "grant", ClientID: client.ID, ClientName: client.Name, Scope: strings.Join(client.Scopes, ","), Outcome: agentauth.OutcomeAllowed})
+	if auditErr != nil {
+		fmt.Fprintf(a.Err, "warning: could not write the audit log: %v\n", auditErr)
+	}
+	if a.offerSaveAxiCredential(ctx, client.Name, credential) {
+		return nil
+	}
 	fmt.Fprintf(a.Err, "WARNING: this credential is shown once and cannot be recovered. Store it in the agent's secret store; anyone holding it acts with these scopes. Revoke with: wasync agents revoke %s\n", client.Name)
 	if _, err = fmt.Fprintln(a.Out, credential); err != nil {
 		return err
 	}
-	if auditErr != nil {
-		fmt.Fprintf(a.Err, "warning: could not write the audit log: %v\n", auditErr)
-	}
+	fmt.Fprintf(a.Err, "To use it with whatsapp-axi, put it in WHATSAPP_AXI_TOKEN or save it to the file whatsapp-axi reads (%s).\n", a.axiCredentialPathText())
 	return nil
+}
+
+func (a *App) getenv(key string) string {
+	if a.Getenv != nil {
+		return a.Getenv(key)
+	}
+	return os.Getenv(key)
+}
+
+func (a *App) axiCredentialPathText() string {
+	if p, err := axicred.Path(a.getenv); err == nil {
+		return p
+	}
+	return "WHATSAPP_AXI_CONFIG_DIR/credential"
+}
+
+// askYesNo prints a prompt and reads one line. Empty input takes def; end of
+// input, a read error or anything but y/yes/n/no counts as "no".
+func (a *App) askYesNo(ctx context.Context, prompt string, def bool) bool {
+	fmt.Fprint(a.Err, prompt)
+	line, err := readLine(ctx, a.In)
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(line) {
+	case "":
+		return def && err == nil
+	case "y", "yes":
+		return true
+	}
+	return false
+}
+
+// offerSaveAxiCredential asks whether to store a new credential where
+// whatsapp-axi reads it, and reports whether it did. Any problem or a "no"
+// falls back to printing the credential, so it is never lost. The secret is
+// never written to the terminal here.
+func (a *App) offerSaveAxiCredential(ctx context.Context, name, credential string) bool {
+	path, err := axicred.Path(a.getenv)
+	if err != nil {
+		fmt.Fprintf(a.Err, "note: cannot find whatsapp-axi's credential file (%v)\n", err)
+		return false
+	}
+	existing, err := axicred.Existing(path)
+	if err != nil {
+		fmt.Fprintf(a.Err, "note: cannot read %s (%v); not saving there\n", path, err)
+		return false
+	}
+	if existing != "" {
+		if !a.askYesNo(ctx, fmt.Sprintf("whatsapp-axi already has a different credential saved at %s.\nReplace it with the one for %s? [y/N]: ", path, name), false) {
+			return false
+		}
+	} else if !a.askYesNo(ctx, fmt.Sprintf("Save this credential for whatsapp-axi now, at %s? [Y/n]: ", path), true) {
+		return false
+	}
+	if err := axicred.Save(path, credential); err != nil {
+		fmt.Fprintf(a.Err, "warning: could not save the credential: %v\n", err)
+		return false
+	}
+	fmt.Fprintf(a.Err, "Saved the credential for %s to %s (private, owner-only). It is not shown again; revoke with: wasync agents revoke %s\n", name, path, name)
+	if a.getenv(axicred.EnvToken) != "" {
+		fmt.Fprintf(a.Err, "note: %s is set in this environment and takes priority over the saved file; unset it so whatsapp-axi uses the new credential\n", axicred.EnvToken)
+	}
+	return true
+}
+
+// resolveChatNames turns --chat names into JIDs using the archive's chat
+// names. Each match is shown with its JID and needs a typed yes; an unknown or
+// ambiguous name is refused with the candidates.
+func (a *App) resolveChatNames(ctx context.Context, cfg config.Config, names []string) ([]string, error) {
+	path := filepath.Join(cfg.DataDir, "archive.db")
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("cannot look up chat %q: there is no archive yet. Pair and sync wasync first, or use --on-demand and let the agent ask for the chat", names[0])
+	}
+	store, err := storage.OpenReadOnly(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot look up chat names: %w", err)
+	}
+	defer store.Close()
+	account, err := store.Account(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read archive account: %w", err)
+	}
+	if account == nil {
+		return nil, fmt.Errorf("cannot look up chat %q: the archive has no account yet. Pair wasync first, or use --on-demand", names[0])
+	}
+	groups, err := store.GroupSummaries(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	var ids []string
+	for _, n := range names {
+		found := query.MatchChats(groups, n)
+		switch {
+		case len(found) == 0:
+			return nil, fmt.Errorf("no chat in your archive matches %q; check the name with `wasync query chats`, or use --on-demand so the agent asks for it", n)
+		case len(found) > 1:
+			var b strings.Builder
+			fmt.Fprintf(&b, "%q matches %d chats; repeat --chat with a more exact name or one of these JIDs:", n, len(found))
+			for _, g := range found {
+				fmt.Fprintf(&b, "\n  %s  %s (%s)", g.ID, g.Name, storage.ChatKind(g.ID))
+			}
+			return nil, errors.New(b.String())
+		}
+		g := found[0]
+		if !a.askYesNo(ctx, fmt.Sprintf("Allow chat %q: %s (%s)? [y/N]: ", g.Name, g.ID, storage.ChatKind(g.ID)), false) {
+			return nil, fmt.Errorf("chat %q not confirmed; no credential created", g.Name)
+		}
+		ids = append(ids, g.ID)
+	}
+	return ids, nil
 }
 
 func (a *App) agentsRevoke(ctx context.Context, cfg config.Config, args []string) error {

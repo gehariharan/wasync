@@ -260,9 +260,9 @@
     },
     {
       "description": "Create a scoped agent credential; human only, interactive terminal required.",
-      "details": "NAME is 1-32 characters of a-z, 0-9 and -. Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own, chat.state, group.admin, capture.manage, export (default read.chats,read.messages). There is no destructive scope. --chat (repeatable) limits the client to listed chats and is required for send, react, edit.own, chat.state, group.admin and capture.manage unless --on-demand is given. --on-demand starts the client with no chats: it asks (whatsapp-axi access request) and you approve each chat, read and send separately, with a history depth, in the TUI or actions approve. --rate is requests per minute (default 60); omit --expires for no expiry. The credential is printed once; only its hash is stored. Legacy api.token, send.token and approve.token are never accepted as agent credentials.",
+      "details": "NAME is 1-32 characters of a-z, 0-9 and -. Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own, chat.state, group.admin, capture.manage, export (default read.chats,read.messages). There is no destructive scope. send, react, edit.own, chat.state, group.admin and capture.manage need a chat list: normally use --on-demand, which starts the client with no chats: it asks (whatsapp-axi access request) and you approve each chat, read and send separately, with a history depth, in the TUI or actions approve. --chat (repeatable) pre-approves a chat by name (shown with its JID and confirmed by you) or by JID. --rate is requests per minute (default 60); omit --expires for no expiry. grant offers to save the credential where whatsapp-axi reads it; if you decline it is printed once; only its hash is stored. Legacy api.token, send.token and approve.token are never accepted as agent credentials.",
       "path": "agents grant",
-      "usage": "agents grant NAME [--scope S1,S2] [--chat CHAT_JID ...] [--on-demand] [--expires DURATION] [--rate N]"
+      "usage": "agents grant NAME [--scope S1,S2] [--chat NAME ...] [--on-demand] [--expires DURATION] [--rate N]"
     },
     {
       "description": "List agent clients, scopes and limits.",
