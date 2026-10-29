@@ -98,7 +98,10 @@ Installation options:
   go install github.com/gehariharan/wasync/axi/cmd/whatsapp-axi@latest
   ```
 
-You also need wasync. Direct-download users install both binaries; see the
+You also need wasync. The wasync installers can install this tool for you as an
+optional choice (off by default); see
+[Choose whether to add AXI for agents](../README.md#choose-whether-to-add-axi-for-agents).
+Direct-download users who prefer the standalone archive install both binaries from the
 [core installation guide](../README.md#install-a-prebuilt-package).
 
 ## Usage

@@ -23,12 +23,21 @@ CloseApplications=yes
 
 [Tasks]
 Name: addtopath; Description: "Add wasync to your user PATH (open a new terminal after installation)"; Flags: checkedonce
+; AXI for agents is a choice and starts unticked. Silent installs can opt in with /TASKS or /MERGETASKS="installaxi".
+Name: installaxi; Description: "Also install whatsapp-axi, the tool AI agents use with wasync (AXI for agents). Keep the PATH option above ticked so agents can find it"; Flags: unchecked
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "whatsapp-axi.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#SourceDir}\whatsapp-axi.exe"; DestDir: "{app}"; Flags: ignoreversion; Tasks: installaxi
 
 [Icons]
 Name: "{group}\wasync"; Filename: "{app}\wasync.exe"; WorkingDir: "{app}"
+
+; Offered on the last page, unticked, and never run by a silent install. They change
+; your agents' configuration, so only a tick here runs them (as you, without administrator access).
+[Run]
+Filename: "{app}\whatsapp-axi.exe"; Parameters: "setup skill"; Description: "Add the whatsapp-axi skill to my AI agents (runs whatsapp-axi setup skill)"; Flags: postinstall skipifsilent unchecked runhidden; Tasks: installaxi
+Filename: "{app}\whatsapp-axi.exe"; Parameters: "setup hooks"; Description: "Add whatsapp-axi's session hooks to my AI agents (runs whatsapp-axi setup hooks)"; Flags: postinstall skipifsilent unchecked runhidden; Tasks: installaxi
 
 [Code]
 function HasPath(Value, Item: String): Boolean;

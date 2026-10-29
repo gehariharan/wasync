@@ -47,15 +47,20 @@ retry_check xcrun stapler validate "$name.pkg"
 retry_check spctl --assess --type install --verbose=2 "$name.pkg"
 retry_check codesign --verify --strict --verbose=2 -R='notarized' --check-notarization archive/wasync
 pkgutil --expand-full "$name.pkg" expanded
-cmp archive/wasync expanded/Payload/usr/local/bin/wasync
-# Exercise the exact signed executable with a quarantine attribute intact.
-xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-check;" archive/wasync
-python3 "$project_dir/scripts/smoke-installed.py" "$work/archive/wasync" "$version" "$architecture"
+# The installer has two components; wasync is always installed, AXI for agents is a choice.
+cmp archive/wasync expanded/wasync.pkg/Payload/usr/local/bin/wasync
 mkdir axi
 tar -xzf "$axi_name.tar.gz" -C axi
 [[ "$(lipo -archs axi/whatsapp-axi)" == "$cpu" ]]
 codesign --verify --strict \
   -R='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "57V379V642"' axi/whatsapp-axi
 retry_check codesign --verify --strict --verbose=2 -R='notarized' --check-notarization axi/whatsapp-axi
+# The installer's AXI must be the very executable signed and notarized above.
+cmp axi/whatsapp-axi expanded/whatsapp-axi.pkg/Payload/usr/local/bin/whatsapp-axi
+# Exercise the exact signed executables with a quarantine attribute intact.
+xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-check;" archive/wasync
 xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-check;" axi/whatsapp-axi
 [[ "$(axi/whatsapp-axi --version)" == "$version" ]]
+python3 "$project_dir/scripts/smoke-installed.py" "$work/archive/wasync" "$version" "$architecture" "$work/axi/whatsapp-axi"
+# The installer offers AXI for agents unticked and, on a hosted runner, installs both ways.
+bash "$project_dir/scripts/test-macos-pkg.sh" "$work/$name.pkg" "$version" "$architecture" "$work/axi/whatsapp-axi"

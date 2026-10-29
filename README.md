@@ -28,9 +28,40 @@ release workflow produces these downloads:
 | --- | --- | --- |
 | macOS 15+, Apple Silicon | `wasync_VERSION_darwin_arm64.pkg` | Open the package and follow Installer |
 | macOS 15+, Intel | `wasync_VERSION_darwin_amd64.pkg` | Open the package and follow Installer |
-| Linux x86-64, glibc 2.35+ | `wasync_VERSION_linux_amd64.tar.gz` | Extract and install the executable on PATH |
+| Linux x86-64, glibc 2.35+ | `wasync_VERSION_linux_amd64.tar.gz` | Extract and run `./install.sh` |
 | Windows 10/11 x64 | `wasync_VERSION_windows_amd64-setup.exe` or `.zip` | Per-user Setup or portable ZIP |
-| Linux ARM64, glibc 2.35+ | `wasync_VERSION_linux_arm64.tar.gz` | Extract and install the executable on PATH |
+| Linux ARM64, glibc 2.35+ | `wasync_VERSION_linux_arm64.tar.gz` | Extract and run `./install.sh` |
+
+### Choose whether to add AXI for agents
+
+wasync is the app and engine for people. **`whatsapp-axi`** ("AXI for agents") is a
+separate, small command that AI agents such as Claude Code, Codex and OpenCode use
+to work with your local wasync archive. You do not need it to use wasync, so every
+installer asks for it as a choice, off unless you say yes. Both programs always come
+from the same release and have the same version.
+
+| Where you install from | How you choose AXI for agents |
+| --- | --- |
+| macOS `.pkg` | On the installer's **Customize** step, tick **AXI for agents (whatsapp-axi)**. It starts unticked. |
+| Linux archive | `./install.sh` asks and the default is no. Skip the question with `--with-axi` or `--without-axi`. |
+| Windows Setup | Tick **Also install whatsapp-axi** on the tasks page (unticked by default). For a silent install add `/MERGETASKS="installaxi"`. |
+| Windows ZIP | The ZIP already contains `whatsapp-axi.exe` next to `wasync.exe`; extracting installs and configures nothing. |
+| Homebrew | `brew install gehariharan/tap/whatsapp-axi` (see [Homebrew installation](#homebrew-installation)). |
+| Microsoft Store | Not offered: the Store edition is wasync only (see [the MSIX section](#microsoft-store-msix-distribution)). |
+
+Installing AXI for agents never changes your agents' settings. To let your agents
+learn about it, you run (or accept an offer to run) these two commands; add
+`--dry-run` to either to preview what it would write:
+
+```sh
+whatsapp-axi setup skill   # adds the whatsapp-axi skill to your agents
+whatsapp-axi setup hooks   # adds whatsapp-axi's session hooks to your agents
+```
+
+The Linux script and Windows Setup offer these as separate steps, each off by default
+(Linux: `--axi-skill` and `--axi-hooks` say yes without asking; Windows: two unticked
+boxes on the last page, never run by a silent install). The macOS installer cannot run
+commands as you, so it only reminds you on its last page.
 
 The release workflow builds native Intel/Apple Silicon macOS packages and
 Linux and Windows packages. Manual builds can remain drafts; publishing also updates the
@@ -40,7 +71,8 @@ versions appear on the
 Source code and prebuilt downloads are public. No GitHub account is needed to install.
 
 On macOS the package installs `/usr/local/bin/wasync` and dependency notices under
-`/usr/local/share/wasync`. It asks for administrator approval. After installation,
+`/usr/local/share/wasync`; if you tick **AXI for agents** it also installs
+`/usr/local/bin/whatsapp-axi`. It asks for administrator approval. After installation,
 open Terminal and run:
 
 ```sh
@@ -60,15 +92,22 @@ signatures and include validated stapled notarization tickets. Older previews
 were unsigned/ad hoc. No installer removes quarantine or bypasses Gatekeeper.
 
 Linux users can extract the matching archive and install without administrator
-access:
+access. The archive holds `wasync`, `whatsapp-axi` and `install.sh`; extracting it
+installs nothing:
 
 ```sh
 tar -xzf wasync_VERSION_linux_amd64.tar.gz
-mkdir -p "$HOME/.local/bin"
-install -m 755 wasync "$HOME/.local/bin/wasync"
+./install.sh                # installs wasync to ~/.local/bin; asks about AXI for agents (default no)
+./install.sh --with-axi     # or: install both without being asked
+./install.sh --without-axi  # or: install wasync only without being asked
 export PATH="$HOME/.local/bin:$PATH"
 wasync version
 ```
+
+`install.sh --bin-dir DIR` installs somewhere else. Without a terminal and without
+`--with-axi`, the script installs wasync only. To install by hand instead, copy
+`wasync` (and, if you want it, `whatsapp-axi`) with `install -m 755` into a directory on
+your PATH.
 
 The `checksums.txt` release asset contains SHA-256 hashes of each download. On
 Linux use `sha256sum --ignore-missing -c checksums.txt` in the download directory;
@@ -92,9 +131,11 @@ if brew help trust >/dev/null 2>&1; then brew trust --formula gehariharan/tap/wa
 brew install gehariharan/tap/whatsapp-axi
 ```
 
-On macOS, install the signed core cask below, then install the optional agent
-CLI with `brew install gehariharan/tap/whatsapp-axi`. The combined release's core
-source formula is Linux-only. The source formulas use Homebrew's Go and allow
+On macOS, install the signed core cask below. AXI for agents is your choice there:
+add it with `brew install gehariharan/tap/whatsapp-axi` (the cask prints this
+reminder after installing). The standalone `whatsapp-axi` formula stays separate on
+purpose, so the agent tool can be installed, upgraded or removed on its own. The
+combined release's core source formula is Linux-only. The source formulas use Homebrew's Go and allow
 Go to download the project-selected toolchain when needed.
 
 Each release generates `wasync.rb`, a Homebrew **cask** that installs the
@@ -728,11 +769,18 @@ The release workflow builds Windows 10/11 x64 using a native Windows runner,
 CGO SQLite with FTS5, and a statically linked MinGW runtime. Downloads:
 
 - `wasync_VERSION_windows_amd64-setup.exe`: per-user Inno Setup installer.
-- `wasync_VERSION_windows_amd64.zip`: portable executable and license notices.
+- `wasync_VERSION_windows_amd64.zip`: portable `wasync.exe`, `whatsapp-axi.exe` and license notices.
 
 Run Setup, then open **wasync** from the Start menu or open a new terminal and
-run `wasync`. The installer offers a user PATH entry and requires no administrator
-access. Quit wasync before upgrading. Uninstall removes program files and its
+run `wasync`. The installer offers a user PATH entry and, as a separate unticked
+task, **AXI for agents** (`whatsapp-axi.exe`; keep the PATH entry ticked so agents
+can find it). If you pick it, the last page offers two more unticked boxes that run
+`whatsapp-axi setup skill` and `whatsapp-axi setup hooks` as you; a silent install
+never runs them. Silent examples:
+`wasync_VERSION_windows_amd64-setup.exe /VERYSILENT /MERGETASKS="installaxi"` adds
+AXI for agents, and omitting `installaxi` leaves it out. No administrator access is
+needed. If you set up your agents, run `whatsapp-axi setup hooks --remove` and
+`whatsapp-axi setup skill --remove` before uninstalling. Quit wasync before upgrading. Uninstall removes program files and its
 PATH entry; it preserves `%APPDATA%\wasync`, including the archive and device
 session. The portable ZIP uses the same data directory unless `--data-dir` is set.
 Local data uses a private Windows ACL for your user and SYSTEM; concurrent capture
@@ -1171,7 +1219,15 @@ remain for the selection interface and may be refreshed by later WhatsApp events
 ## Microsoft Store MSIX distribution
 
 The Store edition is an x64 desktop console application with a `wasync.exe` app
-execution alias and the same optional TUI/CLI. Windows 10 build 19041 or newer is
+execution alias and the same optional TUI/CLI. **It contains wasync only, not
+AXI for agents.** A Store package cannot ask the user a question at install time, so
+bundling `whatsapp-axi` would install it for everyone, which is not a choice. A
+separate Store add-on that people could pick would be a new Partner Center product
+and a new certification, which only the Store account owner can do. Store users who
+want it can take `whatsapp-axi.exe` from the Windows ZIP on the
+[Releases page](https://github.com/gehariharan/wasync/releases); with the Store
+execution alias on PATH, it finds `wasync` the same way it does for other installs.
+That Store-plus-AXI combination has not been tested on a real Store installation. Windows 10 build 19041 or newer is
 required. Store publication is a separate certification process; building a
 package does not create a Store listing or guarantee approval.
 

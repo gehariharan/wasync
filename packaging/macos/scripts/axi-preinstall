@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+if [ -L /usr/local/bin/whatsapp-axi ]; then
+  echo "A symlink already owns /usr/local/bin/whatsapp-axi. Uninstall that installation (for example the Homebrew whatsapp-axi formula) before choosing AXI for agents in this package." >&2
+  exit 1
+fi

@@ -38,5 +38,11 @@ Path(output).write_text(f'''# Generated from release archive checksums. Installs
 
 {dependency}
   binary "wasync"
+
+  caveats <<~EOS
+    wasync is installed. To let AI agents such as Claude Code, Codex or OpenCode use it,
+    also install the optional AXI for agents tool (it changes no agent settings by itself):
+      brew install gehariharan/tap/whatsapp-axi
+  EOS
 end
 ''', encoding="utf-8")
