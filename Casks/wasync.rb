@@ -2,9 +2,9 @@
 cask "wasync" do
   arch arm: "arm64", intel: "amd64"
 
-  version "0.1.0-preview.20261029004218"
-  sha256 arm:   "bed471809f23f9a187a6eff9be0b6ede0e88d65b44b76f2d743db759c21cec30",
-         intel: "2ba66c2194671066615b7cb6a398d24280173965e9325c565324d7727ca106e0"
+  version "0.1.0-preview.20261029123119"
+  sha256 arm:   "38a0775de23e007799d57966da50d82ac2a8ac8ff9062eb3cb36815dd7defc9b",
+         intel: "5e96ba6704ba493a08984f3040d055378f9ff77d1daf1b604fba8e2d85ab4dee"
 
   url "https://github.com/gehariharan/wasync/releases/download/v#{version}/wasync_#{version}_darwin_#{arch}.tar.gz"
   name "wasync"
