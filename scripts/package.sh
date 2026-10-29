@@ -100,7 +100,8 @@ HOOK
     "${component_args[@]}" "$stage/components/wasync.pkg"
   pkgbuild --root "$stage/axi-payload" --scripts "$stage/axi-hooks" --identifier com.gehariharan.wasynctuicli.axi \
     "${component_args[@]}" "$stage/components/whatsapp-axi.pkg"
-  product_args=(--distribution packaging/macos/distribution.xml --resources packaging/macos/resources
+  sed "s/HOST_ARCHITECTURE/$expected_cpu/" packaging/macos/distribution.xml > "$stage/distribution.xml"
+  product_args=(--distribution "$stage/distribution.xml" --resources packaging/macos/resources
     --package-path "$stage/components")
   if [[ -n "${WASYNC_INSTALLER_IDENTITY:-}" ]]; then product_args+=(--sign "$WASYNC_INSTALLER_IDENTITY" --timestamp); fi
   productbuild "${product_args[@]}" "$out/$name.pkg"

@@ -5,8 +5,10 @@
   <title>wasync</title>
   <welcome file="welcome.html" mime-type="text/html"/>
   <conclusion file="conclusion.html" mime-type="text/html"/>
-  <!-- customize="always" shows the component list instead of hiding it behind a Customize button. -->
-  <options customize="always" require-scripts="false"/>
+  <!-- customize="always" shows the component list instead of hiding it behind a Customize button.
+       hostArchitectures keeps Installer running natively; without it Installer may relaunch under Rosetta,
+       where the preinstall CPU check sees x86_64. package.sh replaces HOST_ARCHITECTURE. -->
+  <options customize="always" require-scripts="false" hostArchitectures="HOST_ARCHITECTURE"/>
   <domains enable_anywhere="false" enable_currentUserHome="false" enable_localSystem="true"/>
   <choices-outline>
     <line choice="wasync"/>
