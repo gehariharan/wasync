@@ -1126,9 +1126,9 @@ whatsapp-axi's credential file, so there is nothing to copy by hand (see
 [Set up an agent, start to finish](#set-up-an-agent-start-to-finish)).
 
 When the agent needs a chat it cannot use, its refusal points at
-`whatsapp-axi access request --match NAME` (or `--chat` with an exact chat ID, or
-a phone number; `--send` also asks to send, reply and react; `--edit` also asks to edit
-its own messages). wasync resolves the request to concrete candidate chats that
+`whatsapp-axi access request --chat JID` for that exact chat; an agent can also ask
+by name with `--match NAME` (a contact or group name, or a phone number). `--send`
+also asks to send, reply and react; `--edit` also asks to edit its own messages. wasync resolves the request to concrete candidate chats that
 only you see and queues a pending request with the same rules as the destructive
 actions above: five-minute expiry, no replay, typed confirmation, no `--yes`.
 The agent is always told "pending", whether or not anything matched, so it

@@ -130,7 +130,7 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	// until then they stand in for the chat list.
 	var chatNames, chatIDs []string
 	for _, c := range chats {
-		if agentauth.ValidChatJID(strings.TrimSpace(c)) == nil {
+		if isChatJID(strings.TrimSpace(c)) {
 			chatIDs = append(chatIDs, c)
 		} else {
 			chatNames = append(chatNames, strings.TrimSpace(c))
@@ -203,6 +203,19 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	}
 	fmt.Fprintf(a.Err, "To use it with whatsapp-axi, put it in WHATSAPP_AXI_TOKEN or save it to the file whatsapp-axi reads (%s).\n", a.axiCredentialPathText())
 	return nil
+}
+
+// isChatJID reports whether a --chat value is a raw WhatsApp chat ID rather
+// than a chat name, so a name such as "Mom@Home" is still looked up.
+func isChatJID(c string) bool {
+	if agentauth.ValidChatJID(c) != nil {
+		return false
+	}
+	switch c[strings.IndexByte(c, '@')+1:] {
+	case "g.us", "s.whatsapp.net", "lid", "newsletter", "broadcast":
+		return true
+	}
+	return false
 }
 
 func (a *App) getenv(key string) string {

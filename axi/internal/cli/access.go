@@ -28,8 +28,9 @@ var accessCommand = &command{
 	maxArgs:  2,
 	argsName: "request | status REQUEST_ID",
 	examples: []string{
+		"whatsapp-axi access request --match \"Family\" --send",
+		"whatsapp-axi access request --match +15551234567",
 		"whatsapp-axi access request --chat 120363000000000000@g.us",
-		"whatsapp-axi access request --match +15551234567 --send",
 		"whatsapp-axi access status 0123456789abcdef0123456789abcdef",
 	},
 	run: (*App).runAccess,

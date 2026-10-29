@@ -59,6 +59,7 @@ func seedArchive(t *testing.T) string {
 		{ID: "444@g.us", Name: "Work Team"},
 		{ID: "555@g.us", Name: "Work Social"},
 		{ID: "666@g.us", Name: "Work\x1b[2KParty"},
+		{ID: "777@g.us", Name: "Mom@Home"},
 		{ID: "15551234567@s.whatsapp.net", Name: "Dana Example"},
 	}); err != nil {
 		t.Fatal(err)
@@ -100,6 +101,21 @@ func TestGrantChatByNameShowsJIDAndNeedsConfirmation(t *testing.T) {
 	}
 	if _, err := os.Stat(credPath); !os.IsNotExist(err) {
 		t.Fatal("credential saved although declined")
+	}
+}
+
+func TestGrantChatNameWithAtIsLookedUpNotTakenAsJID(t *testing.T) {
+	dir := seedArchive(t)
+	app, _, errs, _ := setupApp(t, "y\nhelper\nn\n")
+	if err := app.Run(context.Background(), grantArgs(dir, "helper", "--scope", "send", "--chat", "Mom@Home")); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(errs.String(), "777@g.us") {
+		t.Fatalf("prompt did not show the JID: %q", errs.String())
+	}
+	c, err := agentauth.ActiveByName(dir, "helper")
+	if err != nil || c == nil || len(c.Chats) != 1 || c.Chats[0] != "777@g.us" {
+		t.Fatalf("%v %+v", err, c)
 	}
 }
 
