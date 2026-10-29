@@ -1,6 +1,7 @@
 // Package axicred saves an agent credential where whatsapp-axi looks for it.
 // It mirrors the path rules in axi/internal/config (the two modules cannot
-// import each other); TestPathRulesMatchWhatsappAxi keeps them in agreement.
+// import each other); the tests run whatsapp-axi to check it reads what Save
+// writes.
 package axicred
 
 import (

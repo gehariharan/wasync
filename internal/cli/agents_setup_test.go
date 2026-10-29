@@ -58,6 +58,7 @@ func seedArchive(t *testing.T) string {
 		{ID: "333@g.us", Name: "Book Club"},
 		{ID: "444@g.us", Name: "Work Team"},
 		{ID: "555@g.us", Name: "Work Social"},
+		{ID: "666@g.us", Name: "Work\x1b[2KParty"},
 		{ID: "15551234567@s.whatsapp.net", Name: "Dana Example"},
 	}); err != nil {
 		t.Fatal(err)
@@ -121,6 +122,9 @@ func TestGrantChatByNameRefusesAmbiguousAndUnknown(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "444@g.us") || !strings.Contains(err.Error(), "555@g.us") || !strings.Contains(err.Error(), "Work Team") {
 		t.Fatalf("ambiguous: %v", err)
 	}
+	if strings.Contains(err.Error(), "\x1b") || !strings.Contains(err.Error(), "Work[2KParty") {
+		t.Fatalf("chat name control characters not removed: %q", err)
+	}
 	app, _, _, _ = setupApp(t, "y\nhelper\n")
 	err = app.Run(context.Background(), grantArgs(dir, "helper", "--scope", "send", "--chat", "nope"))
 	if err == nil || !strings.Contains(err.Error(), "--on-demand") {
@@ -128,6 +132,22 @@ func TestGrantChatByNameRefusesAmbiguousAndUnknown(t *testing.T) {
 	}
 	if c, _ := agentauth.ActiveByName(dir, "helper"); c != nil {
 		t.Fatal("client created for a refused name")
+	}
+}
+
+func TestGrantChatByNameChecksOtherFlagsBeforeAskingAboutChats(t *testing.T) {
+	dir := seedArchive(t)
+	for _, args := range [][]string{
+		{"helper", "--scope", "send", "--chat", "Family", "--rate", "7000"},
+		{"bad name!", "--scope", "send", "--chat", "Family"},
+	} {
+		app, _, errs, _ := setupApp(t, "y\nhelper\n")
+		if err := app.Run(context.Background(), grantArgs(dir, args...)); err == nil {
+			t.Fatalf("%v: accepted", args)
+		}
+		if strings.Contains(errs.String(), "Allow chat") {
+			t.Fatalf("%v: asked about chats before rejecting: %q", args, errs.String())
+		}
 	}
 }
 

@@ -127,7 +127,7 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 		return fmt.Errorf("--rate must be between 1 and %d", agentauth.MaxRatePerMinute)
 	}
 	// Chat names are looked up in the archive after the interactive check, so
-	// only validate now when every --chat is already a JID.
+	// until then they stand in for the chat list.
 	var chatNames, chatIDs []string
 	for _, c := range chats {
 		if agentauth.ValidChatJID(strings.TrimSpace(c)) == nil {
@@ -137,11 +137,9 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 		}
 	}
 	req := agentauth.GrantRequest{Name: name, Scopes: scopes, Chats: chatIDs, OnDemand: *onDemand, RatePerMinute: *rate, Expires: *expires}
-	if len(chatNames) == 0 {
-		if err := agentauth.ValidateGrant(req); err != nil {
-			return err
-		}
-	} else if _, err := agentauth.ParseScopes(scopes...); err != nil {
+	early := req
+	early.OnDemand = early.OnDemand || len(chatNames) > 0
+	if err := agentauth.ValidateGrant(early); err != nil {
 		return err
 	}
 	if !a.Interactive {
@@ -221,8 +219,8 @@ func (a *App) axiCredentialPathText() string {
 	return "WHATSAPP_AXI_CONFIG_DIR/credential"
 }
 
-// askYesNo prints a prompt and reads one line. Empty input takes def; end of
-// input, a read error or anything but y/yes/n/no counts as "no".
+// askYesNo prints a prompt and reads one line. Empty input or end of input
+// takes def; a read error or anything but y/yes counts as "no".
 func (a *App) askYesNo(ctx context.Context, prompt string, def bool) bool {
 	fmt.Fprint(a.Err, prompt)
 	line, err := readLine(ctx, a.In)
@@ -231,7 +229,7 @@ func (a *App) askYesNo(ctx context.Context, prompt string, def bool) bool {
 	}
 	switch strings.ToLower(line) {
 	case "":
-		return def && err == nil
+		return def
 	case "y", "yes":
 		return true
 	}
@@ -305,13 +303,13 @@ func (a *App) resolveChatNames(ctx context.Context, cfg config.Config, names []s
 			var b strings.Builder
 			fmt.Fprintf(&b, "%q matches %d chats; repeat --chat with a more exact name or one of these JIDs:", n, len(found))
 			for _, g := range found {
-				fmt.Fprintf(&b, "\n  %s  %s (%s)", g.ID, g.Name, storage.ChatKind(g.ID))
+				fmt.Fprintf(&b, "\n  %s  %s (%s)", g.ID, printable(g.Name), storage.ChatKind(g.ID))
 			}
 			return nil, errors.New(b.String())
 		}
 		g := found[0]
-		if !a.askYesNo(ctx, fmt.Sprintf("Allow chat %q: %s (%s)? [y/N]: ", g.Name, g.ID, storage.ChatKind(g.ID)), false) {
-			return nil, fmt.Errorf("chat %q not confirmed; no credential created", g.Name)
+		if !a.askYesNo(ctx, fmt.Sprintf("Allow chat %q: %s (%s)? [y/N]: ", printable(g.Name), g.ID, storage.ChatKind(g.ID)), false) {
+			return nil, fmt.Errorf("chat %q not confirmed; no credential created", printable(g.Name))
 		}
 		ids = append(ids, g.ID)
 	}
