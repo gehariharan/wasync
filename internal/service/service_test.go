@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -53,8 +54,11 @@ func TestLaunchAgentInstallWritesAFileAndNothingElse(t *testing.T) {
 	if keep, want := got["KeepAlive"], map[string]any{"SuccessfulExit": false}; !reflect.DeepEqual(keep, want) {
 		t.Errorf("KeepAlive = %#v, want %#v", keep, want)
 	}
-	if info, _ := os.Stat(l.path()); info.Mode().Perm() != 0o644 {
-		t.Fatalf("mode %v", info.Mode())
+	// Windows has no Unix permission bits; the LaunchAgent is macOS-only.
+	if runtime.GOOS != "windows" {
+		if info, _ := os.Stat(l.path()); info.Mode().Perm() != 0o644 {
+			t.Fatalf("mode %v", info.Mode())
+		}
 	}
 	if on, _ := l.Installed(); !on {
 		t.Fatal("not reported installed")
