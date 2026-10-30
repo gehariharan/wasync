@@ -106,7 +106,12 @@ jobs:
               {"name": "checksums.txt", "browser_download_url": "https://example.invalid/1.txt"}]}
           ]
           '@ | Set-Content -Path $list -Encoding utf8
+          $unverifiable = Join-Path $env:RUNNER_TEMP 'install-windows-no-checksums.json'
+          '[{"tag_name": "v0.1.0-preview.4", "draft": false, "assets": [{"name": "wasync_0.1.0-preview.4_windows_amd64-setup.exe", "browser_download_url": "https://example.invalid/4.exe"}]}]' | Set-Content -Path $unverifiable -Encoding utf8
           foreach ($shell in 'powershell', 'pwsh') {
+            $err = & $shell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-windows.ps1 -DryRun -ReleasesJson $unverifiable 2>&1 | Out-String
+            if ($LASTEXITCODE -eq 0) { throw "install-windows.ps1 in $shell accepted a release with no checksums.txt" }
+            if (($err -replace '\s', '') -notmatch 'hasnochecksums\.txt,sothedownloadcannotbeverified') { throw "install-windows.ps1 in $shell did not explain the missing checksums.txt: $err" }
             $out = & $shell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-windows.ps1 -DryRun -ReleasesJson $list | Out-String
             if ($LASTEXITCODE -ne 0) { throw "install-windows.ps1 failed in ${shell}: $out" }
             if ($out -notmatch 'Release:\s+v0\.1\.0-preview\.2\s') { throw "install-windows.ps1 in $shell did not choose v0.1.0-preview.2: $out" }

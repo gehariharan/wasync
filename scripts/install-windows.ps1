@@ -38,8 +38,8 @@ if ($Version) {
 }
 if (-not $release) { throw 'No published wasync release was found.' }
 $assets = @($release.assets)
-$setup = @($assets | Where-Object { $_.name -like 'wasync_*_windows_amd64-setup.exe' })[0]
-$sums = @($assets | Where-Object { $_.name -eq 'checksums.txt' })[0]
+$setup = $assets | Where-Object { $_.name -like 'wasync_*_windows_amd64-setup.exe' } | Select-Object -First 1
+$sums = $assets | Where-Object { $_.name -eq 'checksums.txt' } | Select-Object -First 1
 if (-not $setup) { throw "Release $($release.tag_name) has no Windows Setup program." }
 if (-not $sums) { throw "Release $($release.tag_name) has no checksums.txt, so the download cannot be verified." }
 
@@ -56,7 +56,7 @@ try {
  Invoke-WebRequest -UseBasicParsing -Headers @{ 'User-Agent' = 'wasync-install-script' } -Uri $setup.browser_download_url -OutFile $file
  $text = (Invoke-WebRequest -UseBasicParsing -Headers @{ 'User-Agent' = 'wasync-install-script' } -Uri $sums.browser_download_url).Content
  if ($text -is [byte[]]) { $text = [Text.Encoding]::UTF8.GetString($text) }
- $line = @($text -split "`n" | Where-Object { $_.Trim().EndsWith($setup.name) })[0]
+ $line = $text -split "`n" | Where-Object { $_.Trim().EndsWith($setup.name) } | Select-Object -First 1
  if (-not $line) { throw "checksums.txt does not list $($setup.name); refusing to install an unverified file." }
  $expected = ($line.Trim() -split '\s+')[0].ToLowerInvariant()
  $actual = (Get-FileHash -Algorithm SHA256 -Path $file).Hash.ToLowerInvariant()
