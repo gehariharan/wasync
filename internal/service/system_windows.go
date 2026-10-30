@@ -10,9 +10,13 @@ import (
 
 const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
 
+// valueName is the Run value wasync owns. Tests replace it so they never touch a real one.
+var valueName = RunName
+
 type runValue struct{}
 
-// System is a value under the current user's Run key. This path has not been
+// System is a value under the current user's Run key. CI writes, reads and
+// removes one under a test-only name; starting wasync at login has not been
 // run on a real Windows computer.
 func System() Manager { return runValue{} }
 
@@ -27,7 +31,7 @@ func (runValue) Install(s Spec) error {
 		return err
 	}
 	defer k.Close()
-	return k.SetStringValue(RunName, RunCommand(s))
+	return k.SetStringValue(valueName, RunCommand(s))
 }
 
 func (runValue) Uninstall() error {
@@ -39,7 +43,7 @@ func (runValue) Uninstall() error {
 		return err
 	}
 	defer k.Close()
-	if err = k.DeleteValue(RunName); err != nil && !errors.Is(err, registry.ErrNotExist) {
+	if err = k.DeleteValue(valueName); err != nil && !errors.Is(err, registry.ErrNotExist) {
 		return err
 	}
 	return nil
@@ -54,7 +58,7 @@ func (runValue) Installed() (bool, error) {
 		return false, err
 	}
 	defer k.Close()
-	if _, _, err = k.GetStringValue(RunName); err != nil {
+	if _, _, err = k.GetStringValue(valueName); err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
 			return false, nil
 		}
