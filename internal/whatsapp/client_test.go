@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"github.com/gehariharan/wasync/internal/localfs"
+	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waAdv"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	"io"
 	"log/slog"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -97,4 +99,61 @@ func privateTestDir(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return dir
+}
+
+// openPairer behaves like whatsmeow while pairing: a QR channel can only be
+// requested while disconnected, and a stopped attempt leaves the socket open.
+type openPairer struct {
+	mu        sync.Mutex
+	connected bool
+	attempts  [][]whatsmeow.QRChannelItem
+	ch        chan whatsmeow.QRChannelItem
+}
+
+func (p *openPairer) GetQRChannel(context.Context) (<-chan whatsmeow.QRChannelItem, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.connected {
+		return nil, whatsmeow.ErrQRAlreadyConnected
+	}
+	p.ch = make(chan whatsmeow.QRChannelItem, 8)
+	return p.ch, nil
+}
+func (p *openPairer) ConnectContext(context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.connected = true
+	for _, item := range p.attempts[0] {
+		p.ch <- item
+	}
+	p.attempts = p.attempts[1:]
+	return nil
+}
+func (p *openPairer) Disconnect() { p.mu.Lock(); p.connected = false; p.mu.Unlock() }
+
+func TestAStoppedQRLoginClosesTheConnectionSoARetryGetsAFreshCode(t *testing.T) {
+	c, err := Open(context.Background(), filepath.Join(privateTestDir(t), "session.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	p := &openPairer{attempts: [][]whatsmeow.QRChannelItem{
+		{{Event: whatsmeow.QRChannelEventCode, Code: "2@FIRST"}, {Event: whatsmeow.QRChannelEventPasskeyRequest}},
+		{{Event: whatsmeow.QRChannelEventCode, Code: "2@SECOND"}},
+	}}
+	c.pairing = p
+	var shown []string
+	if err := c.LoginWithQR(context.Background(), func(code string) { shown = append(shown, code) }); err == nil {
+		t.Fatal("a passkey request should stop QR linking")
+	}
+	if p.connected {
+		t.Fatal("the stopped attempt left the connection open")
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	if err := c.LoginWithQR(ctx, func(code string) { shown = append(shown, code); cancel() }); !errors.Is(err, context.Canceled) {
+		t.Fatalf("retry: %v", err)
+	}
+	if len(shown) != 2 || shown[1] != "2@SECOND" {
+		t.Fatalf("codes shown %q, want a fresh code on retry", shown)
+	}
 }
