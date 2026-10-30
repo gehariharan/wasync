@@ -117,7 +117,9 @@ That is the only case where an agent can tell a match from none: in sync-all mod
 chat by name or number, because a matching request is granted at once, so a name probe both reveals and grants that
 chat. Ask-each-time mode reveals nothing. Requests with `edit`, no match or several matches still wait for a person, and destructive
 actions are never automatic. The mode is changed only through `POST /api/access/mode`, signed with the
-interactive approval credential; no `/api/v1` route and no agent credential reaches it.
+interactive approval credential, or the owner's approval page; choosing sync all also needs the operating-system
+confirmation where the computer has one (see the [threat model](threat-model.md)). No `/api/v1` route and no
+agent credential reaches it.
 
 ### Message content safety
 

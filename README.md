@@ -1168,15 +1168,15 @@ by name with `--match NAME` (a contact or group name, or a phone number). `--sen
 also asks to send, reply and react; `--edit` also asks to edit its own messages.
 wasync resolves the request to concrete candidate chats that only you see and
 queues a pending request with the same rules as the destructive actions above:
-five-minute expiry, no replay, typed confirmation, no `--yes`.
+five-minute expiry, no replay, a person's confirmation, no `--yes`.
 The agent is always told "pending", whether or not anything matched, so it
 cannot use a request to find out which chats you have. A request that matched
 nothing shows as "no chat matched" in the TUI and `wasync actions list`; you can
 reject it, it cannot be approved, and it expires. Direct chats are named after
 the saved contact when WhatsApp provides one; a phone number always works.
 
-You see the request in the TUI, or run `wasync actions approve REQUEST_ID` in a
-terminal. A headless `wasync serve` has no dialog, so it prints (and logs) one
+You see the request in the TUI or on the approval page (`wasync approvals`), or
+run `wasync actions approve REQUEST_ID` in a terminal. A headless `wasync serve` has no dialog, so it prints (and logs) one
 line per new request naming only the agent and the request ID, never a chat or
 number; run `wasync actions list` in a terminal to see what each pending request
 asks for, then `wasync actions approve REQUEST_ID`. Before confirming you choose:
@@ -1219,8 +1219,10 @@ wasync access mode all --history now        # sync all; typed SYNC ALL, interact
 wasync access mode ask                      # back to ask each time
 ```
 
-Changing the mode needs an interactive terminal, a typed confirmation and a
-running wasync owner (the TUI or `serve`); no agent credential can reach it.
+Changing the mode needs a running wasync owner (the TUI or `serve`) and either
+an interactive terminal with a typed confirmation or the approval page (see
+"Approving without a terminal" above); choosing sync all also asks your computer
+to confirm where it can. No agent credential can reach it.
 Switching back to ask-each-time stops future automatic approvals but does not
 revoke access already given; revoke the agent to remove that.
 
