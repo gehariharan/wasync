@@ -21,7 +21,9 @@ import (
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/buildinfo"
 	"github.com/gehariharan/wasync/internal/config"
+	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
+	"github.com/gehariharan/wasync/internal/notify"
 	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/webhook"
@@ -43,6 +45,7 @@ type Client interface {
 }
 type App struct {
 	Approve       func(int64, string) error
+	Reject        func(int64, string) error
 	MediaDownload whatsapp.MediaDownloader
 	Sync          whatsapp.Syncer
 	Operations    whatsapp.Operations
@@ -59,10 +62,18 @@ type App struct {
 	// Getenv replaces os.Getenv where a command reads the environment the
 	// user's agents will see (the whatsapp-axi credential location), for tests.
 	Getenv func(string) string
+	// Human makes approvals wait for the operating system's own confirmation
+	// (Touch ID or password, Windows Hello). Nil, or a gate with no prompt on
+	// this computer, leaves the typed confirmation in the terminal as the only check.
+	Human *humancheck.Gate
+	// Notify shows a desktop notification when something waits for the person.
+	Notify func(title, text string)
+	// OpenURL opens a link in the browser, for tests.
+	OpenURL func(string) error
 }
 
 func New() *App {
-	return &App{In: os.Stdin, Out: os.Stdout, Err: os.Stderr, Interactive: term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())), OpenClient: func(ctx context.Context, path string, log *slog.Logger) (Client, error) {
+	return &App{Human: humancheck.NewGate(humancheck.System()), Notify: notify.Send, In: os.Stdin, Out: os.Stdout, Err: os.Stderr, Interactive: term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())), OpenClient: func(ctx context.Context, path string, log *slog.Logger) (Client, error) {
 		return whatsapp.Open(ctx, path, log)
 	}}
 }
@@ -86,6 +97,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   actions list                               Requests waiting for you (interactive)
   access mode [ask|all]                      How agents get chats: ask each time or sync all
   actions approve REQUEST_ID                 Interactive typed approval, no --yes
+  approvals                                  Open the approval page in your browser
   actions status REQUEST_ID                  Inspect a pending/completed request
   media policy --chat ID [--mode auto|manual|inherit]  Saved per-chat media setting
   media download --chat ID --message-id ID    One-time attachment download (live owner)
@@ -186,6 +198,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	}
 	if args[0] == "access" {
 		return a.runAccessMode(parent, cfg, args[1:])
+	}
+	if args[0] == "approvals" {
+		return a.runApprovals(parent, cfg, args[1:])
 	}
 	if args[0] == "clean" || args[0] == "delete" {
 		return a.runDestructiveRequest(parent, cfg, args)

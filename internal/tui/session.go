@@ -14,6 +14,7 @@ import (
 	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
+	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 )
@@ -43,7 +44,10 @@ type Session struct {
 	APIURL    string
 	MediaRoot string
 	// DataDir holds agents.json and the audit log; chat access requests need it.
-	DataDir    string
+	DataDir string
+	// Human, when enabled, makes approving an agent's request wait for the
+	// operating system's own confirmation (Touch ID, password, Windows Hello).
+	Human      *humancheck.Gate
 	ctx        context.Context
 	store      *storage.Store
 	client     Client
@@ -284,6 +288,50 @@ func (s *Session) ApproveAction(account int64, id string) (result error) {
 	}
 	return fmt.Errorf("unsupported action")
 }
+
+// ConfirmApproval asks the person for the system confirmation an approval of
+// request id needs, naming the chat and history chosen for an access request.
+// It returns nil at once when this computer has no such prompt.
+func (s *Session) ConfirmApproval(account int64, id, chat, history string) error {
+	if !s.Human.Enabled() || s.Approvals == nil {
+		return nil
+	}
+	pending := s.Approvals.Get(account, id)
+	if pending == nil || pending.Status != approval.StatusPending {
+		return nil
+	}
+	if pending.Kind == approval.KindChatAccess {
+		preview, err := s.Approvals.Preview(account, id, chat, history)
+		if err != nil {
+			return err
+		}
+		pending = &preview
+	}
+	name := ""
+	if groups, err := s.store.Groups(s.ctx, account); err == nil {
+		for _, g := range groups {
+			if g.ID == pending.Chat {
+				name = g.Name
+			}
+		}
+	}
+	if err := s.Human.Confirm(s.ctx, pending.Prompt(name)); err != nil {
+		return fmt.Errorf("%w; nothing changed", err)
+	}
+	return nil
+}
+
+// ConfirmAccessMode does the same for choosing "sync all chats".
+func (s *Session) ConfirmAccessMode(m accessmode.Mode) error {
+	if m.Mode != accessmode.All || !s.Human.Enabled() {
+		return nil
+	}
+	if err := s.Human.Confirm(s.ctx, "Approve: "+m.Effect()); err != nil {
+		return fmt.Errorf("%w; nothing changed", err)
+	}
+	return nil
+}
+
 func (s *Session) RejectAction(account int64, id string) error {
 	if s.Approvals == nil {
 		return fmt.Errorf("approval queue unavailable")
@@ -317,7 +365,8 @@ func (s *Session) SetAccessMode(account int64, m accessmode.Mode) error {
 }
 
 // DecideAccess records the human's chat and history-depth choice on a pending
-// access request; ApproveAction then applies exactly that choice.
+// access request once the person confirmed it; ApproveAction then applies
+// exactly that choice.
 func (s *Session) DecideAccess(account int64, id, chat, history string) error {
 	if s.Approvals == nil {
 		return fmt.Errorf("approval queue unavailable")

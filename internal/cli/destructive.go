@@ -141,6 +141,7 @@ func (a *App) runActionStatus(ctx context.Context, cfg config.Config, args []str
 		if strings.TrimSpace(line) != code {
 			return fmt.Errorf("confirmation did not match; no data changed")
 		}
+		a.humanHint()
 		return a.ownerCommand(ctx, cfg, "POST", "/api/actions/"+request.ID+"/approve", nil, "approve.token")
 	}
 	if err = printCommandJSON(a.Out, response.Body); err != nil {
@@ -276,6 +277,7 @@ func (a *App) approveChatAccess(ctx context.Context, cfg config.Config, request 
 	if err != nil {
 		return err
 	}
+	a.humanHint()
 	return a.ownerCommand(ctx, cfg, "POST", "/api/actions/"+request.ID+"/approve", body, "approve.token")
 }
 

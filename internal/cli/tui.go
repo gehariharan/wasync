@@ -22,12 +22,18 @@ func (a *App) tuiAction(offline bool) action {
 			return fmt.Errorf("the TUI requires an interactive terminal; use wasync help for scriptable commands")
 		}
 		a.MediaDownload = nil
-		a.Approvals = &approval.Queue{}
+		a.Approvals = &approval.Queue{OnAccess: func(r approval.Request) {
+			a.announce("Agent " + printable(r.Access.Agent) + " is asking for a WhatsApp chat.")
+		}, OnRequest: func(approval.Request) {
+			a.announce("A request to delete data is waiting for you.")
+		}}
 		if offline {
 			session := tui.NewSession(ctx, store, nil)
 			session.Approvals = a.Approvals
 			session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
+			session.Human = a.Human
 			a.Approve = session.ApproveAction
+			a.Reject = session.RejectAction
 			a.Sync = session.Sync
 			return a.withAPI(ctx, cfg, store, nil, func(ctx context.Context, url string) error {
 				session.APIURL = url
@@ -75,7 +81,9 @@ func (a *App) tuiAction(offline bool) action {
 		session := tui.NewSession(clientCtx, store, live)
 		session.Approvals = a.Approvals
 		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
+		session.Human = a.Human
 		a.Approve = session.ApproveAction
+		a.Reject = session.RejectAction
 		a.Sync = session.Sync
 		if media, ok := client.(interface {
 			RequestMedia(context.Context, string, string) (whatsapp.MediaResult, error)

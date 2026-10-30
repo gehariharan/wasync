@@ -57,6 +57,19 @@ func (m Mode) Validate() error {
 	return fmt.Errorf("mode must be %q or %q", Ask, All)
 }
 
+// Effect is the plain-words effect of choosing m, for the prompt that asks the
+// person to confirm it.
+func (m Mode) Effect() string {
+	if m.Mode != All {
+		return "make agents wait for your approval before they get any chat"
+	}
+	depth := "from now on only"
+	if m.History == HistoryFull {
+		depth = "full history"
+	}
+	return "sync ALL chats (" + depth + ") and let any agent read, send, reply and react in any chat it asks for without asking you"
+}
+
 // AutoApproves reports whether agents' read, send, reply and react requests are
 // approved without asking.
 func (m Mode) AutoApproves() bool { return m.Mode == All }

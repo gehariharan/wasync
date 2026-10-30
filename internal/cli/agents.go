@@ -32,6 +32,9 @@ grant and revoke require an interactive terminal and typing the client name;
 there is no --yes, and none of these commands is available over the API.
 They edit agents.json in the data directory, work whether or not an owner is
 running (a running owner reloads changes), and never connect to WhatsApp.
+After the typed name, a computer with a system confirmation (Touch ID or
+password on macOS, Windows Hello or the account password on Windows) also asks
+you to confirm; a pseudo-terminal can type the name but cannot answer that.
 
 NAME is 1-32 characters of a-z, 0-9 and -.
 Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own,
@@ -185,6 +188,10 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	}
 	if line != name {
 		return fmt.Errorf("confirmation did not match; no credential created")
+	}
+	// A typed name can be supplied by a pseudo-terminal; the system prompt cannot.
+	if err := a.confirmHuman(ctx, grantEffect(name, normalizedScopes, chats, *onDemand, *expires)); err != nil {
+		return fmt.Errorf("%w; no credential created", err)
 	}
 	credential, client, err := agentauth.Grant(cfg.DataDir, req, time.Now())
 	if err != nil {
@@ -354,6 +361,9 @@ func (a *App) agentsRevoke(ctx context.Context, cfg config.Config, args []string
 	}
 	if line != name {
 		return fmt.Errorf("confirmation did not match; nothing revoked")
+	}
+	if err := a.confirmHuman(ctx, "Approve: revoke agent "+quotedName(name)+"; its credential stops working at once"); err != nil {
+		return fmt.Errorf("%w; nothing revoked", err)
 	}
 	client, err := agentauth.Revoke(cfg.DataDir, name, time.Now())
 	if err != nil {

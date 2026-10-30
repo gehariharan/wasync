@@ -15,7 +15,9 @@ const accessModeUsage = `Usage: wasync access mode [ask | all [--history now|ful
 
 Show or change how agents get chats. Human only: changing it needs an
 interactive terminal, a typed confirmation and a running wasync owner (the TUI
-or serve); there is no --yes and no API route an agent can reach.
+or serve); there is no --yes. Choosing "all" also asks your computer to confirm
+(Touch ID or password on macOS, Windows Hello on Windows) where it can. The
+approval page (wasync approvals) offers the same choice without a terminal.
 
   ask   (default) every agent request for a chat waits for you to approve it,
         choosing the chat, read or send, and the history depth.
@@ -99,6 +101,9 @@ func (a *App) runAccessMode(ctx context.Context, cfg config.Config, args []strin
 	body, err := json.Marshal(mode)
 	if err != nil {
 		return err
+	}
+	if mode.Mode == accessmode.All {
+		a.humanHint()
 	}
 	return a.ownerCommand(ctx, cfg, "POST", "/api/access/mode", body, "approve.token")
 }

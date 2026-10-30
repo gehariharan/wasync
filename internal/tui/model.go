@@ -392,8 +392,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if key == "y" {
 				kind, id, account := m.confirm, m.confirmID, m.snapshot.Account
 				var decide func() error
+				var chat, history string
 				if m.isAccessRequest() {
-					chat, history := m.confirmRequest.Access.Candidates[m.confirmChoice].Chat, m.confirmHistory
+					chat, history = m.confirmRequest.Access.Candidates[m.confirmChoice].Chat, m.confirmHistory
 					decide = func() error {
 						decider, ok := m.session.(interface {
 							DecideAccess(int64, string, string, string) error
@@ -407,11 +408,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirm = ""
 				m.writeBusy = true
 				return m, func() tea.Msg {
-					if decide != nil {
-						if err := decide(); err != nil {
-							return operationMsg{kind, err}
-						}
-					}
 					if kind == "enable-all" || kind == "disable-all" {
 						bulk, ok := m.session.(interface {
 							ToggleMany(int64, []string, bool) error
@@ -425,6 +421,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						approver, ok := m.session.(interface{ ApproveAction(int64, string) error })
 						if !ok {
 							return operationMsg{kind, fmt.Errorf("approval unavailable")}
+						}
+						if confirmer, ok := m.session.(interface {
+							ConfirmApproval(int64, string, string, string) error
+						}); ok {
+							if err := confirmer.ConfirmApproval(account, id, chat, history); err != nil {
+								return operationMsg{kind, err}
+							}
+						}
+						if decide != nil {
+							if err := decide(); err != nil {
+								return operationMsg{kind, err}
+							}
 						}
 						return operationMsg{kind, approver.ApproveAction(account, id)}
 					}
@@ -1142,6 +1150,11 @@ func (m Model) accessModeKey(v tea.KeyPressMsg, key string) (tea.Model, tea.Cmd)
 			})
 			if !ok {
 				return operationMsg{"access-mode", fmt.Errorf("access mode unavailable")}
+			}
+			if confirmer, ok := m.session.(interface{ ConfirmAccessMode(accessmode.Mode) error }); ok {
+				if err := confirmer.ConfirmAccessMode(mode); err != nil {
+					return operationMsg{"access-mode", err}
+				}
 			}
 			return operationMsg{"access-mode", setter.SetAccessMode(account, mode)}
 		}

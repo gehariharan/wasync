@@ -39,6 +39,9 @@ func (h *handler) setAccessMode(w http.ResponseWriter, r *http.Request) {
 	if account == nil {
 		return
 	}
+	if in.Mode == accessmode.All && !h.confirm(w, r, "Approve: "+in.Effect()) {
+		return
+	}
 	enabled, err := accessmode.Apply(r.Context(), h.store, h.dataDir, account.ID, in)
 	if err != nil {
 		fail(w, 500, err.Error())

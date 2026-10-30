@@ -141,13 +141,39 @@ func (q *Queue) addAccessLocked(account int64, a Access) (Request, bool, error) 
 
 // Decide records the human's choice of chat and history depth on a pending
 // access request. The choice applies only to this request and only when it is
-// then approved with Take; it can be changed until then.
+// then approved with Take. A caller that asks the person to confirm builds the
+// prompt from Preview and calls Decide only after the person confirmed, so no
+// one can change the choice while the prompt is open.
 func (q *Queue) Decide(account int64, id, chat, history string) error {
-	if history != HistoryNow && history != HistoryFull {
-		return fmt.Errorf("history must be %q or %q", HistoryNow, HistoryFull)
-	}
 	q.mu.Lock()
 	defer q.mu.Unlock()
+	i, err := q.choice(account, id, chat, history)
+	if err != nil {
+		return err
+	}
+	q.requests[i].Access.Chosen, q.requests[i].Access.History = chat, history
+	return nil
+}
+
+// Preview returns the pending access request as Decide would leave it, without
+// recording anything.
+func (q *Queue) Preview(account int64, id, chat, history string) (Request, error) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	i, err := q.choice(account, id, chat, history)
+	if err != nil {
+		return Request{}, err
+	}
+	r := q.requests[i].clone()
+	r.Access.Chosen, r.Access.History = chat, history
+	return r, nil
+}
+
+// choice finds the pending access request a choice of chat and history applies to.
+func (q *Queue) choice(account int64, id, chat, history string) (int, error) {
+	if history != HistoryNow && history != HistoryFull {
+		return 0, fmt.Errorf("history must be %q or %q", HistoryNow, HistoryFull)
+	}
 	q.expire()
 	for i, r := range q.requests {
 		if r.Account != account || r.ID != id || r.Status != StatusPending || r.Kind != KindChatAccess {
@@ -155,16 +181,15 @@ func (q *Queue) Decide(account int64, id, chat, history string) error {
 		}
 		for _, c := range r.Access.Candidates {
 			if c.Chat == chat {
-				q.requests[i].Access.Chosen, q.requests[i].Access.History = chat, history
-				return nil
+				return i, nil
 			}
 		}
 		if r.NoMatch() {
-			return fmt.Errorf("no chat matched this request; it can only be rejected")
+			return 0, fmt.Errorf("no chat matched this request; it can only be rejected")
 		}
-		return fmt.Errorf("chat is not one of the candidates for this request")
+		return 0, fmt.Errorf("chat is not one of the candidates for this request")
 	}
-	return fmt.Errorf("request expired or already handled")
+	return 0, fmt.Errorf("request expired or already handled")
 }
 
 // MarkAuto records that the owner's "sync all" setting, not a person at a

@@ -26,7 +26,11 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 	if cfg.NoAPI {
 		return run(ctx, "")
 	}
-	server, err := api.StartOperations(cfg.APIAddr, cfg.DataDir, store, status, a.Approvals, a.Approve, a.Sync, a.MediaDownload, a.Operations, sender...)
+	owner := api.Owner{Addr: cfg.APIAddr, Dir: cfg.DataDir, Store: store, Status: status, Approvals: a.Approvals, Approve: a.Approve, Reject: a.Reject, Sync: a.Sync, Media: a.MediaDownload, Ops: a.Operations, Human: a.Human}
+	if len(sender) > 0 {
+		owner.Sender = sender[0]
+	}
+	server, err := api.StartOwner(owner)
 	if err != nil {
 		return err
 	}
@@ -121,12 +125,17 @@ func (a *App) serveAction(offline bool) action {
 			// Headless there is no dialog: say who asked and which request to open,
 			// never the chat or number. `wasync actions list` shows the details.
 			log.Info("chat access requested", "agent", r.Access.Agent, "request_id", r.ID)
-			fmt.Fprintf(a.Out, "Chat access requested by agent %s. Review: wasync actions list; approve: wasync actions approve %s\n", printable(r.Access.Agent), r.ID)
+			fmt.Fprintf(a.Out, "Chat access requested by agent %s. Review: wasync approvals (page) or wasync actions list; approve: wasync actions approve %s\n", printable(r.Access.Agent), r.ID)
+			a.announce("Agent " + printable(r.Access.Agent) + " is asking for a WhatsApp chat. Run wasync approvals to review.")
+		}, OnRequest: func(approval.Request) {
+			a.announce("A request to delete data is waiting for you. Run wasync approvals to review.")
 		}}
 		session := tui.NewSession(ctx, store, live)
 		session.Approvals = a.Approvals
 		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
+		session.Human = a.Human
 		a.Approve = session.ApproveAction
+		a.Reject = session.RejectAction
 		a.Sync = session.Sync
 		if media, ok := client.(interface {
 			RequestMedia(context.Context, string, string) (whatsapp.MediaResult, error)
@@ -134,7 +143,7 @@ func (a *App) serveAction(offline bool) action {
 			a.MediaDownload = media.RequestMedia
 		}
 		return a.withAPI(ctx, cfg, store, status, func(ctx context.Context, url string) error {
-			fmt.Fprintf(a.Out, "Local API: %s\nBearer token file: %s\n", url, filepath.Join(cfg.DataDir, "api.token"))
+			fmt.Fprintf(a.Out, "Local API: %s\nBearer token file: %s\n%s\n", url, filepath.Join(cfg.DataDir, "api.token"), a.approvalCheckLine())
 			if client != nil {
 				err := client.Connect(ctx)
 				if err == nil {
