@@ -17,6 +17,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
+	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/query"
 	"github.com/gehariharan/wasync/internal/storage"
@@ -43,7 +44,10 @@ type accessFixture struct {
 	other    string // a second on-demand credential
 }
 
-func setupAccess(t *testing.T) accessFixture {
+func setupAccess(t *testing.T) accessFixture { return setupAccessWith(t, nil) }
+
+// setupAccessWith starts the owner with a human-check gate (nil: terminal only).
+func setupAccessWith(t *testing.T, human *humancheck.Gate) accessFixture {
 	t.Helper()
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "private")
@@ -75,7 +79,8 @@ func setupAccess(t *testing.T) accessFixture {
 	queue := &approval.Queue{}
 	session := tui.NewSession(ctx, store, nil)
 	session.Approvals, session.DataDir = queue, dir
-	server, err := StartControlled("127.0.0.1:0", dir, store, nil, queue, session.ApproveAction, nil, nil)
+	session.Human = human
+	server, err := StartOwner(Owner{Addr: "127.0.0.1:0", Dir: dir, Store: store, Approvals: queue, Approve: session.ApproveAction, Reject: session.RejectAction, Human: human})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1112,6 +1112,38 @@ The query and send credentials cannot approve a request. Agents should receive
 only the query credential; filesystem access as your OS user is not a security
 boundary against a malicious agent.
 
+## Approving without a terminal
+
+You can approve what agents ask for, and choose between asking each time and
+syncing all chats, without typing in a terminal:
+
+```sh
+wasync approvals          # opens the approval page in your browser
+```
+
+With wasync running (the TUI or `wasync serve`), this opens a page listing the
+requests agents are waiting on. For each one you see the agent, the candidate chats
+and the history depth, and you press **Approve**. wasync then asks **your computer**
+to confirm: Touch ID or your account password on macOS, Windows Hello on Windows.
+The operating-system prompt names exactly what you are approving, in words wasync
+wrote from its own records, never the agent's. Nothing on the page, in a
+notification, or in a signed request can approve on its own.
+
+A desktop notification tells you when an agent is waiting. It names only the agent
+and carries no code or button; run `wasync approvals` to review.
+
+The same confirmation applies when you approve in the TUI or with
+`wasync actions approve`: after you type the phrase, your computer asks too. If
+your computer cannot show that prompt, wasync says so when it starts, the page
+only lists requests, and approvals stay in the terminal. The link `wasync
+approvals` opens works once and only for two minutes. The threat model explains
+what this does and does not protect:
+[docs/architecture/threat-model.md](docs/architecture/threat-model.md).
+
+> **Windows:** the Windows Hello prompt and notification have not yet been run on a
+> real Windows computer by the author. They build and are covered by the Windows
+> checks, but treat them as untested until you have tried an approval.
+
 ## Letting an agent ask for chats (just-in-time access)
 
 You do not have to pick an agent's chats up front. Create the credential with
@@ -1250,9 +1282,12 @@ loopback channel is local HTTP, not transport encryption.
 The Windows installer owns only the PATH entry it adds. A preexisting equivalent
 entry is preserved on uninstall. Close wasync before upgrading or uninstalling.
 
-Approval credentials authorize execution directly: the typed phrase is enforced
-by the interactive CLI/TUI, not by the HTTP endpoint. Do not give `approve.token`
-to agents. A holder of `send.token` can request sending any regular local file
+On macOS and Windows the running wasync also asks you to confirm every approval
+with Touch ID or your password (macOS) or Windows Hello (Windows), whichever way
+the approval arrived; see "Approving without a terminal" below. Where a computer
+has no such prompt (Linux, or a session with no screen), the typed phrase is the
+only check and is enforced by the interactive CLI/TUI, not by the HTTP endpoint.
+Do not give `approve.token` to agents. A holder of `send.token` can request sending any regular local file
 the owner process can read; it is a privileged credential, not a read-only API key.
 Download `queue_full`/`failed` states have no automatic retry; another delivery of
 valid WhatsApp media metadata is required to attempt them again. Sending an

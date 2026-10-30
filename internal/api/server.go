@@ -21,6 +21,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
+	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/query"
 	"github.com/gehariharan/wasync/internal/storage"
@@ -96,6 +97,34 @@ func StartMediaControlled(addr, dir string, store *storage.Store, status func() 
 // StartOperations also serves reply, reaction and edit through ops, which are
 // nil while the owner has no live WhatsApp client.
 func StartOperations(addr, dir string, store *storage.Store, status func() whatsapp.CaptureStatus, approvals *approval.Queue, approve func(int64, string) error, syncer whatsapp.Syncer, media whatsapp.MediaDownloader, ops whatsapp.Operations, sender ...whatsapp.Sender) (*Server, error) {
+	o := Owner{Addr: addr, Dir: dir, Store: store, Status: status, Approvals: approvals, Approve: approve, Sync: syncer, Media: media, Ops: ops}
+	if len(sender) > 0 {
+		o.Sender = sender[0]
+	}
+	return StartOwner(o)
+}
+
+// Owner is everything a running owner (the TUI or serve) lends the local API.
+type Owner struct {
+	Addr, Dir string
+	Store     *storage.Store
+	Status    func() whatsapp.CaptureStatus
+	Approvals *approval.Queue
+	Approve   func(int64, string) error
+	// Reject closes a pending request without acting on it.
+	Reject func(int64, string) error
+	Sync   whatsapp.Syncer
+	Media  whatsapp.MediaDownloader
+	Ops    whatsapp.Operations
+	Sender whatsapp.Sender
+	// Human, when enabled, makes every approval wait for the person to confirm
+	// with the operating system's own prompt (see internal/humancheck).
+	Human *humancheck.Gate
+}
+
+// StartOwner starts the local API for a running owner.
+func StartOwner(o Owner) (*Server, error) {
+	addr, dir, store, status, approvals, approve, syncer, media, ops := o.Addr, o.Dir, o.Store, o.Status, o.Approvals, o.Approve, o.Sync, o.Media, o.Ops
 	if err := ValidateAddr(addr); err != nil {
 		return nil, err
 	}
@@ -107,10 +136,8 @@ func StartOperations(addr, dir string, store *storage.Store, status func() whats
 	if err != nil {
 		return nil, fmt.Errorf("start local API (change --api-addr or use --no-api): %w", err)
 	}
-	h := &handler{dataDir: dir, agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, syncer: syncer, ops: ops}
-	if len(sender) > 0 {
-		h.sender = sender[0]
-	}
+	h := &handler{dataDir: dir, agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, reject: o.Reject, syncer: syncer, ops: ops, human: o.Human}
+	h.sender = o.Sender
 	{ // Policy configuration is available even when the media owner is offline.
 		h.sendToken, err = loadNamedToken(dir, "send.token")
 		if err != nil {
@@ -154,6 +181,9 @@ type handler struct {
 	agents           *agentauth.Authorizer
 	mediaDownload    whatsapp.MediaDownloader
 	approve          func(int64, string) error
+	reject           func(int64, string) error
+	human            *humancheck.Gate
+	ui               uiState
 	approveToken     string
 	syncer           whatsapp.Syncer
 	approvals        *approval.Queue
@@ -190,6 +220,7 @@ func (h *handler) routes() http.Handler {
 	mux.HandleFunc("POST /api/chats/enable-all", h.enableAll)
 	mux.HandleFunc("POST /api/chats/disable-all", h.enableAll)
 	mux.HandleFunc("POST /api/actions", h.requestAction)
+	mux.HandleFunc("POST "+uiLinkPath, h.uiLink)
 	mux.HandleFunc("GET /api/access/mode", h.getAccessMode)
 	mux.HandleFunc("POST /api/access/mode", h.setAccessMode)
 	mux.HandleFunc("GET /api/actions", h.listActions)
@@ -234,14 +265,18 @@ func (h *handler) routes() http.Handler {
 			h.serveV1(w, r)
 			return
 		}
+		if isUI(r.URL.Path) {
+			h.serveUI(w, r)
+			return
+		}
 		requiredToken := h.token
-		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") || r.URL.Path == accessModePath {
+		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") || r.URL.Path == accessModePath || r.URL.Path == uiLinkPath {
 			if r.URL.Path == "/api/send" && h.sender == nil || strings.HasPrefix(r.URL.Path, "/api/actions") && h.approvals == nil {
 				fail(w, 503, "sending unavailable")
 				return
 			}
 			requiredToken = h.sendToken
-			if strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath {
+			if strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath || r.URL.Path == uiLinkPath {
 				if h.approve == nil || h.approveToken == "" {
 					fail(w, 503, "interactive approval unavailable")
 					return

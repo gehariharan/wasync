@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -107,25 +108,46 @@ func (h *handler) approveAction(w http.ResponseWriter, r *http.Request) {
 	}
 	// Access requests carry the human's choice of chat and history depth in the
 	// signed body; it is recorded on the pending request just before approval.
+	var choice *accessChoice
 	if request := h.approvals.Get(account.ID, r.PathValue("id")); request != nil && request.Kind == approval.KindChatAccess {
-		var choice struct {
-			Chat    string `json:"chat"`
-			History string `json:"history"`
-		}
+		choice = &accessChoice{}
 		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
 		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&choice); err != nil || decoder.Decode(new(any)) != io.EOF {
+		if err := decoder.Decode(choice); err != nil || decoder.Decode(new(any)) != io.EOF {
 			fail(w, 400, "access approval needs {\"chat\":...,\"history\":\"now\"|\"full\"}")
 			return
 		}
-		if err := h.approvals.Decide(account.ID, request.ID, choice.Chat, choice.History); err != nil {
-			fail(w, 409, err.Error())
-			return
-		}
 	}
-	if err := h.approve(account.ID, r.PathValue("id")); err != nil {
-		fail(w, 409, err.Error())
+	if err := h.approveRequest(r.Context(), account.ID, r.PathValue("id"), choice); err != nil {
+		failWith(w, err)
 		return
 	}
 	writeJSON(w, 200, h.approvals.Get(account.ID, r.PathValue("id")))
+}
+
+// accessChoice is the person's pick of chat and history depth for an access request.
+type accessChoice struct {
+	Chat    string `json:"chat"`
+	History string `json:"history"`
+}
+
+// approveRequest is the one way a person's approval reaches the owner, whether
+// it came from the command line or the approval page. It records the choice,
+// makes the person confirm the exact effect with the operating system's prompt
+// (when this computer has one), and only then runs the action.
+func (h *handler) approveRequest(ctx context.Context, account int64, id string, choice *accessChoice) error {
+	if choice != nil {
+		if err := h.approvals.Decide(account, id, choice.Chat, choice.History); err != nil {
+			return statusError{http.StatusConflict, err.Error()}
+		}
+	}
+	if request := h.approvals.Get(account, id); request != nil && request.Status == approval.StatusPending {
+		if err := h.confirmError(ctx, request.Prompt(h.chatName(ctx, account, request.Chat))); err != nil {
+			return err
+		}
+	}
+	if err := h.approve(account, id); err != nil {
+		return statusError{http.StatusConflict, err.Error()}
+	}
+	return nil
 }

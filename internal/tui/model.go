@@ -426,6 +426,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if !ok {
 							return operationMsg{kind, fmt.Errorf("approval unavailable")}
 						}
+						if confirmer, ok := m.session.(interface{ ConfirmApproval(int64, string) error }); ok {
+							if err := confirmer.ConfirmApproval(account, id); err != nil {
+								return operationMsg{kind, err}
+							}
+						}
 						return operationMsg{kind, approver.ApproveAction(account, id)}
 					}
 					if kind == "revoke-message" {
@@ -1142,6 +1147,11 @@ func (m Model) accessModeKey(v tea.KeyPressMsg, key string) (tea.Model, tea.Cmd)
 			})
 			if !ok {
 				return operationMsg{"access-mode", fmt.Errorf("access mode unavailable")}
+			}
+			if confirmer, ok := m.session.(interface{ ConfirmAccessMode(accessmode.Mode) error }); ok {
+				if err := confirmer.ConfirmAccessMode(mode); err != nil {
+					return operationMsg{"access-mode", err}
+				}
 			}
 			return operationMsg{"access-mode", setter.SetAccessMode(account, mode)}
 		}

@@ -57,6 +57,9 @@ type Queue struct {
 	// OnAccess, when set, is called (outside the lock) for each newly queued
 	// chat access request, so a headless owner can tell its operator.
 	OnAccess func(Request)
+	// OnRequest is called (outside the lock) for each newly queued destructive
+	// request, for the same reason.
+	OnRequest func(Request)
 }
 
 // PendingList returns every request still waiting for the account's human, oldest first.
@@ -76,7 +79,16 @@ func (q *Queue) PendingList(account int64) []Request {
 	return out
 }
 
+// Add queues a destructive request for the person to approve.
 func (q *Queue) Add(account int64, in Input) (Request, error) {
+	r, err := q.add(account, in)
+	if err == nil && q.OnRequest != nil {
+		q.OnRequest(r)
+	}
+	return r, err
+}
+
+func (q *Queue) add(account int64, in Input) (Request, error) {
 	if err := in.Validate(); err != nil {
 		return Request{}, err
 	}
