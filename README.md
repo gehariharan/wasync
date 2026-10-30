@@ -1140,9 +1140,14 @@ approvals` opens works once and only for two minutes. The threat model explains
 what this does and does not protect:
 [docs/architecture/threat-model.md](docs/architecture/threat-model.md).
 
-> **Windows:** the Windows Hello prompt and notification have not yet been run on a
-> real Windows computer by the author. They build and are covered by the Windows
-> checks, but treat them as untested until you have tried an approval.
+Creating or revoking an agent credential (`wasync agents grant`, `agents revoke`)
+asks for the same confirmation after you type the agent's name.
+
+> **Windows:** wasync asks for Windows Hello first and, if Hello is not set up,
+> for your account password in the standard Windows security dialog. These prompts
+> and the notification have not yet been run on a real Windows computer by the
+> author. They build and are covered by the Windows checks, but treat them as
+> untested until you have tried an approval.
 
 ## Letting an agent ask for chats (just-in-time access)
 
@@ -1283,7 +1288,7 @@ The Windows installer owns only the PATH entry it adds. A preexisting equivalent
 entry is preserved on uninstall. Close wasync before upgrading or uninstalling.
 
 On macOS and Windows the running wasync also asks you to confirm every approval
-with Touch ID or your password (macOS) or Windows Hello (Windows), whichever way
+with Touch ID or your password (macOS) or Windows Hello or your password (Windows), whichever way
 the approval arrived; see "Approving without a terminal" below. Where a computer
 has no such prompt (Linux, or a session with no screen), the typed phrase is the
 only check and is enforced by the interactive CLI/TUI, not by the HTTP endpoint.

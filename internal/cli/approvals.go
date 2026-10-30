@@ -9,8 +9,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
+	"time"
 
 	"github.com/gehariharan/wasync/internal/config"
+	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 )
 
@@ -22,7 +25,7 @@ It needs wasync running (the TUI or serve). The link works once and only for two
 minutes, so run this command again for a fresh one.
 
 Nothing on the page approves by itself. Each approval still asks for Touch ID or
-your password on macOS, or Windows Hello on Windows, and shows exactly what you
+your password on macOS, or Windows Hello or your password on Windows, and shows exactly what you
 are approving. If this computer cannot show that prompt, the page lists requests
 but approvals stay in the terminal (wasync actions approve).
 
@@ -95,6 +98,38 @@ func (a *App) humanHint() {
 	if a.Human.Enabled() {
 		fmt.Fprintf(a.Err, "Now confirm on this computer: %s. The prompt names exactly what you are approving.\n", a.Human.Name())
 	}
+}
+
+// confirmHuman asks the person at this computer to confirm prompt with the
+// system's own check, where there is one. It returns nil at once when this
+// computer has none, so the typed phrase in a terminal stays the only check.
+func (a *App) confirmHuman(ctx context.Context, prompt string) error {
+	if !a.Human.Enabled() {
+		return nil
+	}
+	a.humanHint()
+	return a.Human.Confirm(ctx, prompt)
+}
+
+func quotedName(name string) string { return `"` + humancheck.Clean(name, 40) + `"` }
+
+// grantEffect is the prompt sentence for creating an agent credential, built
+// from the values the command validated, in plain words.
+func grantEffect(name string, scopes, chats []string, onDemand bool, expires time.Duration) string {
+	where := "ALL chats"
+	switch {
+	case onDemand && len(chats) > 0:
+		where = "the chats you name now and any you approve later"
+	case onDemand:
+		where = "only the chats you approve when it asks"
+	case len(chats) > 0:
+		where = fmt.Sprintf("%d named chat(s)", len(chats))
+	}
+	text := "Approve: create the agent credential " + quotedName(name) + " with scopes " + humancheck.Clean(strings.Join(scopes, ","), 120) + " for " + where
+	if expires > 0 {
+		text += ", expiring in " + expires.String()
+	}
+	return text
 }
 
 // announce tells the person something is waiting. It is a nudge only.

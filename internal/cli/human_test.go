@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -119,5 +121,57 @@ func TestStartupLineSaysWhatStandsBetweenAnAgentAndAnApproval(t *testing.T) {
 	without := &App{}
 	if got := without.approvalCheckLine(); !strings.Contains(got, "typed phrase") {
 		t.Fatalf("%q", got)
+	}
+}
+
+// Typing the client's name in a pseudo-terminal is not enough to mint a
+// credential or revoke one where the computer has a system confirmation.
+func TestAgentGrantAndRevokeWaitForThePerson(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	run := func(app *App, args ...string) error {
+		return app.Run(context.Background(), append([]string{"--data-dir", dir, "agents"}, args...))
+	}
+	stub := &humanStub{}
+
+	app, out, errs := agentsApp(t, "axi\nn\n", true)
+	app.Human = humancheck.NewGate(stub)
+	err := run(app, "grant", "axi", "--on-demand", "--expires", "720h")
+	if err == nil || !strings.Contains(err.Error(), "no credential created") {
+		t.Fatalf("declined grant: %v", err)
+	}
+	if out.Len() != 0 || strings.Contains(errs.String(), "wsa_") {
+		t.Fatalf("a credential was shown without the person: %q", out.String())
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, agentauth.FileName)); !os.IsNotExist(statErr) {
+		t.Fatal("registry written without the person")
+	}
+	if len(stub.asked) != 1 || !strings.Contains(stub.asked[0], `"axi"`) || !strings.Contains(stub.asked[0], "only the chats you approve") || !strings.Contains(stub.asked[0], "720h") {
+		t.Fatalf("prompt: %q", stub.asked)
+	}
+
+	stub.confirm = true
+	app, out, _ = agentsApp(t, "axi\nn\n", true)
+	app.Human = humancheck.NewGate(stub)
+	if err = run(app, "grant", "axi", "--on-demand"); err != nil || strings.Count(out.String(), "wsa_") != 1 {
+		t.Fatalf("confirmed grant: %v %q", err, out.String())
+	}
+
+	stub.confirm = false
+	app, _, _ = agentsApp(t, "axi\n", true)
+	app.Human = humancheck.NewGate(stub)
+	if err = run(app, "revoke", "axi"); err == nil || !strings.Contains(err.Error(), "nothing revoked") {
+		t.Fatalf("declined revoke: %v", err)
+	}
+	if c, _ := agentauth.ActiveByName(dir, "axi"); c == nil {
+		t.Fatal("revoked without the person")
+	}
+	stub.confirm = true
+	app, _, _ = agentsApp(t, "axi\n", true)
+	app.Human = humancheck.NewGate(stub)
+	if err = run(app, "revoke", "axi"); err != nil {
+		t.Fatal(err)
+	}
+	if c, _ := agentauth.ActiveByName(dir, "axi"); c != nil {
+		t.Fatal("confirmed revoke did not apply")
 	}
 }

@@ -176,7 +176,7 @@
     },
     {
       "description": "Open the approval page in your browser.",
-      "details": "Shows what agents are waiting on and lets you choose between asking each time and syncing all chats, without a terminal. Needs the TUI or serve running. The link works once for two minutes. Each approval still asks for Touch ID or your password (macOS) or Windows Hello (Windows) and names exactly what you are approving; where this computer cannot show that prompt, the page only lists requests. --print prints the link instead of opening the browser.",
+      "details": "Shows what agents are waiting on and lets you choose between asking each time and syncing all chats, without a terminal. Needs the TUI or serve running. The link works once for two minutes. Each approval still asks for Touch ID or your password (macOS) or Windows Hello or your password (Windows) and names exactly what you are approving; where this computer cannot show that prompt, the page only lists requests. --print prints the link instead of opening the browser.",
       "path": "approvals",
       "usage": "approvals [--print]"
     },

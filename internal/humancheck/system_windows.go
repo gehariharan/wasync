@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// Windows Hello (fingerprint, face or PIN) is asked for through the Windows
+// Windows Hello (fingerprint, face or PIN) is asked for first, through the Windows
 // UserConsentVerifier API, reached from the PowerShell that ships with Windows.
 // The prompt text goes in through the environment, never into the script, so a
 // chat name cannot change what runs. Only the exact word VERIFIED counts.
@@ -51,7 +51,7 @@ type system struct{}
 // System is Windows Hello.
 func System() Checker { return system{} }
 
-func (system) Name() string { return "Windows Hello" }
+func (system) Name() string { return "Windows Hello, or your account password if Hello is not set up" }
 
 func powershell() string {
 	root := os.Getenv("SystemRoot")
@@ -78,30 +78,41 @@ func run(ctx context.Context, mode, reason string) string {
 }
 
 var (
-	availMu      sync.Mutex
-	availChecked time.Time
-	availResult  bool
+	helloMu      sync.Mutex
+	helloChecked time.Time
+	helloResult  bool
 )
 
-// Available asks Windows at most once every thirty seconds; starting PowerShell is slow.
-func (system) Available() bool {
-	availMu.Lock()
-	defer availMu.Unlock()
-	if !availChecked.IsZero() && time.Since(availChecked) < 30*time.Second {
-		return availResult
+// helloAvailable asks Windows at most once every thirty seconds; starting PowerShell is slow.
+func helloAvailable() bool {
+	helloMu.Lock()
+	defer helloMu.Unlock()
+	if !helloChecked.IsZero() && time.Since(helloChecked) < 30*time.Second {
+		return helloResult
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	availResult, availChecked = run(ctx, "check", "") == "AVAILABLE", time.Now()
-	return availResult
+	helloResult, helloChecked = run(ctx, "check", "") == "AVAILABLE", time.Now()
+	return helloResult
 }
 
+// Available is true in a user's own desktop session: Windows Hello when it is
+// set up, otherwise the account-password dialog. A prompt that then cannot be
+// answered refuses the approval; it never lets it through.
+func (system) Available() bool { return interactiveSession() }
+
 func (system) Verify(ctx context.Context, reason string) error {
-	switch run(ctx, "verify", reason) {
-	case "VERIFIED":
-		return nil
-	case "UNAVAILABLE":
-		return ErrUnavailable
+	if ctx.Err() != nil {
+		return ErrDeclined
 	}
-	return ErrDeclined
+	if helloAvailable() {
+		switch run(ctx, "verify", reason) {
+		case "VERIFIED":
+			return nil
+		case "DECLINED":
+			return ErrDeclined // the person said no; do not ask again another way
+		}
+		// Hello failed to run: fall through to the password, which is also a person.
+	}
+	return passwordPrompt(ctx, reason)
 }
