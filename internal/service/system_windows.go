@@ -15,7 +15,8 @@ var valueName = RunName
 
 type runValue struct{}
 
-// System is a value under the current user's Run key. This path has not been
+// System is a value under the current user's Run key. CI writes, reads and
+// removes one under a test-only name; starting wasync at login has not been
 // run on a real Windows computer.
 func System() Manager { return runValue{} }
 
