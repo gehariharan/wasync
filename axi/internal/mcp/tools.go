@@ -116,12 +116,12 @@ func (b *builder) add(flag, value string) {
 
 var tools = []tool{
 	{
-		name: "whatsapp_status", description: "Show whether wasync is installed and running, whether WhatsApp is linked, and how many chats this credential may see. It shows no chat names: call whatsapp_list_chats for those. Read a hint such as \"Run `whatsapp-axi ...`\" as the matching whatsapp_* tool. Start here.",
+		name: "whatsapp_status", description: "Show whether wasync is installed and running, the state of the saved credential, and how many chats this credential may see. It does not say whether WhatsApp is linked (call whatsapp_doctor for its pairing check) and shows no chat names (call whatsapp_list_chats for those). Read a hint such as \"Run `whatsapp-axi ...`\" as the matching whatsapp_* tool. Start here.",
 		ann:   hints("WhatsApp status", readHints),
 		build: func(a map[string]any) ([]string, error) { return []string{"--brief"}, unknown(a) },
 	},
 	{
-		name: "whatsapp_doctor", description: "Check the installation, the saved credential, the wasync connection and compatibility, with a repair hint for each problem.",
+		name: "whatsapp_doctor", description: "Check the installation, the wasync service, whether WhatsApp is linked (pairing), the saved credential and compatibility, with a repair hint for each problem.",
 		ann:   hints("Check the WhatsApp setup", readHints),
 		build: func(a map[string]any) ([]string, error) { return []string{"doctor"}, unknown(a) },
 	},
@@ -407,7 +407,7 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_start_setup", description: "Open the wasync setup page in the person's browser, where they scan the QR code, choose chats and connect this agent. Call it when WhatsApp is not linked yet or the person asks to set up. Then tell them to finish on the page; the page cannot be driven from here.",
+		name: "whatsapp_start_setup", description: "Open the wasync setup page in the person's browser, where they scan the QR code, choose chats and connect this agent. Call it when whatsapp_doctor shows WhatsApp is not linked yet or the person asks to set up. Then tell them to finish on the page; the page cannot be driven from here.",
 		ann: hints("Start WhatsApp setup", annotations{IdempotentHint: true}), start: true,
 		build: func(a map[string]any) ([]string, error) { return nil, unknown(a) },
 	},

@@ -9,8 +9,8 @@ You work with the user's WhatsApp through the `whatsapp_*` tools. They read a pr
 
 ## Start here
 
-1. Call `whatsapp_status`. It says whether wasync is installed and running, whether WhatsApp is linked, and how many chats you may see, but no chat names; call `whatsapp_list_chats` for those. You cannot run commands here, so when a result says "Run `whatsapp-axi ...`", call the matching `whatsapp_*` tool instead.
-2. If WhatsApp is not linked, or the person asks to set it up, call `whatsapp_start_setup`. It opens a page in their browser; they finish there. Follow the `setup` skill for what to tell them.
+1. Call `whatsapp_status`. It says whether wasync is installed and running and how many chats you may see, but not whether WhatsApp is linked (call `whatsapp_doctor` and read its pairing check) and no chat names (call `whatsapp_list_chats` for those). You cannot run commands here, so when a result says "Run `whatsapp-axi ...`", call the matching `whatsapp_*` tool instead.
+2. If `whatsapp_doctor` shows WhatsApp is not linked, or the person asks to set it up, call `whatsapp_start_setup`. It opens a page in their browser; they finish there. Follow the `setup` skill for what to tell them.
 3. If something looks wrong, call `whatsapp_doctor` and tell the person its repair hints in plain words.
 
 ## Reading
