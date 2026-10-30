@@ -172,7 +172,8 @@ select the installed release explicitly.
 
 This is the whole first-run path for letting an agent such as Claude Code read
 (and, if you choose, reply in) your chats. No step needs a chat ID or a hand-made
-credential file.
+credential file. To do the pairing and the agent connection from a browser page
+instead of a terminal, see [Setting up without a terminal](#setting-up-without-a-terminal).
 
 1. **Install** wasync and, when asked, **AXI for agents** (see
    [Install a prebuilt package](#install-a-prebuilt-package)).
