@@ -19,10 +19,14 @@ type Group struct {
 	HistoryRequest       string     `json:"history_request_state"`
 	HistoryBatchMessages int        `json:"history_batch_messages"`
 	PotentialAccountGaps int64      `json:"potential_account_gaps"`
+	// PotentialChatGaps counts the account's gaps that overlap the time capture
+	// has been on for this chat, so it differs between chats enabled at
+	// different times. potential_account_gaps is the same for every chat.
+	PotentialChatGaps int64 `json:"potential_chat_gaps"`
 }
 
 func FormatGroup(g storage.Group) Group {
-	return Group{storage.ChatKind(g.ID), g.ID, g.Name, g.MediaPolicy, g.Enabled, g.MessageCount, g.LastMessage, g.HistoryState, g.HistoryRequest, g.HistoryBatchMessages, g.GapCount}
+	return Group{storage.ChatKind(g.ID), g.ID, g.Name, g.MediaPolicy, g.Enabled, g.MessageCount, g.LastMessage, g.HistoryState, g.HistoryRequest, g.HistoryBatchMessages, g.AccountGapCount, g.GapCount}
 }
 
 type Message struct {

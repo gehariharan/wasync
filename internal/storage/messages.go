@@ -265,7 +265,9 @@ func (s *Store) Messages(ctx context.Context, account int64, group string, q Mes
 func (s *Store) GroupSummaries(ctx context.Context, account int64) ([]Group, error) {
 	rows, err := s.db.QueryContext(ctx, `SELECT g.group_id,g.name,g.sync_enabled,COALESCE((SELECT mode FROM media_preferences p WHERE p.account_id=g.account_id AND p.group_id=g.group_id),'inherit'),g.last_message_at,
  (SELECT count(*) FROM archived_messages m WHERE m.account_id=g.account_id AND m.group_id=g.group_id),
- COALESCE(s.history_state,'not_observed'),(SELECT count(*) FROM sync_gaps WHERE account_id=g.account_id),COALESCE(h.state,''),COALESCE(h.last_error,''),COALESCE(h.batch_messages,0)
+ COALESCE(s.history_state,'not_observed'),
+ (SELECT count(*) FROM sync_gaps gp WHERE gp.account_id=g.account_id AND g.sync_enabled=1 AND g.enabled_at IS NOT NULL AND (gp.ended_at IS NULL OR gp.ended_at>=g.enabled_at)),
+ (SELECT count(*) FROM sync_gaps WHERE account_id=g.account_id),COALESCE(h.state,''),COALESCE(h.last_error,''),COALESCE(h.batch_messages,0)
  FROM groups g LEFT JOIN sync_state s ON s.account_id=g.account_id AND s.group_id=g.group_id LEFT JOIN history_jobs h ON h.account_id=g.account_id AND h.group_id=g.group_id
  WHERE g.account_id=? ORDER BY g.sync_enabled DESC,g.name COLLATE NOCASE,g.group_id`, account)
 	if err != nil {
@@ -276,7 +278,7 @@ func (s *Store) GroupSummaries(ctx context.Context, account int64) ([]Group, err
 	for rows.Next() {
 		var g Group
 		var last sql.NullInt64
-		if err = rows.Scan(&g.ID, &g.Name, &g.Enabled, &g.MediaPolicy, &last, &g.MessageCount, &g.HistoryState, &g.GapCount, &g.HistoryRequest, &g.HistoryRequestError, &g.HistoryBatchMessages); err != nil {
+		if err = rows.Scan(&g.ID, &g.Name, &g.Enabled, &g.MediaPolicy, &last, &g.MessageCount, &g.HistoryState, &g.GapCount, &g.AccountGapCount, &g.HistoryRequest, &g.HistoryRequestError, &g.HistoryBatchMessages); err != nil {
 			return nil, err
 		}
 		g.LastMessage = timePointer(last)

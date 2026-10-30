@@ -62,7 +62,7 @@ func (a *App) targetsThroughOwner(ctx context.Context, cfg config.Config, args [
 	}
 	groups := make([]storage.Group, 0, len(page.Items))
 	for _, g := range page.Items {
-		groups = append(groups, storage.Group{ID: g.ID, Name: g.Name, Enabled: g.Enabled, MediaPolicy: g.MediaPolicy, MessageCount: g.MessageCount, LastMessage: g.LastMessage, HistoryState: g.HistoryState, HistoryRequest: g.HistoryRequest, GapCount: g.PotentialAccountGaps})
+		groups = append(groups, storage.Group{ID: g.ID, Name: g.Name, Enabled: g.Enabled, MediaPolicy: g.MediaPolicy, MessageCount: g.MessageCount, LastMessage: g.LastMessage, HistoryState: g.HistoryState, HistoryRequest: g.HistoryRequest, GapCount: g.PotentialChatGaps, AccountGapCount: g.PotentialAccountGaps})
 	}
 	return a.printGroups(groups, strings.Contains(strings.Join(args[2:], " "), "--json") && !strings.Contains(strings.Join(args[2:], " "), "--json=false"))
 }

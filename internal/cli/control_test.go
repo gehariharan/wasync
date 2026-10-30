@@ -164,3 +164,40 @@ func TestCommandResponseRejectsOversizeExplicitly(t *testing.T) {
 		t.Fatalf("oversize response: %v %q", err, out.String())
 	}
 }
+
+// offlineAfterConnectClient connects without ever reporting itself online, so
+// the sync that follows fails with "not connected".
+type offlineAfterConnectClient struct{ boundedSyncClient }
+
+func (c *offlineAfterConnectClient) Connect(context.Context) error { return nil }
+
+func TestStandaloneSyncJSONHasAnErrorKeyOnlyWhenSyncFailed(t *testing.T) {
+	decode := func(raw string) map[string]json.RawMessage {
+		t.Helper()
+		var m map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(raw), &m); err != nil {
+			t.Fatalf("not one JSON object: %v: %q", err, raw)
+		}
+		return m
+	}
+	var ok bytes.Buffer
+	good := &App{Out: &ok, Err: &ok, OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return &boundedSyncClient{}, nil }}
+	if err := good.Run(context.Background(), []string{"--data-dir", filepath.Join(t.TempDir(), "private"), "sync", "--wait", "0s"}); err != nil {
+		t.Fatal(err)
+	}
+	m := decode(strings.TrimSpace(ok.String()))
+	if _, has := m["error"]; has || m["result"] == nil {
+		t.Fatalf("a successful sync must have a result and no error key: %v", m)
+	}
+
+	var bad, errs bytes.Buffer
+	failing := &App{Out: &bad, Err: &errs, OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return &offlineAfterConnectClient{}, nil }}
+	if err := failing.Run(context.Background(), []string{"--data-dir", filepath.Join(t.TempDir(), "private"), "sync", "--wait", "0s"}); err == nil {
+		t.Fatal("expected the sync to fail")
+	}
+	m = decode(strings.TrimSpace(bad.String()))
+	var message string
+	if err := json.Unmarshal(m["error"], &message); err != nil || !strings.Contains(message, "not connected") || m["result"] == nil {
+		t.Fatalf("a failed sync must keep its error and result: %v", m)
+	}
+}
