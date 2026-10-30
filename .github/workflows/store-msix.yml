@@ -49,4 +49,4 @@ jobs:
           name: store-submission-${{ inputs.package_version }}
           path: dist/store/${{ inputs.package_version }}/*
           if-no-files-found: error
-          retention-days: 30
+          retention-days: 7

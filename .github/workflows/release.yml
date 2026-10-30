@@ -103,7 +103,7 @@ jobs:
           name: release-${{ matrix.platform }}
           path: dist/${{ needs.version.outputs.value }}/${{ matrix.platform }}/*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
   windows:
     needs: version
@@ -143,7 +143,7 @@ jobs:
           name: release-windows_amd64
           path: dist/${{ needs.version.outputs.value }}/windows_amd64/*
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
   axi:
     needs: version
@@ -176,6 +176,7 @@ jobs:
           name: release-axi
           path: axi/dist/${{ needs.version.outputs.value }}/*
           if-no-files-found: error
+          retention-days: 7
 
   axi-smoke:
     needs: [version, axi]

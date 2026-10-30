@@ -85,7 +85,7 @@ jobs:
             dist/signing/checksums.txt
             dist/signing/wasync.rb
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 7
 
   update-draft:
     needs: [version, sign]
