@@ -107,7 +107,7 @@ func (h *handler) approveAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Access requests carry the human's choice of chat and history depth in the
-	// signed body; it is recorded on the pending request just before approval.
+	// signed body; it is recorded on the pending request once the person confirms.
 	var choice *accessChoice
 	if request := h.approvals.Get(account.ID, r.PathValue("id")); request != nil && request.Kind == approval.KindChatAccess {
 		choice = &accessChoice{}
@@ -132,18 +132,26 @@ type accessChoice struct {
 }
 
 // approveRequest is the one way a person's approval reaches the owner, whether
-// it came from the command line or the approval page. It records the choice,
-// makes the person confirm the exact effect with the operating system's prompt
-// (when this computer has one), and only then runs the action.
+// it came from the command line or the approval page. It makes the person
+// confirm the exact effect, with the choice applied, using the operating
+// system's prompt (when this computer has one), then records the choice and
+// only then runs the action.
 func (h *handler) approveRequest(ctx context.Context, account int64, id string, choice *accessChoice) error {
+	if request := h.approvals.Get(account, id); request != nil && request.Status == approval.StatusPending {
+		if choice != nil {
+			preview, err := h.approvals.Preview(account, id, choice.Chat, choice.History)
+			if err != nil {
+				return statusError{http.StatusConflict, err.Error()}
+			}
+			request = &preview
+		}
+		if err := h.confirmError(ctx, request.Prompt(h.chatName(ctx, account, request.Chat))); err != nil {
+			return err
+		}
+	}
 	if choice != nil {
 		if err := h.approvals.Decide(account, id, choice.Chat, choice.History); err != nil {
 			return statusError{http.StatusConflict, err.Error()}
-		}
-	}
-	if request := h.approvals.Get(account, id); request != nil && request.Status == approval.StatusPending {
-		if err := h.confirmError(ctx, request.Prompt(h.chatName(ctx, account, request.Chat))); err != nil {
-			return err
 		}
 	}
 	if err := h.approve(account, id); err != nil {

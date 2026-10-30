@@ -97,7 +97,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   actions list                               Requests waiting for you (interactive)
   access mode [ask|all]                      How agents get chats: ask each time or sync all
   actions approve REQUEST_ID                 Interactive typed approval, no --yes
-  approvals [--print]                        Open the approval page in your browser
+  approvals                                  Open the approval page in your browser
   actions status REQUEST_ID                  Inspect a pending/completed request
   media policy --chat ID [--mode auto|manual|inherit]  Saved per-chat media setting
   media download --chat ID --message-id ID    One-time attachment download (live owner)

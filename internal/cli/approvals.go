@@ -17,7 +17,7 @@ import (
 	"github.com/gehariharan/wasync/internal/localfs"
 )
 
-const approvalsUsage = `Usage: wasync approvals [--print]
+const approvalsUsage = `Usage: wasync approvals
 
 Open the approval page in your browser: the requests agents are waiting on, and
 the choice between asking each time and syncing all chats, without a terminal.
@@ -28,8 +28,6 @@ Nothing on the page approves by itself. Each approval still asks for Touch ID or
 your password on macOS, or Windows Hello or your password on Windows, and shows exactly what you
 are approving. If this computer cannot show that prompt, the page lists requests
 but approvals stay in the terminal (wasync actions approve).
-
-  --print   print the link instead of opening the browser
 `
 
 // runApprovals opens the approval page. It only fetches a one-time link from
@@ -37,12 +35,11 @@ but approvals stay in the terminal (wasync actions approve).
 func (a *App) runApprovals(ctx context.Context, cfg config.Config, args []string) error {
 	fs := a.flags("approvals")
 	fs.Usage = func() { fmt.Fprint(fs.Output(), approvalsUsage) }
-	printOnly := fs.Bool("print", false, "print the link instead of opening the browser")
 	if err := a.parseFlags(fs, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {
-		return fmt.Errorf("usage: wasync approvals [--print]")
+		return fmt.Errorf("usage: wasync approvals")
 	}
 	if cfg.NoAPI {
 		return fmt.Errorf("the approval page needs the local API; remove --no-api")
@@ -66,17 +63,12 @@ func (a *App) runApprovals(ctx context.Context, cfg config.Config, args []string
 	if err = json.NewDecoder(io.LimitReader(response.Body, 4<<10)).Decode(&out); err != nil || response.StatusCode != 200 || out.URL == "" {
 		return fmt.Errorf("the running wasync did not give a link (HTTP %d)", response.StatusCode)
 	}
-	if *printOnly {
-		_, err = fmt.Fprintln(a.Out, out.URL)
-		return err
-	}
 	open := a.OpenURL
 	if open == nil {
 		open = openBrowser
 	}
 	if err = open(out.URL); err != nil {
-		fmt.Fprintf(a.Err, "could not open a browser (%v); run wasync approvals --print and open the link yourself\n", err)
-		return err
+		return fmt.Errorf("could not open the approval page in a browser: %w", err)
 	}
 	_, err = fmt.Fprintln(a.Err, "Opened the approval page in your browser. The link works once.")
 	return err

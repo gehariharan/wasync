@@ -290,14 +290,22 @@ func (s *Session) ApproveAction(account int64, id string) (result error) {
 }
 
 // ConfirmApproval asks the person for the system confirmation an approval of
-// request id needs. It returns nil at once when this computer has no such prompt.
-func (s *Session) ConfirmApproval(account int64, id string) error {
+// request id needs, naming the chat and history chosen for an access request.
+// It returns nil at once when this computer has no such prompt.
+func (s *Session) ConfirmApproval(account int64, id, chat, history string) error {
 	if !s.Human.Enabled() || s.Approvals == nil {
 		return nil
 	}
 	pending := s.Approvals.Get(account, id)
 	if pending == nil || pending.Status != approval.StatusPending {
 		return nil
+	}
+	if pending.Kind == approval.KindChatAccess {
+		preview, err := s.Approvals.Preview(account, id, chat, history)
+		if err != nil {
+			return err
+		}
+		pending = &preview
 	}
 	name := ""
 	if groups, err := s.store.Groups(s.ctx, account); err == nil {
@@ -357,7 +365,8 @@ func (s *Session) SetAccessMode(account int64, m accessmode.Mode) error {
 }
 
 // DecideAccess records the human's chat and history-depth choice on a pending
-// access request; ApproveAction then applies exactly that choice.
+// access request once the person confirmed it; ApproveAction then applies
+// exactly that choice.
 func (s *Session) DecideAccess(account int64, id, chat, history string) error {
 	if s.Approvals == nil {
 		return fmt.Errorf("approval queue unavailable")

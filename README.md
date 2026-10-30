@@ -1289,7 +1289,7 @@ entry is preserved on uninstall. Close wasync before upgrading or uninstalling.
 
 On macOS and Windows the running wasync also asks you to confirm every approval
 with Touch ID or your password (macOS) or Windows Hello or your password (Windows), whichever way
-the approval arrived; see "Approving without a terminal" below. Where a computer
+the approval arrived; see "Approving without a terminal" above. Where a computer
 has no such prompt (Linux, or a session with no screen), the typed phrase is the
 only check and is enforced by the interactive CLI/TUI, not by the HTTP endpoint.
 Do not give `approve.token` to agents. A holder of `send.token` can request sending any regular local file

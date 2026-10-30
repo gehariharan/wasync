@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,21 +93,44 @@ func TestTypedPhraseAloneDoesNotApproveWhenThePersonDeclines(t *testing.T) {
 
 func TestApprovalsCommandGivesAOneTimeLinkAndOpensIt(t *testing.T) {
 	app, output, run, _, _, _, _ := ownerFixture(t)
-	if err := run("approvals", "--print"); err != nil {
-		t.Fatal(err)
-	}
-	link := strings.TrimSpace(output.String())
-	if !strings.HasPrefix(link, "http://127.0.0.1:") || !strings.Contains(link, "/ui/enter?t=") {
-		t.Fatalf("link %q", link)
-	}
-	var opened string
-	app.OpenURL = func(u string) error { opened = u; return nil }
+	var opened []string
+	app.OpenURL = func(u string) error { opened = append(opened, u); return nil }
 	app.Err = &bytes.Buffer{}
-	if err := run("approvals"); err != nil {
-		t.Fatal(err)
+	for range 2 {
+		if err := run("approvals"); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if !strings.Contains(opened, "/ui/enter?t=") || opened == link {
+	if len(opened) != 2 || opened[0] == opened[1] {
 		t.Fatalf("opened %q (each link must be fresh)", opened)
+	}
+	for _, link := range opened {
+		if !strings.HasPrefix(link, "http://127.0.0.1:") || !strings.Contains(link, "/ui/enter?t=") {
+			t.Fatalf("link %q", link)
+		}
+		client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+		for i, want := range []int{http.StatusSeeOther, http.StatusUnauthorized} {
+			res, err := client.Get(link)
+			if err != nil {
+				t.Fatal(err)
+			}
+			res.Body.Close()
+			if res.StatusCode != want {
+				t.Fatalf("use %d of %q: %d, want %d", i+1, link, res.StatusCode, want)
+			}
+		}
+	}
+	if output.Len() != 0 || strings.Contains(app.Err.(*bytes.Buffer).String(), "/ui/enter") {
+		t.Fatalf("the link was printed: %q %q", output.String(), app.Err)
+	}
+	app.OpenURL = func(string) error { return errors.New("no browser") }
+	app.Err = &bytes.Buffer{}
+	err := run("approvals")
+	if err == nil || strings.Contains(err.Error(), "/ui/enter") || strings.Contains(app.Err.(*bytes.Buffer).String(), "/ui/enter") || output.Len() != 0 {
+		t.Fatalf("no browser: err %v, out %q, err %q", err, output.String(), app.Err)
+	}
+	if err := run("approvals", "--print"); err == nil {
+		t.Fatal("accepted --print")
 	}
 	if err := run("approvals", "extra"); err == nil {
 		t.Fatal("accepted a stray argument")

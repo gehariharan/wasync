@@ -155,7 +155,7 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	hd := w.Header()
 	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	hd.Set("X-Frame-Options", "DENY")
-	hd.Set("Referrer-Policy", "no-referrer")
+	hd.Set("Referrer-Policy", "same-origin")
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/enter":
 		h.uiEnter(w, r)

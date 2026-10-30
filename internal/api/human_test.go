@@ -136,10 +136,12 @@ func TestAutoApprovalUnderSyncAllDoesNotPromptAgain(t *testing.T) {
 }
 
 // pageClient follows no redirects, so each step of the sign-in can be seen.
+// Like a browser, it sends the Origin header the page's referrer policy allows.
 type pageClient struct {
-	t    *testing.T
-	base string
-	http *http.Client
+	t      *testing.T
+	base   string
+	http   *http.Client
+	policy string
 }
 
 func newPageClient(t *testing.T, f accessFixture) *pageClient {
@@ -159,8 +161,20 @@ func (c *pageClient) do(req *http.Request) (int, string, http.Header) {
 		c.t.Fatal(err)
 	}
 	defer res.Body.Close()
+	if p := res.Header.Get("Referrer-Policy"); p != "" {
+		c.policy = p
+	}
 	b, _ := io.ReadAll(res.Body)
 	return res.StatusCode, string(b), res.Header
+}
+
+// origin is what a browser puts in Origin on a same-origin form post (Fetch
+// standard, "append a request Origin header"): "null" under no-referrer.
+func (c *pageClient) origin() string {
+	if c.policy == "no-referrer" {
+		return "null"
+	}
+	return c.base
 }
 
 func (c *pageClient) get(path string) (int, string, http.Header) {
@@ -171,7 +185,7 @@ func (c *pageClient) get(path string) (int, string, http.Header) {
 func (c *pageClient) post(path string, form url.Values) (int, string, http.Header) {
 	req, _ := http.NewRequest("POST", c.base+path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Origin", c.base)
+	req.Header.Set("Origin", c.origin())
 	return c.do(req)
 }
 
@@ -261,6 +275,78 @@ func TestApprovalPageNeedsTheSystemPromptAndEscapesAgentText(t *testing.T) {
 	code, _, hd = c.post("/ui/decide", form("approve", csrf))
 	if code != 303 || !strings.Contains(hd.Get("Location"), "n=approved") || !f.group(t, familyChat).Enabled {
 		t.Fatalf("confirmed prompt: %d %v", code, hd)
+	}
+}
+
+// A browser's form post from the page must pass the owner's Origin check,
+// while a post from an opaque origin is still refused.
+func TestApprovalPageFormsPassTheOriginCheckOnlyFromThePage(t *testing.T) {
+	f := setupAccessWith(t, humancheck.NewGate(&promptStub{confirm: true}))
+	c := newPageClient(t, f)
+	c.get(linkPath(t, f))
+	_, page, _ := c.get("/ui/")
+	if c.origin() != c.base {
+		t.Fatalf("a browser would post this page's forms with Origin %q", c.origin())
+	}
+	form := url.Values{"csrf": {csrfOf(t, page)}, "mode": {"ask"}}
+	if code, _, hd := c.post("/ui/mode", form); code != 303 || !strings.Contains(hd.Get("Location"), "n=done") {
+		t.Fatalf("browser form post: %d %v", code, hd)
+	}
+	req, _ := http.NewRequest("POST", c.base+"/ui/mode", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "null")
+	if code, _, _ := c.do(req); code != 403 {
+		t.Fatalf("opaque origin got %d", code)
+	}
+}
+
+// heldPrompt keeps the system prompt open until the test lets the person answer.
+type heldPrompt struct {
+	opened  chan string
+	release chan struct{}
+}
+
+func (p *heldPrompt) Name() string    { return "the test prompt" }
+func (p *heldPrompt) Available() bool { return true }
+func (p *heldPrompt) Verify(_ context.Context, reason string) error {
+	p.opened <- reason
+	<-p.release
+	return nil
+}
+
+// While the person is looking at a prompt, a second signed approval naming a
+// different chat and history must not change what the first one grants.
+func TestAChoiceCannotChangeWhileThePromptIsOpen(t *testing.T) {
+	held := &heldPrompt{opened: make(chan string, 1), release: make(chan struct{})}
+	f := setupAccessWith(t, humancheck.NewGate(held))
+	a := accessRequest(t, f, "family")
+	a.Candidates = append(a.Candidates, approval.Candidate{Chat: otherChat, Name: "Other"})
+	r, err := f.queue.AddAccess(f.account, a)
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := make(chan int, 1)
+	go func() { first <- f.approve(t, r.ID, map[string]string{"chat": familyChat, "history": "now"}) }()
+	prompt := <-held.opened
+	if !strings.Contains(prompt, "Family Group") || !strings.Contains(prompt, "from now on only") {
+		t.Fatalf("prompt %q", prompt)
+	}
+	if code := f.approve(t, r.ID, map[string]string{"chat": otherChat, "history": "full"}); code != 429 {
+		t.Fatalf("second approval while the prompt is open got %d", code)
+	}
+	if got := f.queue.Get(f.account, r.ID); got.Access.Chosen != "" || got.Access.History != "" {
+		t.Fatalf("a choice was recorded before anyone confirmed: %+v", got.Access)
+	}
+	close(held.release)
+	if code := <-first; code != 200 {
+		t.Fatalf("confirmed approval got %d", code)
+	}
+	got := f.queue.Get(f.account, r.ID)
+	if got.Access.Chosen != familyChat || got.Access.History != approval.HistoryNow {
+		t.Fatalf("granted %q/%q, not what the person confirmed", got.Access.Chosen, got.Access.History)
+	}
+	if f.group(t, otherChat).Enabled || !f.group(t, familyChat).Enabled {
+		t.Fatal("capture does not match the confirmed chat")
 	}
 }
 
