@@ -74,6 +74,8 @@ type App struct {
 	OpenURL func(string) error
 	// Service installs the start-at-login item; nil means this platform has none.
 	Service service.Manager
+	// Executable replaces os.Executable when recording what the login item starts, for tests.
+	Executable func() (string, error)
 	// Setup is what the setup page shows while WhatsApp is linked (setup mode only).
 	Setup *setup.State
 	// NewLink returns a one-time link to a page of the running owner's local web page.

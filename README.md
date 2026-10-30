@@ -1122,12 +1122,15 @@ wasync setup
 that walks through the first-time steps that used to need a terminal:
 
 1. **Link WhatsApp.** The page shows the QR code as an image; scan it from WhatsApp
-   on your phone under *Linked devices → Link a device*. The code refreshes by itself.
-2. **Choose chats.** Tick the chats wasync should keep on this computer, or keep all
-   groups. Agents see none of them until you connect one.
-3. **Connect an agent.** Pick a name and what it may ask for. The credential is created
-   and saved straight to where whatsapp-axi reads it; it is never shown. The agent
-   starts with no chats, and each one it asks for appears under **Approvals**.
+   on your phone under *Linked devices → Link a device*. The code refreshes by itself;
+   if it expires unscanned, the page offers **Get a new code**.
+2. **Choose chats.** Tick the chats wasync should keep on this computer. Agents see none
+   of them until you connect one.
+3. **Connect an agent.** Pick a name. The agent may read chats and messages, only those
+   you approve, until you revoke it (`wasync agents grant` offers other access and
+   expiry). The credential is created and saved straight to where whatsapp-axi reads
+   it; it is never shown. The agent starts with no chats, and each one it asks for
+   appears under **Approvals**.
 4. **Start at login.** Optionally add a login item (a macOS LaunchAgent, or a Windows
    startup item) that runs `wasync serve` for your account only, with no administrator
    rights. It takes effect the next time you log in. The same choice is available as
@@ -1327,7 +1330,9 @@ only check and is enforced by the interactive CLI/TUI, not by the HTTP endpoint.
 Do not give `approve.token` to agents. On macOS it is kept in your login Keychain
 instead of a file (an existing file is moved there when wasync next starts), so another
 program that asks for it makes macOS ask for your password; Windows and Linux keep
-the private file. A holder of `send.token` can request sending any regular local file
+the private file. If you cancel or deny the Keychain prompt when wasync starts by
+itself at login, it stops without restarting and shows one notification: approvals stay
+off until you run wasync again. A holder of `send.token` can request sending any regular local file
 the owner process can read; it is a privileged credential, not a read-only API key.
 Download `queue_full`/`failed` states have no automatic retry; another delivery of
 valid WhatsApp media metadata is required to attempt them again. Sending an

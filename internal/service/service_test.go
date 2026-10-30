@@ -1,8 +1,12 @@
 package service
 
 import (
+	"bytes"
+	"encoding/xml"
+	"fmt"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -33,11 +37,21 @@ func TestLaunchAgentInstallWritesAFileAndNothingElse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(b)
-	for _, want := range []string{"<string>" + Label + "</string>", "<string>serve</string>", "<string>--data-dir</string>", "data &amp; more", "<key>RunAtLoad</key><true/>"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("plist lacks %q:\n%s", want, text)
-		}
+	got, err := parsePlist(b)
+	if err != nil {
+		t.Fatalf("the plist is not well-formed: %v\n%s", err, b)
+	}
+	if got["Label"] != Label {
+		t.Errorf("Label = %v", got["Label"])
+	}
+	if args, want := got["ProgramArguments"], []any{s.Exe, "--data-dir", s.DataDir, "serve"}; !reflect.DeepEqual(args, want) {
+		t.Errorf("ProgramArguments = %#v, want %#v", args, want)
+	}
+	if got["RunAtLoad"] != true {
+		t.Errorf("RunAtLoad = %v", got["RunAtLoad"])
+	}
+	if keep, want := got["KeepAlive"], map[string]any{"SuccessfulExit": false}; !reflect.DeepEqual(keep, want) {
+		t.Errorf("KeepAlive = %#v, want %#v", keep, want)
 	}
 	if info, _ := os.Stat(l.path()); info.Mode().Perm() != 0o644 {
 		t.Fatalf("mode %v", info.Mode())
@@ -86,12 +100,75 @@ func TestInstallRefusesRelativePaths(t *testing.T) {
 
 func TestRunCommandKeepsOddPathsInsideTheirQuotes(t *testing.T) {
 	got := RunCommand(Spec{Exe: `C:\Users\O'Brien\wasync.exe`, DataDir: `C:\Users\O'Brien\AppData\Roaming\wasync`})
-	for _, want := range []string{"-WindowStyle Hidden", `O''Brien\wasync.exe`, "serve"} {
-		if !strings.Contains(got, want) {
-			t.Errorf("%q lacks %q", got, want)
+	want := `powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Start-Process -WindowStyle Hidden -FilePath 'C:\Users\O''Brien\wasync.exe' -ArgumentList '--data-dir \"C:\Users\O''Brien\AppData\Roaming\wasync\" serve'"`
+	if got != want {
+		t.Fatalf("Run command\n got: %s\nwant: %s", got, want)
+	}
+}
+
+// parsePlist reads an XML property list into maps, slices, strings, bools and
+// ints, the way launchd reads it.
+func parsePlist(b []byte) (map[string]any, error) {
+	d := xml.NewDecoder(bytes.NewReader(b))
+	for {
+		tok, err := d.Token()
+		if err != nil {
+			return nil, err
+		}
+		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == "dict" {
+			v, err := plistValue(d, se)
+			if err != nil {
+				return nil, err
+			}
+			return v.(map[string]any), nil
 		}
 	}
-	if strings.Count(got, `"`) != 2 && !strings.Contains(got, `\"`) {
-		t.Fatalf("data folder not quoted: %s", got)
+}
+
+func plistValue(d *xml.Decoder, start xml.StartElement) (any, error) {
+	switch start.Name.Local {
+	case "true", "false":
+		return start.Name.Local == "true", d.Skip()
+	case "string", "key":
+		var s string
+		err := d.DecodeElement(&s, &start)
+		return s, err
+	case "integer":
+		var n int
+		err := d.DecodeElement(&n, &start)
+		return n, err
+	case "array", "dict":
+		var items []any
+		for {
+			tok, err := d.Token()
+			if err != nil {
+				return nil, err
+			}
+			switch tok := tok.(type) {
+			case xml.StartElement:
+				v, err := plistValue(d, tok)
+				if err != nil {
+					return nil, err
+				}
+				items = append(items, v)
+			case xml.EndElement:
+				if start.Name.Local == "array" {
+					return items, nil
+				}
+				if len(items)%2 != 0 {
+					return nil, fmt.Errorf("dict has a key without a value")
+				}
+				m := map[string]any{}
+				for i := 0; i < len(items); i += 2 {
+					k, ok := items[i].(string)
+					if !ok {
+						return nil, fmt.Errorf("dict key %v is not a string", items[i])
+					}
+					m[k] = items[i+1]
+				}
+				return m, nil
+			}
+		}
 	}
+	return nil, fmt.Errorf("unknown plist element <%s>", start.Name.Local)
 }

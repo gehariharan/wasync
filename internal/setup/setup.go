@@ -17,6 +17,7 @@ type State struct {
 	qr      string
 	paired  bool
 	failure string
+	retry   chan struct{}
 }
 
 // SetQR records the newest pairing code WhatsApp offered. It changes about
@@ -39,6 +40,37 @@ func (s *State) SetFailure(message string) {
 	s.mu.Lock()
 	s.qr, s.failure = "", message
 	s.mu.Unlock()
+}
+
+// Retry asks for a new pairing code after linking stopped. It reports false
+// unless linking has stopped with a failure, so a second click never starts a
+// second attempt alongside the first.
+func (s *State) Retry() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.failure == "" || s.paired {
+		return false
+	}
+	s.failure = ""
+	select {
+	case s.retries() <- struct{}{}:
+	default:
+	}
+	return true
+}
+
+// Retried receives once for each accepted Retry.
+func (s *State) Retried() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.retries()
+}
+
+func (s *State) retries() chan struct{} {
+	if s.retry == nil {
+		s.retry = make(chan struct{}, 1)
+	}
+	return s.retry
 }
 
 // Snapshot is a copy of the state at one moment.

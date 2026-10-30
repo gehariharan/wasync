@@ -144,6 +144,27 @@ func TestAKeychainFailureNeverMakesANewCredential(t *testing.T) {
 	}
 }
 
+func TestADeniedReadIsDistinguishableAndMakesNothing(t *testing.T) {
+	mem := newMemory()
+	mem.getErr = ErrAccessDenied
+	Use(mem)
+	t.Cleanup(func() { Use(nil) })
+	dir := dataDir(t)
+	if _, err := Owner(dir, fileLoader(t)); !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("owner: %v", err)
+	}
+	if _, err := Read(dir); !errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("read: %v", err)
+	}
+	if len(mem.items) != 0 {
+		t.Fatal("a denied read created a credential")
+	}
+	mem.getErr = errors.New("keychain read failed (-1)")
+	if _, err := Owner(dir, fileLoader(t)); err == nil || errors.Is(err, ErrAccessDenied) {
+		t.Fatalf("another failure reads as a denial: %v", err)
+	}
+}
+
 func TestAFailedWriteKeepsTheFile(t *testing.T) {
 	mem := newMemory()
 	mem.setErrs = 1

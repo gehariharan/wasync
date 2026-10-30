@@ -12,12 +12,16 @@ import (
 	"github.com/gehariharan/wasync/internal/service"
 )
 
+// serviceSpec records the path wasync was started by, not where a symlink
+// points: a package manager's link such as /opt/homebrew/bin/wasync stays
+// valid across upgrades, while the versioned folder behind it is deleted.
 func (a *App) serviceSpec(cfg config.Config) (service.Spec, error) {
-	exe, err := os.Executable()
-	if err != nil {
-		return service.Spec{}, err
+	executable := a.Executable
+	if executable == nil {
+		executable = os.Executable
 	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil {
+	exe, err := executable()
+	if err != nil {
 		return service.Spec{}, err
 	}
 	dir, err := filepath.Abs(cfg.DataDir)

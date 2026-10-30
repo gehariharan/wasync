@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -63,6 +64,7 @@ func newSetupFixture(t *testing.T, withPrompt bool) (setupFixture, *pageClient, 
 		o.Setup, o.Service, o.ServiceSpec = sf.state, sf.item, service.Spec{Exe: "/opt/wasync", DataDir: "/data/wasync"}
 		o.AxiPath = func() (string, error) { return sf.axiFile, nil }
 	})
+	sf.state.SetPaired()
 	c := newPageClient(t, sf.accessFixture)
 	c.get(linkPath(t, sf.accessFixture))
 	_, page, _ := c.get("/ui/setup")
@@ -123,13 +125,62 @@ func TestSetupPageShowsTheQRCodeAsAnImageUntilTheScan(t *testing.T) {
 	}
 	state.SetFailure("Linking stopped: phone said no")
 	_, page, _ = c.get("/ui/setup")
-	if !strings.Contains(page, "phone said no") || strings.Contains(page, "<svg") {
+	if !strings.Contains(page, "phone said no") || strings.Contains(page, "<svg") || !strings.Contains(page, "Get a new code") {
 		t.Fatalf("after failure:\n%.600s", page)
 	}
+	csrf := csrfOf(t, page)
+	if code, _, _ := c.post("/ui/setup/link", url.Values{"csrf": {"wrong"}}); code != 403 {
+		t.Fatalf("forged new-code form: %d", code)
+	}
+	if _, _, hd := c.post("/ui/setup/link", url.Values{"csrf": {csrf}}); !strings.Contains(hd.Get("Location"), "n=newcode") {
+		t.Fatalf("new code: %v", hd)
+	}
+	select {
+	case <-state.Retried():
+	default:
+		t.Fatal("the linker was not asked for a new code")
+	}
+	if _, _, hd := c.post("/ui/setup/link", url.Values{"csrf": {csrf}}); strings.Contains(hd.Get("Location"), "n=newcode") {
+		t.Fatal("a second click started a second attempt")
+	}
+	select {
+	case <-state.Retried():
+		t.Fatal("the linker was asked twice")
+	default:
+	}
+	state.SetQR(secret)
 	state.SetPaired()
 	_, page, _ = c.get("/ui/setup")
 	if !strings.Contains(page, "Linked.") || strings.Contains(page, "<svg") || strings.Contains(page, "PAIRINGSECRET") {
 		t.Fatalf("after pairing:\n%.600s", page)
+	}
+}
+
+func TestSetupShowsTheCodeAgainForAnArchiveWhoseDeviceWasUnlinked(t *testing.T) {
+	f := setupAccess(t) // its archive still has the account from before
+	state := &linking.State{}
+	server, err := StartOwner(Owner{Addr: "127.0.0.1:0", Dir: f.dir, Store: f.store, Setup: state, Human: humancheck.NewGate(&promptStub{})})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { server.Close() })
+	c := &pageClient{t: t, base: server.URL, http: newPageClient(t, accessFixture{server: server}).http}
+	c.get(strings.TrimPrefix(server.NewLink("setup"), server.URL))
+	state.SetQR("2@RELINKCODE,abc,def")
+	_, page, _ := c.get("/ui/setup")
+	if strings.Contains(page, "Linked.") || !strings.Contains(page, "<svg") || strings.Contains(page, `action="/ui/setup/chats"`) {
+		t.Fatalf("an old archive hid the code to scan:\n%.600s", page)
+	}
+	state.SetPaired()
+	if _, page, _ = c.get("/ui/setup"); !strings.Contains(page, "Linked.") || !strings.Contains(page, "Family Group") {
+		t.Fatalf("after linking again:\n%.600s", page)
+	}
+
+	// Outside setup the running owner's archive account is what says linked.
+	running := newPageClient(t, f)
+	running.get(linkPath(t, f))
+	if _, page, _ = running.get("/ui/setup"); !strings.Contains(page, "Linked.") {
+		t.Fatalf("running owner:\n%.600s", page)
 	}
 }
 
@@ -139,33 +190,28 @@ func TestSetupSavesTheChatsYouTick(t *testing.T) {
 	if !strings.Contains(page, "Family Group") || strings.Contains(page, `value="`+familyChat+`" checked`) {
 		t.Fatalf("chat list:\n%s", page)
 	}
-	if code, _, _ := c.post("/ui/setup/chats", url.Values{"csrf": {"wrong"}, "action": {"save"}, "chat": {familyChat}}); code != 403 {
+	if strings.Contains(page, "Keep all groups") || strings.Contains(page, `name="history"`) {
+		t.Fatalf("the chat picker offers more than a selection:\n%s", page)
+	}
+	if code, _, _ := c.post("/ui/setup/chats", url.Values{"csrf": {"wrong"}, "chat": {familyChat}}); code != 403 {
 		t.Fatalf("forged form: %d", code)
 	}
-	code, _, hd := c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "action": {"save"}, "chat": {familyChat}, "history": {"now"}})
+	code, _, hd := c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "chat": {familyChat}})
 	if code != 303 || !strings.Contains(hd.Get("Location"), "n=saved") || !sf.group(t, familyChat).Enabled {
 		t.Fatalf("save: %d %v", code, hd)
 	}
 	if sf.group(t, phoneChat).Enabled {
 		t.Fatal("an unticked chat was turned on")
 	}
-	if _, _, _ = c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "action": {"save"}, "chat": {"not-a-listed-chat@g.us"}}); sf.group(t, familyChat).Enabled {
+	if _, _, _ = c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "chat": {"not-a-listed-chat@g.us"}}); sf.group(t, familyChat).Enabled {
 		t.Fatal("saving a new list should turn the unticked chat off")
-	}
-	c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "action": {"all-groups"}})
-	if !sf.group(t, familyChat).Enabled || sf.group(t, phoneChat).Enabled {
-		t.Fatal("keep all groups should turn on groups only")
-	}
-	c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "action": {"none"}})
-	if sf.group(t, familyChat).Enabled {
-		t.Fatal("keep none left a chat on")
 	}
 }
 
 func TestSetupConnectsAnAgentOnlyWhenThePersonConfirms(t *testing.T) {
 	sf, c, csrf := newSetupFixture(t, true)
 	form := func(extra url.Values) url.Values {
-		v := url.Values{"csrf": {csrf}, "name": {"codex-axi"}, "access": {"read"}, "expires": {""}}
+		v := url.Values{"csrf": {csrf}, "name": {"codex-axi"}}
 		for k, vals := range extra {
 			v[k] = vals
 		}
@@ -186,12 +232,14 @@ func TestSetupConnectsAnAgentOnlyWhenThePersonConfirms(t *testing.T) {
 	}
 
 	sf.stub.set(true)
+	// Asking for more in the form still connects a read-only agent with no expiry.
 	code, _, hd = c.post("/ui/setup/agent", form(url.Values{"access": {"read-send"}, "expires": {"90d"}}))
 	if code != 303 || !strings.Contains(hd.Get("Location"), "n=connected") {
 		t.Fatalf("confirmed: %d %v", code, hd)
 	}
 	client, _ := agentauth.ActiveByName(sf.dir, "codex-axi")
-	if client == nil || !client.OnDemand || len(client.Chats) != 0 || client.ExpiresAt == nil || !strings.Contains(strings.Join(client.Scopes, ","), "send") {
+	if client == nil || !client.OnDemand || len(client.Chats) != 0 || client.ExpiresAt != nil ||
+		!reflect.DeepEqual(client.Scopes, []string{agentauth.ScopeReadChats, agentauth.ScopeReadMessages}) {
 		t.Fatalf("client %+v", client)
 	}
 	saved, err := axicred.Existing(sf.axiFile)
@@ -227,7 +275,7 @@ func TestSetupCannotConnectAnAgentWithoutASystemPrompt(t *testing.T) {
 	if strings.Contains(page, `action="/ui/setup/agent"`) || !strings.Contains(page, "wasync agents grant") {
 		t.Fatalf("page offers a form it cannot honour:\n%s", page)
 	}
-	_, _, hd := c.post("/ui/setup/agent", url.Values{"csrf": {csrf}, "name": {"codex-axi"}, "access": {"read"}})
+	_, _, hd := c.post("/ui/setup/agent", url.Values{"csrf": {csrf}, "name": {"codex-axi"}})
 	if !strings.Contains(hd.Get("Location"), "n=nogate") {
 		t.Fatalf("posted anyway: %v", hd)
 	}

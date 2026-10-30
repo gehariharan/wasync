@@ -67,7 +67,9 @@ func (h *handler) setupHome(w http.ResponseWriter, r *http.Request, sess uiSessi
 		return
 	}
 	snap := h.setup.Snapshot()
-	d.Paired = account != nil || snap.Paired
+	// While this page links WhatsApp, only the live link counts: an archive
+	// kept from an unlinked device must not hide the code to scan again.
+	d.Paired = snap.Paired || (h.setup == nil && account != nil)
 	d.Failure = snap.Failure
 	if !d.Paired && snap.QR != "" {
 		if svg, err := linking.SVG(snap.QR); err == nil {
@@ -137,36 +139,27 @@ func (h *handler) setupChats(w http.ResponseWriter, r *http.Request, sess uiSess
 	if len(groups) > maxSetupChats {
 		groups = groups[:maxSetupChats]
 	}
-	withHistory := r.PostForm.Get("history") == "full"
 	want := map[string]bool{}
-	switch r.PostForm.Get("action") {
-	case "all-groups":
-		for _, g := range groups {
-			want[g.ID] = storage.ChatKind(g.ID) == "group"
-		}
-	case "none":
-	case "save":
-		for _, id := range r.PostForm["chat"] {
-			want[id] = true
-		}
-	default:
-		http.Error(w, "unknown action", http.StatusBadRequest)
-		return
+	for _, id := range r.PostForm["chat"] {
+		want[id] = true
 	}
-	var off []string
+	var on, off []string
 	for _, g := range groups {
 		switch {
-		case want[g.ID]:
-			if err := h.store.EnableCapture(r.Context(), account.ID, g.ID, withHistory); err != nil {
-				h.uiBack(w, r, "failed")
-				return
-			}
-		case g.Enabled:
+		case want[g.ID] && !g.Enabled:
+			on = append(on, g.ID)
+		case !want[g.ID] && g.Enabled:
 			off = append(off, g.ID)
 		}
 	}
-	if len(off) > 0 {
-		if err := h.store.SetEnabled(r.Context(), account.ID, off, false); err != nil {
+	for _, change := range []struct {
+		ids     []string
+		enabled bool
+	}{{on, true}, {off, false}} {
+		if len(change.ids) == 0 {
+			continue
+		}
+		if err := h.store.SetEnabled(r.Context(), account.ID, change.ids, change.enabled); err != nil {
 			h.uiBack(w, r, "failed")
 			return
 		}
@@ -194,17 +187,8 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.uiBack(w, r, "badname")
 		return
 	}
+	// Read only, until revoked. Sending stays behind the approval of each request.
 	scopes := []string{agentauth.ScopeReadChats, agentauth.ScopeReadMessages}
-	if r.PostForm.Get("access") == "read-send" {
-		scopes = append(scopes, agentauth.ScopeSend)
-	}
-	var expires time.Duration
-	switch r.PostForm.Get("expires") {
-	case "30d":
-		expires = 720 * time.Hour
-	case "90d":
-		expires = 2160 * time.Hour
-	}
 	if existing, err := agentauth.ActiveByName(h.dataDir, name); err != nil {
 		h.uiBack(w, r, "failed")
 		return
@@ -224,12 +208,12 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.uiBack(w, r, "replace")
 		return
 	}
-	req := agentauth.GrantRequest{Name: name, Scopes: scopes, OnDemand: true, RatePerMinute: agentauth.DefaultRatePerMinute, Expires: expires}
+	req := agentauth.GrantRequest{Name: name, Scopes: scopes, OnDemand: true, RatePerMinute: agentauth.DefaultRatePerMinute}
 	if agentauth.ValidateGrant(req) != nil {
 		h.uiBack(w, r, "invalid")
 		return
 	}
-	if err := h.confirmError(r.Context(), agentauth.GrantEffect(name, scopes, nil, true, expires)); err != nil {
+	if err := h.confirmError(r.Context(), agentauth.GrantEffect(name, scopes, nil, true, 0)); err != nil {
 		h.uiBack(w, r, noticeFor(err))
 		return
 	}
@@ -246,6 +230,18 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 		return
 	}
 	h.uiBack(w, r, "connected")
+}
+
+// setupLink asks for a new pairing code after linking stopped.
+func (h *handler) setupLink(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	if !h.uiForm(w, r, sess) {
+		return
+	}
+	if !h.setup.Retry() {
+		h.uiBack(w, r, "")
+		return
+	}
+	h.uiBack(w, r, "newcode")
 }
 
 // setupService turns start-at-login on or off. Turning it on needs the system
@@ -289,7 +285,8 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 {{if .Paired}}<p class="ok"><strong>Linked.</strong> wasync is connected to your WhatsApp.</p>
 {{else if .Pairing}}<p>On your phone open <strong>WhatsApp → Linked devices → Link a device</strong> and scan this code. It refreshes by itself.</p>
 <div style="max-width:18rem;margin:.5rem 0">{{.QR}}</div>
-{{else if .Failure}}<p class="bad">{{.Failure}}</p><p class="mut">Run <code>wasync setup</code> again to get a new code.</p>
+{{else if .Failure}}<p class="bad">{{.Failure}}</p>
+<form method="post" action="/ui/setup/link"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="go">Get a new code</button></form>
 {{else}}<p class="mut">Waiting for WhatsApp to offer a code… If nothing appears, run <code>wasync setup</code> in a terminal.</p>{{end}}
 </section>
 
@@ -298,16 +295,11 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 <section class="card">
 <form method="post" action="/ui/setup/chats"><input type="hidden" name="csrf" value="{{.CSRF}}">
 <p class="mut">wasync archives only the chats you tick, on this computer. Agents see none of them until you connect one in step 3 and approve what it may read.</p>
-<fieldset><legend>Older messages</legend>
-<label><input type="radio" name="history" value="now" checked> From now on only</label>
-<label><input type="radio" name="history" value="full"> Also ask my phone for older messages (best effort)</label></fieldset>
 <fieldset><legend>Chats</legend>
 {{range .Chats}}<label><input type="checkbox" name="chat" value="{{.ID}}"{{if .Enabled}} checked{{end}}> {{.Name}} <span class="mut">{{.Kind}}</span></label>
 {{else}}<p class="mut">No chats yet. They appear a moment after linking; use Refresh.</p>{{end}}
 {{if .MoreChats}}<p class="mut">{{.MoreChats}} more chats are not listed here. Use the full-screen view (<code>wasync</code>) to pick them.</p>{{end}}</fieldset>
-<button class="go" name="action" value="save">Save selection</button>
-<button name="action" value="all-groups">Keep all groups</button>
-<button name="action" value="none">Keep none</button>
+<button class="go">Save selection</button>
 </form></section>
 
 <h2>3. Connect an agent</h2>
@@ -315,15 +307,8 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 {{if .Agents}}<p>Connected agents:</p><ul>{{range .Agents}}<li>{{.Name}} <span class="mut">{{.Status}}</span></li>{{end}}</ul>{{end}}
 {{if .Gate}}
 <form method="post" action="/ui/setup/agent"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<p class="mut">The agent starts with no chats. When it asks for one, the request appears under Approvals and you decide. The secret is saved straight to where whatsapp-axi reads it ({{.AxiPath}}) and is never shown.</p>
+<p class="mut">The agent may read only chats you approve, and starts with none. When it asks for one, the request appears under Approvals and you decide. The secret is saved straight to where whatsapp-axi reads it ({{.AxiPath}}) and is never shown.</p>
 <label>Name <input name="name" value="whatsapp-axi" maxlength="32" pattern="[a-z0-9-]{1,32}"></label>
-<fieldset><legend>What it may ask for</legend>
-<label><input type="radio" name="access" value="read" checked> Read chats and messages (recommended)</label>
-<label><input type="radio" name="access" value="read-send"> Read, and also send, reply and react in chats you approve</label></fieldset>
-<fieldset><legend>Lasts</legend>
-<label><input type="radio" name="expires" value="" checked> Until I revoke it</label>
-<label><input type="radio" name="expires" value="90d"> 90 days</label>
-<label><input type="radio" name="expires" value="30d"> 30 days</label></fieldset>
 {{if .HasSavedCred}}<label><input type="checkbox" name="replace" value="yes"> Replace the credential whatsapp-axi already has saved</label>{{end}}
 <button class="go">Connect…</button> <span class="mut">Asks you to confirm on this computer.</span>
 </form>

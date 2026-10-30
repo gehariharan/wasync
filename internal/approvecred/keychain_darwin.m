@@ -23,6 +23,9 @@ int wasync_kc_get(const char *service, const char *account, char *out, int outle
 		if (status == errSecItemNotFound) {
 			return 1;
 		}
+		if (status == errSecUserCanceled || status == errSecAuthFailed || status == errSecInteractionNotAllowed) {
+			return -3;
+		}
 		if (status != errSecSuccess || result == NULL) {
 			return -1;
 		}

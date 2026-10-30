@@ -11,6 +11,7 @@ import (
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/api"
 	"github.com/gehariharan/wasync/internal/approval"
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
@@ -159,7 +160,7 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 		}); ok {
 			a.MediaDownload = media.RequestMedia
 		}
-		return a.withAPI(ctx, cfg, store, status, func(ctx context.Context, url string) error {
+		err := a.withAPI(ctx, cfg, store, status, func(ctx context.Context, url string) error {
 			fmt.Fprintf(a.Out, "Local API: %s\nBearer token file: %s\n%s\n", url, filepath.Join(cfg.DataDir, "api.token"), a.approvalCheckLine())
 			if setupMode {
 				a.openSetupPage()
@@ -198,22 +199,38 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 				}
 			}
 		}, send)
+		if errors.Is(err, approvecred.ErrAccessDenied) {
+			// Exit cleanly so a login item does not restart into the same prompt.
+			const msg = "Approvals are off: wasync was not allowed to read its approval credential from the Keychain. Run wasync again to turn them back on."
+			fmt.Fprintln(a.Err, msg)
+			a.announce(msg)
+			return nil
+		}
+		return err
 	}
 }
 
 // linkWhatsApp connects with the saved session or, on a first run, shows the
-// QR code on the setup page until the phone scans it. Only a short message
-// about a failure reaches the page; the pairing code is never logged.
+// QR code on the setup page until the phone scans it. When linking stops, the
+// page shows why and keeps running until the person asks for a new code. Only
+// a short message about a failure reaches the page; the pairing code is never logged.
 func (a *App) linkWhatsApp(ctx context.Context, live tui.Client, state *setup.State) error {
 	if live == nil {
 		return nil
 	}
-	if err := live.LoginWithQR(ctx, func(code string) { state.SetQR(code) }); err != nil {
+	for {
+		err := live.LoginWithQR(ctx, func(code string) { state.SetQR(code) })
+		if err == nil {
+			state.SetPaired()
+			return nil
+		}
 		state.SetFailure("Linking stopped: " + err.Error())
-		return err
+		select {
+		case <-ctx.Done():
+			return err
+		case <-state.Retried():
+		}
 	}
-	state.SetPaired()
-	return nil
 }
 
 // openSetupPage opens the setup page in the browser through a one-time link

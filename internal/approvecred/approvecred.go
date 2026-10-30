@@ -25,6 +25,10 @@ const FileName = "approve.token"
 // ErrNotFound is returned by a Backend when it holds nothing for the account.
 var ErrNotFound = errors.New("approval credential not found")
 
+// ErrAccessDenied is returned by a Backend when the person cancelled or denied
+// the system's request to read the credential, or it could not ask them.
+var ErrAccessDenied = errors.New("access to the approval credential was not allowed")
+
 // Backend keeps one secret per data directory outside the data directory.
 type Backend interface {
 	Get(account string) (string, error)

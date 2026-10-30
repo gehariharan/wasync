@@ -35,6 +35,8 @@ func (keychain) Get(account string) (string, error) {
 		return string(buf[:n]), nil
 	case 1:
 		return "", ErrNotFound
+	case -3:
+		return "", ErrAccessDenied
 	default:
 		return "", fmt.Errorf("keychain read failed (%d)", int(rc))
 	}

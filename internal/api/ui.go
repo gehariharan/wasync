@@ -167,6 +167,7 @@ var notices = map[string]struct {
 	"nogate":    {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
 	"saved":     {"Saved.", true},
 	"unpaired":  {"Link WhatsApp first (step 1).", false},
+	"newcode":   {"Asking WhatsApp for a new code…", true},
 	"exists":    {"An agent with that name already exists. Choose another name, or revoke it first.", false},
 	"replace":   {"whatsapp-axi already has a different saved credential. Tick the box to replace it, or choose another place.", false},
 	"badname":   {"The name must be 1 to 32 characters: a to z, 0 to 9 and dashes.", false},
@@ -201,6 +202,8 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		h.setupHome(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/chats":
 		h.setupChats(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/link" && h.setup != nil:
+		h.setupLink(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/agent":
 		h.setupAgent(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/service":
