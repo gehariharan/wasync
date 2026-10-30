@@ -16,6 +16,7 @@
             "message_count": 7,
             "name": "Context",
             "potential_account_gaps": 0,
+            "potential_chat_gaps": 0,
             "sync_enabled": true
           },
           {
@@ -29,6 +30,7 @@
             "message_count": 2,
             "name": "First",
             "potential_account_gaps": 0,
+            "potential_chat_gaps": 0,
             "sync_enabled": true
           },
           {
@@ -42,6 +44,7 @@
             "message_count": 2,
             "name": "Other",
             "potential_account_gaps": 0,
+            "potential_chat_gaps": 0,
             "sync_enabled": true
           },
           {
@@ -55,6 +58,7 @@
             "message_count": 1,
             "name": "Second",
             "potential_account_gaps": 0,
+            "potential_chat_gaps": 0,
             "sync_enabled": true
           }
         ]
@@ -81,6 +85,7 @@
             "message_count": 7,
             "name": "Context",
             "potential_account_gaps": 0,
+            "potential_chat_gaps": 0,
             "sync_enabled": true
           }
         ]
@@ -130,6 +135,7 @@
         "message_count": 7,
         "name": "Context",
         "potential_account_gaps": 0,
+        "potential_chat_gaps": 0,
         "sync_enabled": true
       },
       "request_id": "<request_id>"

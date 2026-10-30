@@ -37,6 +37,7 @@
             "message_count": 3,
             "name": "First",
             "potential_account_gaps": 0,
+            "potential_chat_gaps": 0,
             "sync_enabled": true
           },
           {
@@ -50,6 +51,7 @@
             "message_count": 0,
             "name": "Second",
             "potential_account_gaps": 0,
+            "potential_chat_gaps": 0,
             "sync_enabled": false
           }
         ]
@@ -79,6 +81,7 @@
             "message_count": 3,
             "name": "First",
             "potential_account_gaps": 0,
+            "potential_chat_gaps": 0,
             "sync_enabled": true
           }
         ]

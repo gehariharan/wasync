@@ -117,11 +117,13 @@ func (a *App) runSync(ctx context.Context, cfg config.Config, args []string) (re
 	}
 	session := tui.NewSession(ctx, store, live)
 	synced, err := session.Sync(ctx, in)
-	message := ""
+	// The error key appears only when there is an error, so a successful sync
+	// does not begin with an empty "error" that reads like a failure.
+	response := map[string]any{"result": synced}
 	if err != nil {
-		message = err.Error()
+		response["error"] = err.Error()
 	}
-	if encodeErr := json.NewEncoder(a.Out).Encode(map[string]any{"result": synced, "error": message}); encodeErr != nil {
+	if encodeErr := json.NewEncoder(a.Out).Encode(response); encodeErr != nil {
 		return encodeErr
 	}
 	return err

@@ -45,14 +45,20 @@ const SchemaVersion = 6
 
 type Store struct{ db *sql.DB }
 type Group struct {
-	ID                   string
-	Name                 string
-	Enabled              bool
-	MediaPolicy          string
-	MessageCount         int64
-	LastMessage          *time.Time
-	HistoryState         string
-	GapCount             int64
+	ID           string
+	Name         string
+	Enabled      bool
+	MediaPolicy  string
+	MessageCount int64
+	LastMessage  *time.Time
+	HistoryState string
+	// GapCount is how many stretches of lost observation could have missed this
+	// chat's messages: the account's gaps that overlap the time capture has been
+	// on for this chat (since it was last enabled). It is 0 while capture is off.
+	GapCount int64
+	// AccountGapCount is every gap the account has had, the same number for all
+	// of its chats.
+	AccountGapCount      int64
 	HistoryRequest       string
 	HistoryRequestError  string
 	HistoryBatchMessages int

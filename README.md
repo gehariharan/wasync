@@ -261,7 +261,9 @@ HTTP API by default.
 | q or Ctrl+C | Quit; keep the device linked |
 
 Group details show archived counts, last message time, observed history state and
-potential account gaps. Enabled groups appear first. The selected group stays
+the potential gaps while this chat was being captured (the account's stretches of lost
+observation that overlap the time capture has been on for the chat, so chats turned on at
+different times differ; 0 while capture is off). Enabled groups appear first. The selected group stays
 selected when a refresh changes the ordering. The message list uses keyset
 pagination; new arrivals do not shift an older page while you browse it. Search
 uses a literal FTS5 phrase and is scoped to the open group.
@@ -489,8 +491,10 @@ start the appropriate version of the TUI to create or migrate the archive.
 ./bin/wasync --data-dir /absolute/path/to/private/wasync query groups
 ```
 
-`query status` reports persisted archive counts, capture timestamps, history
-observations and potential gaps. Its `connection` is always `unknown`: an
+Each group in `query groups` carries `potential_account_gaps` (every gap the account has
+had, the same for all chats) and `potential_chat_gaps` (only those that overlap the time
+capture has been on for that chat). `query status` reports persisted archive counts,
+capture timestamps, history observations and potential gaps. Its `connection` is always `unknown`: an
 unfinished capture run or recent heartbeat cannot prove that capture is currently
 running or connected. Querying works with capture stopped, but the archive only
 updates while capture is active. Pagination reads the live archive rather than a

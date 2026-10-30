@@ -953,7 +953,7 @@ func (m Model) groupsView(width, height int) string {
 				history += "\n" + oneLine(g.HistoryRequestError)
 			}
 		}
-		details = accent.Render(clip(oneLine(g.Name), width-listWidth-5)) + "\n\n" + oneLine(g.ID) + "\n\n" + enabled + "\nMedia: " + oneLine(g.MediaPolicy) + " (m to change)" + fmt.Sprintf("\n%d messages archived\n\nLast message\n%s\n\n%s\n%d potential account gaps\n\nEnter to browse messages.\nm to cycle saved media policy.\nh to retry older history.\nD to purge this archive.", g.MessageCount, last, history, g.GapCount)
+		details = accent.Render(clip(oneLine(g.Name), width-listWidth-5)) + "\n\n" + oneLine(g.ID) + "\n\n" + enabled + "\nMedia: " + oneLine(g.MediaPolicy) + " (m to change)" + fmt.Sprintf("\n%d messages archived\n\nLast message\n%s\n\n%s\n%d potential gaps while capturing this chat\n\nEnter to browse messages.\nm to cycle saved media policy.\nh to retry older history.\nD to purge this archive.", g.MessageCount, last, history, g.GapCount)
 	}
 	details = ansi.Hardwrap(details, width-listWidth-5, false)
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, panel("CAPTURE DETAILS", details, width-listWidth, height))
