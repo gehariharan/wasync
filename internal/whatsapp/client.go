@@ -56,6 +56,7 @@ type Client struct {
 	lastError       atomic.Value
 	health          healthFacts
 	names           nameSource // test seam; nil uses the device's contact and LID stores
+	pairing         pairer     // test seam; nil uses the whatsmeow client
 }
 
 func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {
@@ -183,15 +184,39 @@ func (c *Client) Login(ctx context.Context, out io.Writer) error {
 func (c *Client) LoginWithQR(ctx context.Context, display func(string)) error {
 	return c.login(ctx, display, func(string) {})
 }
-func (c *Client) login(ctx context.Context, display func(string), notice func(string)) error {
+
+// pairer is the part of the whatsmeow client that QR linking uses.
+type pairer interface {
+	GetQRChannel(context.Context) (<-chan whatsmeow.QRChannelItem, error)
+	ConnectContext(context.Context) error
+	Disconnect()
+}
+
+// login links by QR code. When it fails it leaves the connection closed and
+// keeps reading the abandoned code channel, so another attempt can start.
+func (c *Client) login(ctx context.Context, display func(string), notice func(string)) (err error) {
 	if c.Paired() {
 		return c.Connect(ctx)
 	}
-	qr, err := c.client.GetQRChannel(ctx)
+	var p pairer = c.client
+	if c.pairing != nil {
+		p = c.pairing
+	}
+	qr, err := p.GetQRChannel(ctx)
 	if err != nil {
 		return fmt.Errorf("start QR pairing: %w", err)
 	}
-	if err = c.client.ConnectContext(ctx); err != nil {
+	defer func() {
+		if err != nil {
+			p.Disconnect()
+			c.connection.Store("offline")
+			go func() {
+				for range qr {
+				}
+			}()
+		}
+	}()
+	if err = p.ConnectContext(ctx); err != nil {
 		return fmt.Errorf("connect for pairing: %w", err)
 	}
 	c.connection.Store("pairing")

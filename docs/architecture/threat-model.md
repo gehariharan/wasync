@@ -47,7 +47,7 @@ Scope: the local wasync owner (TUI or `serve`), its loopback API, the `wasync qu
 
 Until this check existed, "an agent can never approve itself" rested on two soft barriers, and both were tested and found to give way:
 
-- `approve.token` is a 0600 file that any program running as the same user can read. In Codex's default sandbox the loopback API is unreachable, but with network access on, or in full-access mode, a short script that signed a request with that token was accepted by the owner with no terminal and no typed phrase.
+- `approve.token` is a 0600 file that any program running as the same user can read (on macOS it now lives in the Keychain instead; see [below](#the-approval-credential-in-the-macos-keychain)). In Codex's default sandbox the loopback API is unreachable, but with network access on, or in full-access mode, a short script that signed a request with that token was accepted by the owner with no terminal and no typed phrase.
 - The "interactive terminal" test lives in the command-line client. A pseudo-terminal (for example `script`) satisfies it, so a shell-capable agent could type the phrase itself.
 
 The owner now closes both on macOS and Windows. Every approval of an agent's request, and every choice of "sync all chats", ends in a prompt drawn by the operating system, raised by the owner process whichever way the approval arrived (command line, TUI key press, approval page, direct API call). Creating or revoking an agent credential (`wasync agents grant`, `agents revoke`) asks the same prompt from the command itself after the typed name, because those commands edit `agents.json` directly and work with no owner running. The prompt is the one thing a program running as the user cannot answer: it needs a fingerprint, the account password, or Windows Hello.
@@ -67,3 +67,27 @@ Not covered, stated plainly:
 - **A computer with no system confirmation** (Linux, or a session with no screen) keeps the typed phrase in a terminal as the only check. The owner says so on its first console line, and the approval page shows requests without offering to approve them. Running agents with access to the data folder is not safe there.
 - **A person who confirms a prompt without reading it** has approved it. The sentence is deliberately short and specific for that reason.
 - **Windows.** The check asks for Windows Hello first (through the PowerShell that ships with Windows). On a computer where Hello is not set up it shows the standard Windows security dialog and accepts only the password of the account wasync runs as (checked with `LogonUser`, and the account that logs on must be the current one). If a dialog cannot be shown or the answer is wrong the approval is refused, never allowed; the typed-phrase-only mode applies only when there is no desktop session at all (for example wasync running as a service). The notification is a tray balloon. All of this builds and is checked by the Windows build, but none of it has been run on a real Windows computer by the author, so treat Windows as untested until someone has walked through an approval there. A Windows Hello PIN is covered by the Hello path; the password dialog does not accept a PIN.
+
+## Setup page and start-at-login
+
+| Property | How it holds |
+|---|---|
+| The pairing QR code is shown only as an image | The setup page draws it as an image from the code and never prints the code as text, in the page or the logs. The code is useless without the phone it is scanned by |
+| A connected agent's secret is never displayed | The owner creates the credential and writes it to the file whatsapp-axi reads, atomically and privately, then forgets it. If it cannot be saved, the credential is revoked at once. It never replaces an existing saved credential without an explicit tick |
+| The page connects read-only agents | An agent connected from the page gets `read.chats` and `read.messages`, on demand and with no expiry, and nothing else; sending, other scopes and expiry need `wasync agents grant` in a terminal |
+| Connecting an agent, and installing start-at-login, need the person | Both end in the system prompt, with a sentence built by the owner. Where the computer has no prompt the page offers neither and shows the terminal command, whose own typed confirmation is then the only check (see above) |
+| The login item is per user and visible | A macOS LaunchAgent plist or a Windows `Run` value, both for the current account, no administrator rights, removed by `wasync service uninstall` or the page. Installing only writes the item; it starts at the next login, so it never races a wasync the person is already running |
+| The page opens by a link nobody reads | `wasync setup` and `wasync approvals` ask the running owner for a one-time, two-minute link and hand it straight to the browser. It is never printed, so a program that ran the command does not learn it. Anything that can sign with `approve.token` can still ask for one, which is why the page is hygiene and the system prompt is the gate |
+| Choosing chats to capture is not agent access | It changes only what is archived on this computer. An agent sees nothing it has not been granted and approved |
+
+Not covered: the Windows login item and prompts are untested on a real Windows computer; Linux has no login item.
+
+## The approval credential in the macOS Keychain
+
+On macOS `approve.token` is no longer a file. wasync keeps it in the login Keychain, and moves an existing file there the first time the owner starts, deleting the file. The Keychain trusts the program that stored it, so a different program that asks for it (an agent running `security find-generic-password`) makes macOS ask for the person's password. This removes the "any program running as you can read the file" weakness at its source; the system prompt above remains the gate and this is a second layer.
+
+- It protects the signing credential only. It does not protect files an agent can write (the agent registry, `access-mode.json`).
+- **Windows keeps the file.** Windows Credential Manager releases a secret to any program running as the same user without a prompt, so moving it there would add nothing. The Windows Hello or password prompt is the gate there.
+- **Unsigned or rebuilt programs.** The Keychain recognises the program by its code signature. The released, signed macOS builds keep their access across upgrades. A build made from source or by Homebrew has no stable signature, so after an upgrade macOS may ask the person once whether wasync may use its own item. That is the same prompt an attacker would see.
+- A Keychain read that fails or is denied stops the owner; it never makes a new credential, because that would silently replace the one the commands hold. When the person cancels or denies the prompt (or macOS cannot show it), `serve` exits successfully after one notification that approvals are off until wasync is run again, so the login item does not restart it into the same prompt. Any other Keychain failure still exits with an error.
+- A person who clicks Allow on a Keychain prompt they did not expect has given the credential away, which is why the approval still needs the system prompt on top.

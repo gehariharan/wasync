@@ -172,7 +172,8 @@ select the installed release explicitly.
 
 This is the whole first-run path for letting an agent such as Claude Code read
 (and, if you choose, reply in) your chats. No step needs a chat ID or a hand-made
-credential file.
+credential file. To do the pairing and the agent connection from a browser page
+instead of a terminal, see [Setting up without a terminal](#setting-up-without-a-terminal).
 
 1. **Install** wasync and, when asked, **AXI for agents** (see
    [Install a prebuilt package](#install-a-prebuilt-package)).
@@ -1112,6 +1113,39 @@ The query and send credentials cannot approve a request. Agents should receive
 only the query credential; filesystem access as your OS user is not a security
 boundary against a malicious agent.
 
+## Setting up without a terminal
+
+```sh
+wasync setup
+```
+
+`wasync setup` starts wasync (like `wasync serve`) and opens a page in your browser
+that walks through the first-time steps that used to need a terminal:
+
+1. **Link WhatsApp.** The page shows the QR code as an image; scan it from WhatsApp
+   on your phone under *Linked devices → Link a device*. The code refreshes by itself;
+   if it expires unscanned, the page offers **Get a new code**.
+2. **Choose chats.** Tick the chats wasync should keep on this computer. Agents see none
+   of them until you connect one.
+3. **Connect an agent.** Pick a name. The agent may read chats and messages, only those
+   you approve, until you revoke it (`wasync agents grant` offers other access and
+   expiry). The credential is created and saved straight to where whatsapp-axi reads
+   it; it is never shown. The agent starts with no chats, and each one it asks for
+   appears under **Approvals**.
+4. **Start at login.** Optionally add a login item (a macOS LaunchAgent, or a Windows
+   startup item) that runs `wasync serve` for your account only, with no administrator
+   rights. It takes effect the next time you log in. The same choice is available as
+   `wasync service install|uninstall|status`.
+
+Steps 3 and 4 widen what runs on your behalf, so each asks your computer to confirm
+(Touch ID or password on macOS, Windows Hello or password on Windows), exactly like an
+approval. Where a computer cannot show that prompt the page says so and shows the
+terminal command instead. `wasync setup` never prints the link it opens, and if wasync
+is already running it opens the setup page of the running copy.
+
+> **Windows:** the login item, the Windows Hello and password prompts and the
+> notification have not yet been run on a real Windows computer by the author.
+
 ## Approving without a terminal
 
 You can approve what agents ask for, and choose between asking each time and
@@ -1294,7 +1328,12 @@ with Touch ID or your password (macOS) or Windows Hello or your password (Window
 the approval arrived; see "Approving without a terminal" above. Where a computer
 has no such prompt (Linux, or a session with no screen), the typed phrase is the
 only check and is enforced by the interactive CLI/TUI, not by the HTTP endpoint.
-Do not give `approve.token` to agents. A holder of `send.token` can request sending any regular local file
+Do not give `approve.token` to agents. On macOS it is kept in your login Keychain
+instead of a file (an existing file is moved there when wasync next starts), so another
+program that asks for it makes macOS ask for your password; Windows and Linux keep
+the private file. If you cancel or deny the Keychain prompt when wasync starts by
+itself at login, it stops without restarting and shows one notification: approvals stay
+off until you run wasync again. A holder of `send.token` can request sending any regular local file
 the owner process can read; it is a privileged credential, not a read-only API key.
 Download `queue_full`/`failed` states have no automatic retry; another delivery of
 valid WhatsApp media metadata is required to attempt them again. Sending an
