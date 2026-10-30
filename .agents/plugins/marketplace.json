@@ -1,0 +1,20 @@
+{
+  "name": "wasync",
+  "interface": {
+    "displayName": "wasync"
+  },
+  "plugins": [
+    {
+      "name": "whatsapp",
+      "source": {
+        "source": "local",
+        "path": "./plugins/whatsapp"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

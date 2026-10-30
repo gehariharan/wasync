@@ -1113,6 +1113,19 @@ The query and send credentials cannot approve a request. Agents should receive
 only the query credential; filesystem access as your OS user is not a security
 boundary against a malicious agent.
 
+## Using WhatsApp from the Codex desktop app
+
+This repository is also a Codex plugin marketplace. In the Codex app (or with the command line):
+
+```sh
+codex plugin marketplace add gehariharan/wasync
+codex plugin add whatsapp@wasync
+```
+
+The plugin gives Codex `whatsapp_*` tools served by `whatsapp-axi mcp` (read, search, follow changes, and reply, react and edit only where you allow it, plus asking for access to a chat and starting setup). Ask Codex to "set up WhatsApp": it opens the setup page below, you scan the QR code and choose chats, and later every chat Codex asks for is approved by you on your own computer. No tool can approve, grant or reveal a credential. See [ADR-003](docs/architecture/ADR-003-mcp-tool-server.md) and the threat model.
+
+It needs `wasync` and `whatsapp-axi` installed (see Install) with `whatsapp-axi` on the PATH the Codex app uses.
+
 ## Setting up without a terminal
 
 ```sh

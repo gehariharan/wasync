@@ -24,7 +24,7 @@ wasync is the only component that pairs with WhatsApp, holds `device.lock`, owns
 1. **Local API** (`/api/v1` on the loopback address) when a wasync owner is running, authenticated with an AXI-specific scoped credential (D-2).
 2. **`wasync query … --json`** as a subprocess for offline archive reads when no owner is listening.
 
-AXI never connects to WhatsApp, never opens or writes the SQLite archive or the whatsmeow session store, never takes `device.lock`, never starts `wasync serve`, and never imports wasync's `internal/` packages. Every mutation goes through the API; the offline transport is read-only by construction (`mode=ro`, `_query_only`).
+AXI never connects to WhatsApp, never opens or writes the SQLite archive or the whatsmeow session store, never takes `device.lock`, never starts `wasync serve` (one tool of the tool server may run `wasync setup`; see [ADR-003](ADR-003-mcp-tool-server.md)), and never imports wasync's `internal/` packages. Every mutation goes through the API; the offline transport is read-only by construction (`mode=ro`, `_query_only`).
 
 Transport selection is deterministic: probe `GET /api/v1/version`; if it answers with a compatible version, use the API for everything; otherwise use `wasync query` for reads and return `owner_offline` for anything that needs the owner. AXI reports which transport served each result.
 

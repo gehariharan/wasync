@@ -91,3 +91,18 @@ On macOS `approve.token` is no longer a file. wasync keeps it in the login Keych
 - **Unsigned or rebuilt programs.** The Keychain recognises the program by its code signature. The released, signed macOS builds keep their access across upgrades. A build made from source or by Homebrew has no stable signature, so after an upgrade macOS may ask the person once whether wasync may use its own item. That is the same prompt an attacker would see.
 - A Keychain read that fails or is denied stops the owner; it never makes a new credential, because that would silently replace the one the commands hold. When the person cancels or denies the prompt (or macOS cannot show it), `serve` exits successfully after one notification that approvals are off until wasync is run again, so the login item does not restart it into the same prompt. Any other Keychain failure still exits with an error.
 - A person who clicks Allow on a Keychain prompt they did not expect has given the credential away, which is why the approval still needs the system prompt on top.
+
+## The tool server and the Codex plugin
+
+See [ADR-003](ADR-003-mcp-tool-server.md). `whatsapp-axi mcp` serves tools over standard input and output for apps that have no terminal.
+
+| Property | How it holds |
+|---|---|
+| The tool server cannot approve, grant or reveal | The menu has no such tool, and a test fixes the exact list. Asking for a chat (`whatsapp_request_access`) queues a request the person answers on their own computer; the server never sees the answer's secret and approving still ends in the system prompt |
+| The tool server adds no authority | Each tool runs a `whatsapp-axi` command with fixed flags. Values are passed as separate arguments after `--`, so text that looks like a flag (`--json`, `--text`) is only text. Arguments a tool does not declare, over-long text, non-integers and missing fields are refused before any command runs |
+| It cannot corrupt its own protocol stream | Each command writes to its own buffer and has no access to the input channel; replies are one JSON line each |
+| Message content stays data | Tool results are the same delimited output as the command line, and the plugin's skills tell the agent to treat message text, contact names and group names as untrusted |
+| Starting setup is bounded | One tool runs `wasync setup` detached, no arguments, output discarded, at most once per thirty seconds; the page it opens needs the person (ADR-003). It cannot be steered to open anything else |
+| Writes keep Codex's own approval | Reply, react and edit are marked as not read-only (edit as destructive) so Codex's tool-approval modes can add a prompt of their own; wasync still requires the granted scope and an approved chat |
+
+Not covered: if the Codex app launches the tool server with a PATH that lacks `whatsapp-axi`, the plugin does not start (it fails closed). A prompt-injected agent can still open the setup page once per thirty seconds and can send a message where a send scope and an approved chat already exist; narrow scopes and Codex's per-tool approval are the controls there.

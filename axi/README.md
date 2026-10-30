@@ -188,6 +188,18 @@ unchanged; use explicit `observe ack` to acknowledge processing by a downstream 
 A `cursor_expired` error means the position is gone (older than wasync's 30-day journal or from
 another archive): re-read what you replicate, then restart with `--from-oldest` and ack the new cursor.
 
+## Tool server (MCP)
+
+`whatsapp-axi mcp` serves the same reads and the allowed writes as [Model Context
+Protocol](https://modelcontextprotocol.io) tools over standard input and output, for apps
+without a terminal such as the Codex desktop app. It opens no network port. Tools:
+`whatsapp_status`, `whatsapp_doctor`, `whatsapp_list_chats`, `whatsapp_read_messages`,
+`whatsapp_search`, `whatsapp_thread`, `whatsapp_message`, `whatsapp_changes`,
+`whatsapp_reply`, `whatsapp_react`, `whatsapp_edit`, `whatsapp_request_access`,
+`whatsapp_access_status` and `whatsapp_start_setup` (opens the wasync setup page in the
+person's browser). There is deliberately no tool to approve, grant, revoke or reveal a
+credential. The Codex plugin that wires it up is `plugins/whatsapp/` at the repository root.
+
 ## Agent integration
 
 Two optional ways to make agents aware of whatsapp-axi. You only need one; they work together too.

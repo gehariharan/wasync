@@ -43,6 +43,9 @@ type App struct {
 	ProbeTimeout time.Duration                     // API probe; default 750ms
 	QueryTimeout time.Duration                     // offline version probe; default 10s
 	Compat       *compat.Matrix
+	// MCP serves the tools over standard input and output; main supplies it
+	// (the server runs this package's commands, so it cannot be imported here).
+	MCP func(ctx context.Context) error
 }
 
 // New returns an App wired to the real process.
@@ -160,6 +163,7 @@ func init() {
 			run:         (*App).runHelp,
 		},
 		observeCommand(),
+		mcpCommand,
 		setupCommand,
 		sessionEndCommand,
 	}

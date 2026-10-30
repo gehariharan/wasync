@@ -18,7 +18,9 @@ func main() {
 		return
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	code := cli.New(os.Stdout).Run(ctx, args)
+	app := cli.New(os.Stdout)
+	app.MCP = serveMCP
+	code := app.Run(ctx, args)
 	stop()
 	os.Exit(code)
 }
