@@ -12,6 +12,7 @@ import (
 	"github.com/gehariharan/wasync/internal/api"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/config"
+	"github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/tui"
 	"github.com/gehariharan/wasync/internal/webhook"
@@ -26,7 +27,12 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 	if cfg.NoAPI {
 		return run(ctx, "")
 	}
-	owner := api.Owner{Addr: cfg.APIAddr, Dir: cfg.DataDir, Store: store, Status: status, Approvals: a.Approvals, Approve: a.Approve, Reject: a.Reject, Sync: a.Sync, Media: a.MediaDownload, Ops: a.Operations, Human: a.Human}
+	owner := api.Owner{Addr: cfg.APIAddr, Dir: cfg.DataDir, Store: store, Status: status, Approvals: a.Approvals, Approve: a.Approve, Reject: a.Reject, Sync: a.Sync, Media: a.MediaDownload, Ops: a.Operations, Human: a.Human, Setup: a.Setup}
+	if a.Service != nil {
+		if spec, err := a.serviceSpec(cfg); err == nil {
+			owner.Service, owner.ServiceSpec = a.Service, spec
+		}
+	}
 	if len(sender) > 0 {
 		owner.Sender = sender[0]
 	}
@@ -35,6 +41,7 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 		return err
 	}
 	defer func() { result = errors.Join(result, server.Close()) }()
+	a.NewLink = server.NewLink
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	failed := make(chan error, 1)
@@ -77,7 +84,13 @@ func (a *App) startWebhooks(ctx context.Context, cfg config.Config, store *stora
 	}
 }
 
-func (a *App) serveAction(offline bool) action {
+func (a *App) serveAction(offline bool) action { return a.ownerAction(offline, false) }
+
+// setupAction is serve that also links WhatsApp from a page in the browser and
+// opens that page, so a first-time person needs no terminal screen.
+func (a *App) setupAction() action { return a.ownerAction(false, true) }
+
+func (a *App) ownerAction(offline, setupMode bool) action {
 	return func(ctx context.Context, cfg config.Config, store *storage.Store, log *slog.Logger) (result error) {
 		if cfg.NoAPI {
 			return fmt.Errorf("serve requires the local API; remove --no-api")
@@ -91,7 +104,7 @@ func (a *App) serveAction(offline bool) action {
 				return err
 			}
 			defer func() { result = errors.Join(result, client.Close()) }()
-			if !client.Paired() {
+			if !client.Paired() && !setupMode {
 				return fmt.Errorf("pair using wasync login first, or use serve --offline for archive queries")
 			}
 			var ok bool
@@ -120,6 +133,10 @@ func (a *App) serveAction(offline bool) action {
 			send = active.Send
 		}
 		a.MediaDownload = nil
+		a.Setup = nil
+		if setupMode {
+			a.Setup = &setup.State{}
+		}
 		a.Operations = operationsOf(client)
 		a.Approvals = &approval.Queue{OnAccess: func(r approval.Request) {
 			// Headless there is no dialog: say who asked and which request to open,
@@ -144,8 +161,16 @@ func (a *App) serveAction(offline bool) action {
 		}
 		return a.withAPI(ctx, cfg, store, status, func(ctx context.Context, url string) error {
 			fmt.Fprintf(a.Out, "Local API: %s\nBearer token file: %s\n%s\n", url, filepath.Join(cfg.DataDir, "api.token"), a.approvalCheckLine())
+			if setupMode {
+				a.openSetupPage()
+			}
 			if client != nil {
-				err := client.Connect(ctx)
+				var err error
+				if setupMode {
+					err = a.linkWhatsApp(ctx, live, a.Setup)
+				} else {
+					err = client.Connect(ctx)
+				}
 				if err == nil {
 					discoveryCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 					_, _, err = discover(discoveryCtx, store, client)
@@ -173,5 +198,31 @@ func (a *App) serveAction(offline bool) action {
 				}
 			}
 		}, send)
+	}
+}
+
+// linkWhatsApp connects with the saved session or, on a first run, shows the
+// QR code on the setup page until the phone scans it. Only a short message
+// about a failure reaches the page; the pairing code is never logged.
+func (a *App) linkWhatsApp(ctx context.Context, live tui.Client, state *setup.State) error {
+	if live == nil {
+		return nil
+	}
+	if err := live.LoginWithQR(ctx, func(code string) { state.SetQR(code) }); err != nil {
+		state.SetFailure("Linking stopped: " + err.Error())
+		return err
+	}
+	state.SetPaired()
+	return nil
+}
+
+// openSetupPage opens the setup page in the browser through a one-time link
+// that is never printed.
+func (a *App) openSetupPage() {
+	if a.NewLink == nil {
+		return
+	}
+	if err := a.openLink(a.NewLink("setup")); err != nil {
+		fmt.Fprintf(a.Err, "%v; run wasync setup again in a moment to open it.\n", err)
 	}
 }

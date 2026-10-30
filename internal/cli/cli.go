@@ -25,6 +25,8 @@ import (
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/notify"
 	"github.com/gehariharan/wasync/internal/processlock"
+	"github.com/gehariharan/wasync/internal/service"
+	"github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/webhook"
 	"github.com/gehariharan/wasync/internal/whatsapp"
@@ -70,10 +72,16 @@ type App struct {
 	Notify func(title, text string)
 	// OpenURL opens a link in the browser, for tests.
 	OpenURL func(string) error
+	// Service installs the start-at-login item; nil means this platform has none.
+	Service service.Manager
+	// Setup is what the setup page shows while WhatsApp is linked (setup mode only).
+	Setup *setup.State
+	// NewLink returns a one-time link to a page of the running owner's local web page.
+	NewLink func(page string) string
 }
 
 func New() *App {
-	return &App{Human: humancheck.NewGate(humancheck.System()), Notify: notify.Send, In: os.Stdin, Out: os.Stdout, Err: os.Stderr, Interactive: term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())), OpenClient: func(ctx context.Context, path string, log *slog.Logger) (Client, error) {
+	return &App{Human: humancheck.NewGate(humancheck.System()), Notify: notify.Send, Service: service.System(), In: os.Stdin, Out: os.Stdout, Err: os.Stderr, Interactive: term.IsTerminal(int(os.Stdin.Fd())) && term.IsTerminal(int(os.Stdout.Fd())), OpenClient: func(ctx context.Context, path string, log *slog.Logger) (Client, error) {
 		return whatsapp.Open(ctx, path, log)
 	}}
 }
@@ -85,6 +93,8 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   tui [--offline]                            Full-screen group browser and capture (default)
   run                                        Start the TUI with capture
   serve [--offline]                          Headless capture and local API
+  setup                                      Link WhatsApp and choose chats in your browser, no terminal
+  service install|uninstall|status           Start wasync by itself when you log in
   login [--select=true|false] [--observe 30s]  Pair or reuse session, then open the TUI
   logout                                     Unlink device; preserve cached groups
   groups list [--refresh] [--json]            List cached groups; optionally connect
@@ -202,6 +212,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	if args[0] == "approvals" {
 		return a.runApprovals(parent, cfg, args[1:])
 	}
+	if args[0] == "service" {
+		return a.runService(parent, cfg, args[1:])
+	}
 	if args[0] == "clean" || args[0] == "delete" {
 		return a.runDestructiveRequest(parent, cfg, args)
 	}
@@ -244,8 +257,8 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	if (args[0] == "tui" || args[0] == "run") && !a.Interactive {
 		return fmt.Errorf("the TUI requires an interactive terminal; use wasync help for scriptable commands")
 	}
-	if args[0] == "serve" && cfg.NoAPI {
-		return fmt.Errorf("serve requires the local API; remove --no-api")
+	if (args[0] == "serve" || args[0] == "setup") && cfg.NoAPI {
+		return fmt.Errorf("%s requires the local API; remove --no-api", args[0])
 	}
 	if err = localfs.EnsureDir(cfg.DataDir); err != nil {
 		return err
@@ -254,6 +267,10 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	if errors.Is(err, processlock.ErrBusy) && (args[0] == "groups" || args[0] == "chats") {
 		return a.targetsThroughOwner(parent, cfg, args)
 	}
+	if errors.Is(err, processlock.ErrBusy) && args[0] == "setup" {
+		// wasync is already running: open its setup page instead of starting a second one.
+		return a.openPage(parent, cfg, "setup")
+	}
 	if err != nil {
 		return err
 	}
@@ -261,7 +278,7 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	ctx := parent
 	// Login bounds only its pairing and discovery phase; the TUI it may
 	// continue into runs until the user quits.
-	if args[0] != "tui" && args[0] != "run" && args[0] != "serve" && args[0] != "login" {
+	if args[0] != "tui" && args[0] != "run" && args[0] != "serve" && args[0] != "setup" && args[0] != "login" {
 		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(parent, cfg.Timeout)
 		defer cancel()
@@ -305,6 +322,11 @@ func (a *App) parse(args []string) (action, error) {
 			return a.serveAction(*offline), nil
 		}
 		return a.tuiAction(*offline), nil
+	case "setup":
+		if len(args) != 1 {
+			return nil, fmt.Errorf("usage: wasync setup")
+		}
+		return a.setupAction(), nil
 	case "login":
 		fs := a.flags("login")
 		selectGroups := fs.Bool("select", a.Interactive, "offer additive group selection in terminal")

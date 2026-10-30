@@ -9,11 +9,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
-	"time"
 
 	"github.com/gehariharan/wasync/internal/config"
-	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 )
 
@@ -41,8 +38,15 @@ func (a *App) runApprovals(ctx context.Context, cfg config.Config, args []string
 	if fs.NArg() != 0 {
 		return fmt.Errorf("usage: wasync approvals")
 	}
+	return a.openPage(ctx, cfg, "")
+}
+
+// openPage asks the running owner for a one-time link to a page and opens it
+// in the browser. The link is never printed, so a program that ran this command
+// does not learn it.
+func (a *App) openPage(ctx context.Context, cfg config.Config, page string) error {
 	if cfg.NoAPI {
-		return fmt.Errorf("the approval page needs the local API; remove --no-api")
+		return fmt.Errorf("the page needs the local API; remove --no-api")
 	}
 	path := filepath.Join(cfg.DataDir, "approve.token")
 	if err := localfs.CheckPrivateFile(path); err != nil {
@@ -52,7 +56,8 @@ func (a *App) runApprovals(ctx context.Context, cfg config.Config, args []string
 	if err != nil {
 		return err
 	}
-	response, err := commandRequest(ctx, cfg, "POST", "/api/ui/link", nil, token)
+	body, _ := json.Marshal(map[string]string{"page": page})
+	response, err := commandRequest(ctx, cfg, "POST", "/api/ui/link", body, token)
 	if err != nil {
 		return fmt.Errorf("start wasync serve or the TUI first: %w", err)
 	}
@@ -63,14 +68,18 @@ func (a *App) runApprovals(ctx context.Context, cfg config.Config, args []string
 	if err = json.NewDecoder(io.LimitReader(response.Body, 4<<10)).Decode(&out); err != nil || response.StatusCode != 200 || out.URL == "" {
 		return fmt.Errorf("the running wasync did not give a link (HTTP %d)", response.StatusCode)
 	}
+	return a.openLink(out.URL)
+}
+
+func (a *App) openLink(link string) error {
 	open := a.OpenURL
 	if open == nil {
 		open = openBrowser
 	}
-	if err = open(out.URL); err != nil {
-		return fmt.Errorf("could not open the approval page in a browser: %w", err)
+	if err := open(link); err != nil {
+		return fmt.Errorf("could not open the page in a browser: %w", err)
 	}
-	_, err = fmt.Fprintln(a.Err, "Opened the approval page in your browser. The link works once.")
+	_, err := fmt.Fprintln(a.Err, "Opened the page in your browser. The link works once.")
 	return err
 }
 
@@ -101,27 +110,6 @@ func (a *App) confirmHuman(ctx context.Context, prompt string) error {
 	}
 	a.humanHint()
 	return a.Human.Confirm(ctx, prompt)
-}
-
-func quotedName(name string) string { return `"` + humancheck.Clean(name, 40) + `"` }
-
-// grantEffect is the prompt sentence for creating an agent credential, built
-// from the values the command validated, in plain words.
-func grantEffect(name string, scopes, chats []string, onDemand bool, expires time.Duration) string {
-	where := "ALL chats"
-	switch {
-	case onDemand && len(chats) > 0:
-		where = "the chats you name now and any you approve later"
-	case onDemand:
-		where = "only the chats you approve when it asks"
-	case len(chats) > 0:
-		where = fmt.Sprintf("%d named chat(s)", len(chats))
-	}
-	text := "Approve: create the agent credential " + quotedName(name) + " with scopes " + humancheck.Clean(strings.Join(scopes, ","), 120) + " for " + where
-	if expires > 0 {
-		text += ", expiring in " + expires.String()
-	}
-	return text
 }
 
 // announce tells the person something is waiting. It is a nudge only.

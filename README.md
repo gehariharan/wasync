@@ -1112,6 +1112,36 @@ The query and send credentials cannot approve a request. Agents should receive
 only the query credential; filesystem access as your OS user is not a security
 boundary against a malicious agent.
 
+## Setting up without a terminal
+
+```sh
+wasync setup
+```
+
+`wasync setup` starts wasync (like `wasync serve`) and opens a page in your browser
+that walks through the first-time steps that used to need a terminal:
+
+1. **Link WhatsApp.** The page shows the QR code as an image; scan it from WhatsApp
+   on your phone under *Linked devices → Link a device*. The code refreshes by itself.
+2. **Choose chats.** Tick the chats wasync should keep on this computer, or keep all
+   groups. Agents see none of them until you connect one.
+3. **Connect an agent.** Pick a name and what it may ask for. The credential is created
+   and saved straight to where whatsapp-axi reads it; it is never shown. The agent
+   starts with no chats, and each one it asks for appears under **Approvals**.
+4. **Start at login.** Optionally add a login item (a macOS LaunchAgent, or a Windows
+   startup item) that runs `wasync serve` for your account only, with no administrator
+   rights. It takes effect the next time you log in. The same choice is available as
+   `wasync service install|uninstall|status`.
+
+Steps 3 and 4 widen what runs on your behalf, so each asks your computer to confirm
+(Touch ID or password on macOS, Windows Hello or password on Windows), exactly like an
+approval. Where a computer cannot show that prompt the page says so and shows the
+terminal command instead. `wasync setup` never prints the link it opens, and if wasync
+is already running it opens the setup page of the running copy.
+
+> **Windows:** the login item, the Windows Hello and password prompts and the
+> notification have not yet been run on a real Windows computer by the author.
+
 ## Approving without a terminal
 
 You can approve what agents ask for, and choose between asking each time and

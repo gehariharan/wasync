@@ -24,6 +24,8 @@ import (
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/query"
+	"github.com/gehariharan/wasync/internal/service"
+	linking "github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 )
@@ -32,6 +34,9 @@ type Server struct {
 	HTTP   *http.Server
 	URL    string
 	Errors <-chan error
+	// NewLink returns a one-time address that opens the page "approvals" or
+	// "setup". It works once for two minutes.
+	NewLink func(page string) string
 }
 
 // ValidateAddr permits only literal loopback addresses, avoiding DNS rebinding.
@@ -117,6 +122,13 @@ type Owner struct {
 	Media  whatsapp.MediaDownloader
 	Ops    whatsapp.Operations
 	Sender whatsapp.Sender
+	// Setup, when set, is what the setup page shows while WhatsApp is linked.
+	Setup *linking.State
+	// Service installs the start-at-login item; Spec says what it starts.
+	Service     service.Manager
+	ServiceSpec service.Spec
+	// AxiPath says where whatsapp-axi reads its credential; nil uses its default.
+	AxiPath func() (string, error)
 	// Human, when enabled, makes every approval wait for the person to confirm
 	// with the operating system's own prompt (see internal/humancheck).
 	Human *humancheck.Gate
@@ -138,6 +150,7 @@ func StartOwner(o Owner) (*Server, error) {
 	}
 	h := &handler{dataDir: dir, agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, reject: o.Reject, syncer: syncer, ops: ops, human: o.Human}
 	h.sender = o.Sender
+	h.setup, h.service, h.serviceSpec, h.axiPath = o.Setup, o.Service, o.ServiceSpec, o.AxiPath
 	{ // Policy configuration is available even when the media owner is offline.
 		h.sendToken, err = loadNamedToken(dir, "send.token")
 		if err != nil {
@@ -162,7 +175,7 @@ func StartOwner(o Owner) (*Server, error) {
 		done <- err
 		close(done)
 	}()
-	return &Server{HTTP: srv, URL: "http://" + listener.Addr().String(), Errors: done}, nil
+	return &Server{HTTP: srv, URL: "http://" + listener.Addr().String(), Errors: done, NewLink: func(page string) string { return h.uiURL(h.ui.newLink(), page) }}, nil
 }
 
 func (s *Server) Close() error {
@@ -184,6 +197,10 @@ type handler struct {
 	reject           func(int64, string) error
 	human            *humancheck.Gate
 	ui               uiState
+	setup            *linking.State
+	service          service.Manager
+	serviceSpec      service.Spec
+	axiPath          func() (string, error)
 	approveToken     string
 	syncer           whatsapp.Syncer
 	approvals        *approval.Queue

@@ -49,6 +49,12 @@ func setupAccess(t *testing.T) accessFixture { return setupAccessWith(t, nil) }
 // setupAccessWith starts the owner with a human-check gate (nil: terminal only).
 func setupAccessWith(t *testing.T, human *humancheck.Gate) accessFixture {
 	t.Helper()
+	return setupAccessOwner(t, human, nil)
+}
+
+// setupAccessOwner also lets the test adjust what the owner offers the page.
+func setupAccessOwner(t *testing.T, human *humancheck.Gate, tweak func(*Owner)) accessFixture {
+	t.Helper()
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "private")
 	if err := localfs.EnsureDir(dir); err != nil {
@@ -80,7 +86,11 @@ func setupAccessWith(t *testing.T, human *humancheck.Gate) accessFixture {
 	session := tui.NewSession(ctx, store, nil)
 	session.Approvals, session.DataDir = queue, dir
 	session.Human = human
-	server, err := StartOwner(Owner{Addr: "127.0.0.1:0", Dir: dir, Store: store, Approvals: queue, Approve: session.ApproveAction, Reject: session.RejectAction, Human: human})
+	owner := Owner{Addr: "127.0.0.1:0", Dir: dir, Store: store, Approvals: queue, Approve: session.ApproveAction, Reject: session.RejectAction, Human: human}
+	if tweak != nil {
+		tweak(&owner)
+	}
+	server, err := StartOwner(owner)
 	if err != nil {
 		t.Fatal(err)
 	}

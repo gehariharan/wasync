@@ -67,3 +67,16 @@ Not covered, stated plainly:
 - **A computer with no system confirmation** (Linux, or a session with no screen) keeps the typed phrase in a terminal as the only check. The owner says so on its first console line, and the approval page shows requests without offering to approve them. Running agents with access to the data folder is not safe there.
 - **A person who confirms a prompt without reading it** has approved it. The sentence is deliberately short and specific for that reason.
 - **Windows.** The check asks for Windows Hello first (through the PowerShell that ships with Windows). On a computer where Hello is not set up it shows the standard Windows security dialog and accepts only the password of the account wasync runs as (checked with `LogonUser`, and the account that logs on must be the current one). If a dialog cannot be shown or the answer is wrong the approval is refused, never allowed; the typed-phrase-only mode applies only when there is no desktop session at all (for example wasync running as a service). The notification is a tray balloon. All of this builds and is checked by the Windows build, but none of it has been run on a real Windows computer by the author, so treat Windows as untested until someone has walked through an approval there. A Windows Hello PIN is covered by the Hello path; the password dialog does not accept a PIN.
+
+## Setup page and start-at-login
+
+| Property | How it holds |
+|---|---|
+| The pairing QR code is shown only as an image | The setup page draws it as an image from the code and never prints the code as text, in the page or the logs. The code is useless without the phone it is scanned by |
+| A connected agent's secret is never displayed | The owner creates the credential and writes it to the file whatsapp-axi reads, atomically and privately, then forgets it. If it cannot be saved, the credential is revoked at once. It never replaces an existing saved credential without an explicit tick |
+| Connecting an agent, and installing start-at-login, need the person | Both end in the system prompt, with a sentence built by the owner. Where the computer has no prompt the page offers neither and shows the terminal command, whose own typed confirmation is then the only check (see above) |
+| The login item is per user and visible | A macOS LaunchAgent plist or a Windows `Run` value, both for the current account, no administrator rights, removed by `wasync service uninstall` or the page. Installing only writes the item; it starts at the next login, so it never races a wasync the person is already running |
+| The page opens by a link nobody reads | `wasync setup` and `wasync approvals` ask the running owner for a one-time, two-minute link and hand it straight to the browser. It is never printed, so a program that ran the command does not learn it. Anything that can sign with `approve.token` can still ask for one, which is why the page is hygiene and the system prompt is the gate |
+| Choosing chats to capture is not agent access | It changes only what is archived on this computer. An agent sees nothing it has not been granted and approved |
+
+Not covered: the Windows login item and prompts are untested on a real Windows computer; Linux has no login item.

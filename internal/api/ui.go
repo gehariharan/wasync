@@ -4,8 +4,10 @@ import (
 	"crypto/rand"
 	"crypto/subtle"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"html/template"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
@@ -125,13 +127,27 @@ func (s *uiState) session(r *http.Request) (uiSession, bool) {
 	return v, ok
 }
 
-func (h *handler) uiURL(link string) string {
-	return "http://" + h.authority + "/ui/enter?t=" + url.QueryEscape(link)
+// uiURL is the one-time address for a page; only the pages listed here can be named.
+func (h *handler) uiURL(link, page string) string {
+	next := ""
+	if page == "setup" {
+		next = "&next=setup"
+	}
+	return "http://" + h.authority + "/ui/enter?t=" + url.QueryEscape(link) + next
 }
 
 // uiLink hands a signed caller a one-time address for the approval page.
 func (h *handler) uiLink(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, 200, map[string]string{"url": h.uiURL(h.ui.newLink())})
+	var in struct {
+		Page string `json:"page"`
+	}
+	if body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<10)); len(body) > 0 {
+		if json.Unmarshal(body, &in) != nil || (in.Page != "" && in.Page != "setup") {
+			fail(w, 400, `page must be "" or "setup"`)
+			return
+		}
+	}
+	writeJSON(w, 200, map[string]string{"url": h.uiURL(h.ui.newLink(), in.Page)})
 }
 
 func isUI(path string) bool { return path == "/ui" || strings.HasPrefix(path, "/ui/") }
@@ -140,15 +156,23 @@ var notices = map[string]struct {
 	text string
 	ok   bool
 }{
-	"approved": {"Approved. The agent has the access you confirmed.", true},
-	"done":     {"Done.", true},
-	"rejected": {"Rejected. Nothing was given.", true},
-	"declined": {"Not confirmed on this computer, so nothing changed.", false},
-	"busy":     {"A confirmation prompt is already open on this computer. Answer it first.", false},
-	"locked":   {"Too many prompts went unconfirmed. Try again in a few minutes.", false},
-	"invalid":  {"That choice is not valid for this request, so nothing changed.", false},
-	"failed":   {"That did not work and nothing changed. The request may have expired.", false},
-	"nogate":   {"This computer cannot show a system confirmation, so approvals cannot be made on this page.", false},
+	"approved":  {"Approved. The agent has the access you confirmed.", true},
+	"done":      {"Done.", true},
+	"rejected":  {"Rejected. Nothing was given.", true},
+	"declined":  {"Not confirmed on this computer, so nothing changed.", false},
+	"busy":      {"A confirmation prompt is already open on this computer. Answer it first.", false},
+	"locked":    {"Too many prompts went unconfirmed. Try again in a few minutes.", false},
+	"invalid":   {"That choice is not valid for this request, so nothing changed.", false},
+	"failed":    {"That did not work and nothing changed. The request may have expired.", false},
+	"nogate":    {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
+	"saved":     {"Saved.", true},
+	"unpaired":  {"Link WhatsApp first (step 1).", false},
+	"exists":    {"An agent with that name already exists. Choose another name, or revoke it first.", false},
+	"replace":   {"whatsapp-axi already has a different saved credential. Tick the box to replace it, or choose another place.", false},
+	"badname":   {"The name must be 1 to 32 characters: a to z, 0 to 9 and dashes.", false},
+	"connected": {"Connected. The credential was saved where whatsapp-axi reads it and is not shown anywhere.", true},
+	"loginon":   {"wasync will start by itself the next time you log in.", true},
+	"loginoff":  {"wasync will no longer start by itself when you log in.", true},
 }
 
 func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
@@ -163,7 +187,7 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	}
 	sess, ok := h.ui.session(r)
 	if !ok {
-		h.uiRender(w, http.StatusUnauthorized, &uiData{Signedout: true})
+		h.uiRender(w, http.StatusUnauthorized, &uiData{Signedout: true, Title: "wasync approvals"})
 		return
 	}
 	switch {
@@ -173,6 +197,14 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		h.uiDecide(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/mode":
 		h.uiMode(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/setup":
+		h.setupHome(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/chats":
+		h.setupChats(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/agent":
+		h.setupAgent(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/service":
+		h.setupService(w, r, sess)
 	default:
 		http.NotFound(w, r)
 	}
@@ -181,11 +213,15 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 func (h *handler) uiEnter(w http.ResponseWriter, r *http.Request) {
 	cookie, ok := h.ui.enter(r.URL.Query().Get("t"))
 	if !ok {
-		h.uiRender(w, http.StatusUnauthorized, &uiData{Signedout: true})
+		h.uiRender(w, http.StatusUnauthorized, &uiData{Signedout: true, Title: "wasync approvals"})
 		return
 	}
 	http.SetCookie(w, &http.Cookie{Name: uiCookie, Value: cookie, Path: "/ui/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: int(uiSessionTTL / time.Second)})
-	http.Redirect(w, r, "/ui/", http.StatusSeeOther)
+	to := "/ui/"
+	if r.URL.Query().Get("next") == "setup" {
+		to = "/ui/setup"
+	}
+	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
 // uiForm reads a small POST form after checking its request-forgery token.
@@ -199,7 +235,11 @@ func (h *handler) uiForm(w http.ResponseWriter, r *http.Request, sess uiSession)
 }
 
 func (h *handler) uiBack(w http.ResponseWriter, r *http.Request, notice string) {
-	http.Redirect(w, r, "/ui/?n="+url.QueryEscape(notice), http.StatusSeeOther)
+	to := "/ui/"
+	if strings.HasPrefix(r.URL.Path, "/ui/setup") {
+		to = "/ui/setup"
+	}
+	http.Redirect(w, r, to+"?n="+url.QueryEscape(notice), http.StatusSeeOther)
 }
 
 func noticeFor(err error) string {
@@ -311,10 +351,12 @@ type uiData struct {
 	ModeAll      bool
 	ModeHistory  string
 	Signedout    bool
+	Title        string
+	Refresh      int
 }
 
 func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	data := &uiData{CSRF: sess.csrf, Gate: h.human.Name()}
+	data := &uiData{CSRF: sess.csrf, Gate: h.human.Name(), Title: "wasync approvals"}
 	if !h.human.Enabled() {
 		data.Gate = ""
 	}
@@ -367,13 +409,16 @@ func (h *handler) uiRender(w http.ResponseWriter, code int, data *uiData) {
 	_ = uiTemplate.Execute(w, data)
 }
 
-var uiTemplate = template.Must(template.New("ui").Parse(`<!doctype html>
+// uiHead is the page frame shared by the approval and setup pages.
+const uiHead = `{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>wasync approvals</title>
+{{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
+<title>{{.Title}}</title>
 <style>
 :root{color-scheme:light dark;--bg:#fafaf7;--fg:#1c1f1d;--mut:#5d6660;--card:#fff;--line:#d9ddd8;--acc:#0f7a4a;--bad:#a4262c}
 @media (prefers-color-scheme:dark){:root{--bg:#141716;--fg:#e7ebe8;--mut:#9aa59e;--card:#1c201e;--line:#2c3330;--acc:#4cc38a;--bad:#ff8a8f}}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
+nav{margin:0 0 .6rem}a{color:var(--acc)}
 main{max-width:42rem;margin:0 auto;padding:1.25rem 16px 3rem}
 h1{font-size:1.4rem;margin:.2rem 0 .6rem}h2{font-size:1.05rem;margin:1.8rem 0 .5rem}
 .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem;margin:.7rem 0}
@@ -383,6 +428,9 @@ button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
 </style></head><body><main>
+<nav><a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
+
+var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}
 <h1>wasync approvals</h1>
 {{if .Signedout}}
 <p>This page needs a fresh link. Run <code>wasync approvals</code> in a terminal and it opens the page for you.</p>
