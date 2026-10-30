@@ -80,3 +80,13 @@ Not covered, stated plainly:
 | Choosing chats to capture is not agent access | It changes only what is archived on this computer. An agent sees nothing it has not been granted and approved |
 
 Not covered: the Windows login item and prompts are untested on a real Windows computer; Linux has no login item.
+
+## The approval credential in the macOS Keychain
+
+On macOS `approve.token` is no longer a file. wasync keeps it in the login Keychain, and moves an existing file there the first time the owner starts, deleting the file. The Keychain trusts the program that stored it, so a different program that asks for it (an agent running `security find-generic-password`) makes macOS ask for the person's password. This removes the "any program running as you can read the file" weakness at its source; the system prompt above remains the gate and this is a second layer.
+
+- It protects the signing credential only. It does not protect files an agent can write (the agent registry, `access-mode.json`).
+- **Windows keeps the file.** Windows Credential Manager releases a secret to any program running as the same user without a prompt, so moving it there would add nothing. The Windows Hello or password prompt is the gate there.
+- **Unsigned or rebuilt programs.** The Keychain recognises the program by its code signature. The released, signed macOS builds keep their access across upgrades. A build made from source or by Homebrew has no stable signature, so after an upgrade macOS may ask the person once whether wasync may use its own item. That is the same prompt an attacker would see.
+- A Keychain read that fails or is denied stops the owner; it never makes a new credential, because that would silently replace the one the commands hold.
+- A person who clicks Allow on a Keychain prompt they did not expect has given the credential away, which is why the approval still needs the system prompt on top.

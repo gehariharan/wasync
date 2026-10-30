@@ -5,13 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/config"
-	"github.com/gehariharan/wasync/internal/localfs"
 )
 
 const approvalsUsage = `Usage: wasync approvals
@@ -48,16 +46,12 @@ func (a *App) openPage(ctx context.Context, cfg config.Config, page string) erro
 	if cfg.NoAPI {
 		return fmt.Errorf("the page needs the local API; remove --no-api")
 	}
-	path := filepath.Join(cfg.DataDir, "approve.token")
-	if err := localfs.CheckPrivateFile(path); err != nil {
+	secret, err := approvecred.Read(cfg.DataDir)
+	if err != nil {
 		return fmt.Errorf("start wasync serve or the TUI first: %w", err)
 	}
-	token, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
 	body, _ := json.Marshal(map[string]string{"page": page})
-	response, err := commandRequest(ctx, cfg, "POST", "/api/ui/link", body, token)
+	response, err := commandRequest(ctx, cfg, "POST", "/api/ui/link", body, []byte(secret))
 	if err != nil {
 		return fmt.Errorf("start wasync serve or the TUI first: %w", err)
 	}

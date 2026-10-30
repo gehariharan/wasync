@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/processlock"
@@ -20,13 +21,22 @@ import (
 )
 
 func (a *App) ownerCommand(ctx context.Context, cfg config.Config, method, path string, body []byte, credential string) error {
-	tokenPath := filepath.Join(cfg.DataDir, credential)
-	if err := localfs.CheckPrivateFile(tokenPath); err != nil {
-		return err
-	}
-	token, err := os.ReadFile(tokenPath)
-	if err != nil {
-		return err
+	var token []byte
+	if credential == approvecred.FileName {
+		secret, err := approvecred.Read(cfg.DataDir)
+		if err != nil {
+			return err
+		}
+		token = []byte(secret)
+	} else {
+		tokenPath := filepath.Join(cfg.DataDir, credential)
+		if err := localfs.CheckPrivateFile(tokenPath); err != nil {
+			return err
+		}
+		var err error
+		if token, err = os.ReadFile(tokenPath); err != nil {
+			return err
+		}
 	}
 	response, err := commandRequest(ctx, cfg, method, path, body, token)
 	if err != nil {

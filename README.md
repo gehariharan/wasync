@@ -1324,7 +1324,10 @@ with Touch ID or your password (macOS) or Windows Hello or your password (Window
 the approval arrived; see "Approving without a terminal" above. Where a computer
 has no such prompt (Linux, or a session with no screen), the typed phrase is the
 only check and is enforced by the interactive CLI/TUI, not by the HTTP endpoint.
-Do not give `approve.token` to agents. A holder of `send.token` can request sending any regular local file
+Do not give `approve.token` to agents. On macOS it is kept in your login Keychain
+instead of a file (an existing file is moved there when wasync next starts), so another
+program that asks for it makes macOS ask for your password; Windows and Linux keep
+the private file. A holder of `send.token` can request sending any regular local file
 the owner process can read; it is a privileged credential, not a read-only API key.
 Download `queue_full`/`failed` states have no automatic retry; another delivery of
 valid WhatsApp media metadata is required to attempt them again. Sending an

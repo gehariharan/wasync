@@ -21,6 +21,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/query"
@@ -159,7 +160,7 @@ func StartOwner(o Owner) (*Server, error) {
 		}
 	}
 	if approve != nil {
-		h.approveToken, err = loadNamedToken(dir, "approve.token")
+		h.approveToken, err = approvecred.Owner(dir, func() (string, error) { return loadNamedToken(dir, approvecred.FileName) })
 		if err != nil {
 			listener.Close()
 			return nil, err
