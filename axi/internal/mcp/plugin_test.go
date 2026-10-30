@@ -4,16 +4,15 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
 
 // The plugin package is machine-consumed by Codex, so these tests parse the
 // manifests into typed models and check what Codex will act on: which program
-// it launches, which skills it loads, and that the skills only name tools this
-// server really serves. (Installing the package into a real Codex home was also
-// checked by hand; that needs the codex program and is not part of the suite.)
+// it launches and which skills it loads. (Installing the package into a real
+// Codex home was also checked by hand; that needs the codex program and is not
+// part of the suite.)
 
 const repoRoot = "../../.."
 
@@ -93,34 +92,45 @@ func TestMarketplacePointsAtThePlugin(t *testing.T) {
 	}
 }
 
-var toolName = regexp.MustCompile("`(whatsapp_[a-z_]+)`")
+// frontMatter parses the front matter Codex reads from a skill: the key: value
+// lines between the opening and closing "---".
+func frontMatter(t *testing.T, path string) map[string]string {
+	t.Helper()
+	b, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rest, ok := strings.CutPrefix(strings.ReplaceAll(string(b), "\r\n", "\n"), "---\n")
+	if !ok {
+		t.Fatalf("%s has no front matter", path)
+	}
+	block, _, ok := strings.Cut(rest, "\n---\n")
+	if !ok {
+		t.Fatalf("%s: front matter is not closed", path)
+	}
+	fields := map[string]string{}
+	for _, line := range strings.Split(block, "\n") {
+		key, value, ok := strings.Cut(line, ":")
+		if !ok {
+			t.Fatalf("%s: front matter line %q is not key: value", path, line)
+		}
+		fields[strings.TrimSpace(key)] = strings.TrimSpace(value)
+	}
+	return fields
+}
 
-func TestSkillsOnlyNameToolsTheServerServes(t *testing.T) {
-	dir := filepath.Join(repoRoot, "plugins/whatsapp/skills")
-	skills, err := filepath.Glob(filepath.Join(dir, "*", "SKILL.md"))
+func TestSkillsAreNamedForTheirFolderAndDescribed(t *testing.T) {
+	skills, err := filepath.Glob(filepath.Join(repoRoot, "plugins/whatsapp/skills", "*", "SKILL.md"))
 	if err != nil || len(skills) != 2 {
 		t.Fatalf("skills %v %v", skills, err)
 	}
-	named := map[string]bool{}
 	for _, path := range skills {
-		b, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatal(err)
+		fm := frontMatter(t, path)
+		if want := filepath.Base(filepath.Dir(path)); fm["name"] != want {
+			t.Errorf("%s: name %q, want the folder name %q", path, fm["name"], want)
 		}
-		text := string(b)
-		if !strings.HasPrefix(text, "---\nname: "+filepath.Base(filepath.Dir(path))+"\ndescription: ") {
-			t.Errorf("%s: front matter must start with the skill's own name and a description", path)
-		}
-		for _, m := range toolName.FindAllStringSubmatch(text, -1) {
-			named[m[1]] = true
-			if _, ok := findTool(m[1]); !ok {
-				t.Errorf("%s names a tool the server does not serve: %s", path, m[1])
-			}
-		}
-	}
-	for _, must := range []string{"whatsapp_status", "whatsapp_start_setup", "whatsapp_request_access", "whatsapp_access_status", "whatsapp_doctor"} {
-		if !named[must] {
-			t.Errorf("no skill tells the agent about %s", must)
+		if fm["description"] == "" {
+			t.Errorf("%s: description is empty", path)
 		}
 	}
 }

@@ -329,3 +329,33 @@ func TestOutputStaysOneMessagePerLine(t *testing.T) {
 type writerFunc func([]byte) (int, error)
 
 func (f writerFunc) Write(p []byte) (int, error) { return f(p) }
+
+// Cancelling the context while a tool runs and another message waits to be
+// handed over must always end Serve with the context error, never a hang.
+func TestServeReturnsWhenCancelledMidCallWithAQueuedMessage(t *testing.T) {
+	for i := 0; i < 200; i++ {
+		ctx, cancel := context.WithCancel(context.Background())
+		pr, pw := io.Pipe()
+		started := make(chan struct{})
+		s := &Server{In: pr, Out: io.Discard, Run: func(ctx context.Context, _ []string) (string, int) {
+			close(started)
+			<-ctx.Done()
+			return "", 1
+		}}
+		done := make(chan error, 1)
+		go func() { done <- s.Serve(ctx) }()
+		io.WriteString(pw, callTool(1, "whatsapp_status", nil)+"\n")
+		<-started
+		io.WriteString(pw, `{"jsonrpc":"2.0","method":"notifications/cancelled","params":{"requestId":1}}`+"\n")
+		cancel()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.Canceled) {
+				t.Fatalf("run %d: Serve returned %v, want the context error", i, err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("run %d: Serve did not return after its context was cancelled", i)
+		}
+		pw.Close()
+	}
+}

@@ -116,7 +116,7 @@ func (b *builder) add(flag, value string) {
 
 var tools = []tool{
 	{
-		name: "whatsapp_status", description: "Show whether wasync is installed and running, whether WhatsApp is linked, and the most recent chats. Start here.",
+		name: "whatsapp_status", description: "Show whether wasync is installed and running, whether WhatsApp is linked, and how many chats this credential may see. It shows no chat names: call whatsapp_list_chats for those. Read a hint such as \"Run `whatsapp-axi ...`\" as the matching whatsapp_* tool. Start here.",
 		ann:   hints("WhatsApp status", readHints),
 		build: func(a map[string]any) ([]string, error) { return []string{"--brief"}, unknown(a) },
 	},
@@ -127,7 +127,7 @@ var tools = []tool{
 	},
 	{
 		name: "whatsapp_list_chats", description: "List the archived chats this credential may see, or find chats by name or JID.",
-		props: map[string]any{"match": str("Find chats whose name or JID matches this text."), "limit": num("How many chats to list (default 50).", 0, 500)},
+		props: map[string]any{"match": str("Find chats whose name or JID matches this text."), "limit": num("How many chats to list (default 50; 0 lists all).", 0, 500)},
 		ann:   hints("List WhatsApp chats", readHints),
 		build: func(a map[string]any) ([]string, error) {
 			if err := unknown(a, "match", "limit"); err != nil {
@@ -259,8 +259,8 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_changes", description: "Read one page of wasync's change journal, for following new messages. A named consumer resumes where it left off; this tool never moves a checkpoint.",
-		props: map[string]any{"consumer": str("A name (a-z, 0-9, dashes) to resume from."), "after": str("A c1_ cursor from a previous page."), "limit": num("Changes per page (default 100).", 1, 1000)},
+		name: "whatsapp_changes", description: "Read one page of wasync's change journal, for following new messages. This tool never moves a consumer's checkpoint, so calling it again with only consumer returns the same page: to read on, pass the previous page's next_cursor as after.",
+		props: map[string]any{"consumer": str("A name (a-z, 0-9, dashes) whose stored checkpoint is the start when after is not given."), "after": str("The next_cursor (c1_...) from the previous page."), "limit": num("Changes per page (default 100).", 1, 1000)},
 		ann:   hints("Follow WhatsApp changes", readHints),
 		build: func(a map[string]any) ([]string, error) {
 			if err := unknown(a, "consumer", "after", "limit"); err != nil {
@@ -360,7 +360,7 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_request_access", description: "Ask the person for access to a chat this credential cannot use yet. This grants nothing by itself: the person picks the chat and the level on their own computer and confirms, and the request expires after five minutes. Then call whatsapp_access_status.",
+		name: "whatsapp_request_access", description: "Ask the person for access to a chat this credential cannot use yet. Unless the person set wasync to sync all chats, this grants nothing by itself: the person picks the chat and the level on their own computer and confirms, and the request expires after five minutes. Then call whatsapp_access_status.",
 		props: map[string]any{"chat": str("The exact chat JID."), "match": str("A phone number or a contact or group name; wasync resolves it and only the person sees the candidates."), "send": flag("Also ask to send, reply and react, not only read.")},
 		ann:   hints("Ask for access to a WhatsApp chat", annotations{IdempotentHint: true}),
 		build: func(a map[string]any) ([]string, error) {

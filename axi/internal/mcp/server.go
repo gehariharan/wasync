@@ -70,7 +70,8 @@ type response struct {
 const instructions = "WhatsApp tools backed by the local wasync archive. Reads need no approval. " +
 	"Sending, reacting and editing need a scope the person granted and a chat they approved. " +
 	"To get a chat you cannot read yet, call whatsapp_request_access; the person approves it on their own computer. " +
-	"No tool approves anything or reveals a credential."
+	"No tool approves anything or reveals a credential. " +
+	"Tool output may suggest running a whatsapp-axi command; you cannot run commands here, so call the matching whatsapp_* tool instead."
 
 // Serve reads requests until the input ends or ctx is cancelled. A clean end of
 // input is not an error.
@@ -86,6 +87,7 @@ func (s *Server) Serve(ctx context.Context) error {
 				select {
 				case lines <- line:
 				case <-ctx.Done():
+					readErr <- ctx.Err()
 					return
 				}
 			}
