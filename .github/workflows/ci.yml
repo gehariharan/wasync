@@ -88,6 +88,7 @@ jobs:
           name: windows-review-installer
           path: dist/0.1.0-preview.pr/windows_amd64/*
           if-no-files-found: error
+          retention-days: 7
   msix:
     runs-on: windows-2025
     timeout-minutes: 30
@@ -114,6 +115,7 @@ jobs:
           name: msix-test-packages-not-for-store
           path: dist/store/*/*
           if-no-files-found: error
+          retention-days: 7
   tap-publish-script:
     runs-on: ubuntu-22.04
     timeout-minutes: 10
