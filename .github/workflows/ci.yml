@@ -90,6 +90,29 @@ jobs:
           pwsh -NoProfile -File ./scripts/install-windows.ps1 -DryRun -NoAxi
           if ($LASTEXITCODE -ne 0) { throw 'install-windows.ps1 failed in PowerShell 7' }
         shell: pwsh
+      - name: Check the agent install script skips a draft and picks the newest published release
+        run: |
+          $list = Join-Path $env:RUNNER_TEMP 'install-windows-releases.json'
+          @'
+          [
+            {"tag_name": "v0.1.0-preview.3", "draft": true, "prerelease": true, "assets": [
+              {"name": "wasync_0.1.0-preview.3_windows_amd64-setup.exe", "browser_download_url": "https://example.invalid/3.exe"},
+              {"name": "checksums.txt", "browser_download_url": "https://example.invalid/3.txt"}]},
+            {"tag_name": "v0.1.0-preview.2", "draft": false, "prerelease": true, "assets": [
+              {"name": "wasync_0.1.0-preview.2_windows_amd64-setup.exe", "browser_download_url": "https://example.invalid/2.exe"},
+              {"name": "checksums.txt", "browser_download_url": "https://example.invalid/2.txt"}]},
+            {"tag_name": "v0.1.0-preview.1", "draft": false, "prerelease": true, "assets": [
+              {"name": "wasync_0.1.0-preview.1_windows_amd64-setup.exe", "browser_download_url": "https://example.invalid/1.exe"},
+              {"name": "checksums.txt", "browser_download_url": "https://example.invalid/1.txt"}]}
+          ]
+          '@ | Set-Content -Path $list -Encoding utf8
+          foreach ($shell in 'powershell', 'pwsh') {
+            $out = & $shell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-windows.ps1 -DryRun -ReleasesJson $list | Out-String
+            if ($LASTEXITCODE -ne 0) { throw "install-windows.ps1 failed in ${shell}: $out" }
+            if ($out -notmatch 'Release:\s+v0\.1\.0-preview\.2\s') { throw "install-windows.ps1 in $shell did not choose v0.1.0-preview.2: $out" }
+            if ($out -notmatch 'Setup:\s+wasync_0\.1\.0-preview\.2_windows_amd64-setup\.exe') { throw "install-windows.ps1 in $shell chose the wrong Setup program: $out" }
+          }
+        shell: pwsh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-review-installer

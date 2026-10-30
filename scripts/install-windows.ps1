@@ -7,15 +7,20 @@
 #   -Version 0.1.0-preview.N   install that release instead of the newest
 #   -NoAxi                     install wasync only (the Codex plugin needs whatsapp-axi)
 #   -DryRun                    say what would be installed; download and install nothing
+#   -ReleasesJson FILE         tests only, with -DryRun: read the release list from a saved JSON array
 param(
  [string]$Version = '',
  [switch]$NoAxi,
- [switch]$DryRun
+ [switch]$DryRun,
+ [string]$ReleasesJson = ''
 )
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 downloads many times slower while it draws a progress bar.
+$ProgressPreference = 'SilentlyContinue'
 Set-StrictMode -Version Latest
 # Windows PowerShell 5.1 does not offer TLS 1.2 to GitHub unless asked.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
+if ($ReleasesJson -and -not $DryRun) { throw '-ReleasesJson is for tests and needs -DryRun.' }
 if ($env:OS -ne 'Windows_NT') { throw 'This script installs the Windows build of wasync.' }
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'wasync for Windows needs a 64-bit (x64) version of Windows.' }
 
@@ -25,7 +30,11 @@ if ($Version) {
  $release = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases/tags/v$Version"
 } else {
  # /releases/latest skips pre-releases, and every current release is one, so list instead.
- $release = @(Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases?per_page=10" | Where-Object { -not $_.draft })[0]
+ # Windows PowerShell 5.1 passes a JSON array down a pipeline as one item, so walk it with foreach.
+ if ($ReleasesJson) { $list = Get-Content -Raw -Path $ReleasesJson | ConvertFrom-Json }
+ else { $list = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases?per_page=10" }
+ $release = $null
+ foreach ($candidate in $list) { if (-not $candidate.draft) { $release = $candidate; break } }
 }
 if (-not $release) { throw 'No published wasync release was found.' }
 $assets = @($release.assets)
@@ -61,4 +70,5 @@ try {
 }
 $dir = Join-Path $env:LOCALAPPDATA 'Programs\wasync'
 Write-Host "Installed to $dir."
-Write-Host 'Fully quit and reopen the Codex app (or any terminal) so it sees the new PATH, then continue with the setup.'
+Write-Host "Start the setup page with its full path: $(Join-Path $dir 'wasync.exe') setup"
+Write-Host 'The Codex app and terminals see the new PATH only after they are fully quit and reopened.'
