@@ -160,13 +160,20 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 		}); ok {
 			a.MediaDownload = media.RequestMedia
 		}
-		err := a.withAPI(ctx, cfg, store, status, func(ctx context.Context, url string) error {
+		err := a.withAPI(ctx, cfg, store, status, func(ctx context.Context, url string) (err error) {
+			// Being stopped is a clean exit at any point: while linking, while
+			// loading the chat list, or while serving. A failure of the local API
+			// also stops this, but withAPI still reports that failure itself.
+			defer func() {
+				if ctx.Err() != nil {
+					err = nil
+				}
+			}()
 			fmt.Fprintf(a.Out, "Local API: %s\nBearer token file: %s\n%s\n", url, filepath.Join(cfg.DataDir, "api.token"), a.approvalCheckLine())
 			if setupMode {
 				a.openSetupPage()
 			}
 			if client != nil {
-				var err error
 				if setupMode {
 					err = a.linkWhatsApp(ctx, live, a.Setup)
 				} else {
