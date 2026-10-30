@@ -42,8 +42,8 @@ project, so Codex asks your approval before the commands below. In order, they a
    - Windows: `Invoke-WebRequest https://raw.githubusercontent.com/gehariharan/wasync/main/scripts/install-windows.ps1 -OutFile $env:TEMP\install-wasync.ps1`
      then `powershell -ExecutionPolicy Bypass -File $env:TEMP\install-wasync.ps1`. The script finds
      the newest release, checks the download against the release's published SHA-256 checksum,
-     and runs Setup quietly for your account with the PATH entry and `whatsapp-axi` (`-NoAxi`
-     leaves `whatsapp-axi` out, `-DryRun` shows what it would do). It changes no agent settings.
+     and runs Setup quietly for your account with the PATH entry and `whatsapp-axi` (`-DryRun`
+     shows what it would do). It changes no agent settings.
 2. **Add the plugin**, the same on both: `codex plugin marketplace add gehariharan/wasync`, then
    `codex plugin add whatsapp@wasync`.
 3. **Start the setup page.** Codex runs wasync by its full path, so it does not need the new

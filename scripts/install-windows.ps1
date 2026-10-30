@@ -4,13 +4,9 @@
 # What it does: finds the newest published release (previews included), downloads the Setup
 # program, checks its SHA-256 against the release's checksums.txt, then runs Setup silently
 # for your account with the PATH entry and whatsapp-axi. It changes no agent settings.
-#   -Version 0.1.0-preview.N   install that release instead of the newest
-#   -NoAxi                     install wasync only (the Codex plugin needs whatsapp-axi)
 #   -DryRun                    say what would be installed; download and install nothing
 #   -ReleasesJson FILE         tests only, with -DryRun: read the release list from a saved JSON array
 param(
- [string]$Version = '',
- [switch]$NoAxi,
  [switch]$DryRun,
  [string]$ReleasesJson = ''
 )
@@ -26,16 +22,12 @@ if (-not [Environment]::Is64BitOperatingSystem) { throw 'wasync for Windows need
 
 $repo = 'gehariharan/wasync'
 $headers = @{ 'User-Agent' = 'wasync-install-script'; 'Accept' = 'application/vnd.github+json' }
-if ($Version) {
- $release = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases/tags/v$Version"
-} else {
- # /releases/latest skips pre-releases, and every current release is one, so list instead.
- # Windows PowerShell 5.1 passes a JSON array down a pipeline as one item, so walk it with foreach.
- if ($ReleasesJson) { $list = Get-Content -Raw -Path $ReleasesJson | ConvertFrom-Json }
- else { $list = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases?per_page=10" }
- $release = $null
- foreach ($candidate in $list) { if (-not $candidate.draft) { $release = $candidate; break } }
-}
+# /releases/latest skips pre-releases, and every current release is one, so list instead.
+# Windows PowerShell 5.1 passes a JSON array down a pipeline as one item, so walk it with foreach.
+if ($ReleasesJson) { $list = Get-Content -Raw -Path $ReleasesJson | ConvertFrom-Json }
+else { $list = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$repo/releases?per_page=10" }
+$release = $null
+foreach ($candidate in $list) { if (-not $candidate.draft) { $release = $candidate; break } }
 if (-not $release) { throw 'No published wasync release was found.' }
 $assets = @($release.assets)
 $setup = $assets | Where-Object { $_.name -like 'wasync_*_windows_amd64-setup.exe' } | Select-Object -First 1
@@ -43,7 +35,7 @@ $sums = $assets | Where-Object { $_.name -eq 'checksums.txt' } | Select-Object -
 if (-not $setup) { throw "Release $($release.tag_name) has no Windows Setup program." }
 if (-not $sums) { throw "Release $($release.tag_name) has no checksums.txt, so the download cannot be verified." }
 
-$tasks = if ($NoAxi) { 'addtopath' } else { 'addtopath,installaxi' }
+$tasks = 'addtopath,installaxi'
 Write-Host "Release:  $($release.tag_name)"
 Write-Host "Setup:    $($setup.name)"
 Write-Host "Install:  for your account only, tasks: $tasks (no administrator rights)"
