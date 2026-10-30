@@ -21,6 +21,12 @@ if ($env:OS -ne 'Windows_NT') { throw 'This script installs the Windows build of
 if (-not [Environment]::Is64BitOperatingSystem) { throw 'wasync for Windows needs a 64-bit (x64) version of Windows.' }
 
 $repo = 'gehariharan/wasync'
+# Setup reuses the folder of an earlier install, so ask its uninstall record where that is.
+function Get-WasyncFolder {
+ $entry = Get-ItemProperty -LiteralPath 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\{A3D912C0-B5BF-46F8-85F4-78E1FEF01FCA}_is1' -Name InstallLocation -ErrorAction SilentlyContinue
+ if ($entry -and $entry.InstallLocation) { return $entry.InstallLocation.TrimEnd('\') }
+ Join-Path $env:LOCALAPPDATA 'Programs\wasync'
+}
 $headers = @{ 'User-Agent' = 'wasync-install-script'; 'Accept' = 'application/vnd.github+json' }
 # /releases/latest skips pre-releases, and every current release is one, so list instead.
 # Windows PowerShell 5.1 passes a JSON array down a pipeline as one item, so walk it with foreach.
@@ -39,6 +45,7 @@ $tasks = 'addtopath,installaxi'
 Write-Host "Release:  $($release.tag_name)"
 Write-Host "Setup:    $($setup.name)"
 Write-Host "Install:  for your account only, tasks: $tasks (no administrator rights)"
+Write-Host "Folder:   $(Get-WasyncFolder)"
 if ($DryRun) { Write-Host 'Dry run: nothing was downloaded or installed.'; return }
 
 $work = Join-Path ([IO.Path]::GetTempPath()) ("wasync-install-" + [guid]::NewGuid())
@@ -60,7 +67,7 @@ try {
 } finally {
  Remove-Item -Recurse -Force $work -ErrorAction SilentlyContinue
 }
-$dir = Join-Path $env:LOCALAPPDATA 'Programs\wasync'
-Write-Host "Installed to $dir."
+$dir = Get-WasyncFolder
+Write-Host "Installed to: $dir"
 Write-Host "Start the setup page with its full path: $(Join-Path $dir 'wasync.exe') setup"
 Write-Host 'The Codex app and terminals see the new PATH only after they are fully quit and reopened.'

@@ -49,7 +49,9 @@ project, so Codex asks your approval before the commands below. In order, they a
 3. **Start the setup page.** Codex runs wasync by its full path, so it does not need the new
    PATH, as a background process that keeps running:
    - macOS: `nohup "$(brew --prefix)/bin/wasync" setup >/dev/null 2>&1 &`
-   - Windows: `Start-Process -WindowStyle Hidden "$env:LOCALAPPDATA\Programs\wasync\wasync.exe" setup`
+   - Windows: `Start-Process -WindowStyle Hidden "FOLDER\wasync.exe" setup`, where `FOLDER` is the
+     folder the install script printed after `Installed to:` (usually
+     `%LOCALAPPDATA%\Programs\wasync`, or the folder an earlier install used)
 
    This must run **outside the sandbox**: inside it wasync cannot reach WhatsApp, cannot open
    the page's port on your computer and cannot create the folder it keeps its data in. Codex

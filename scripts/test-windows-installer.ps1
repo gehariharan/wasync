@@ -44,6 +44,13 @@ try {
  if (((& (Join-Path $both 'wasync.exe') version) | Out-String) -notmatch [regex]::Escape("wasync $Version ")) { throw 'Installed wasync reports the wrong version' }
  foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Setup changed agent settings: $folder" } }
 
+ # 2a. Setup upgrades an earlier install in place, so the agent install script must report the folder a person chose.
+ $releases = Join-Path $temp 'releases.json'
+ '[{"tag_name": "v0.1.0-preview.9", "draft": false, "assets": [{"name": "wasync_0.1.0-preview.9_windows_amd64-setup.exe", "browser_download_url": "https://example.invalid/9.exe"}, {"name": "checksums.txt", "browser_download_url": "https://example.invalid/9.txt"}]}]' | Set-Content -Path $releases -Encoding utf8
+ $plan = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'install-windows.ps1') -DryRun -ReleasesJson $releases | Out-String
+ if ($LASTEXITCODE -ne 0) { throw "install-windows.ps1 dry run failed: $plan" }
+ if ($plan -notmatch ('Folder:\s+' + [regex]::Escape($both) + '\s')) { throw "install-windows.ps1 did not report the install in ${both}: $plan" }
+
  # 2b. The Codex plugin launches `whatsapp-axi mcp`. Speak the tool protocol to the installed program
  # the way Codex does, through Windows pipes: line-delimited JSON-RPC, answers on standard output only.
  $requests = @(
