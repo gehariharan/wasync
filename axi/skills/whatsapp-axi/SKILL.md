@@ -35,6 +35,7 @@ The implemented commands are:
 | `doctor` | Check installation, pairing, service, permissions, compatibility and hooks; each problem comes with repair guidance |
 | `help` | List commands, or show flags and examples for one command |
 | `observe` | Read wasync's change journal by opaque cursor, one page or --follow; a named consumer resumes from its checkpoint, which moves only on `observe ack CURSOR --consumer NAME` (running wasync only, never backwards) or --commit |
+| `mcp` | Serve the same reads and the allowed writes as MCP tools over standard input and output, for apps such as the Codex desktop app; it never approves, grants or reveals a credential |
 | `setup` | Install (or --remove) the session hooks, or the whatsapp-axi agent skill: a session-start hook that shows `whatsapp-axi --brief` in new agent sessions and a session-end hook that records which whatsapp-axi commands a session ran (names and counts only); idempotent, keeps unrelated settings |
 | `session-end` | Run by the session-end hook (see `setup hooks`): records the names and counts of whatsapp-axi commands the ended session ran, never arguments or chat content; reads the hook's JSON from stdin |
 

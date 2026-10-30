@@ -286,12 +286,76 @@ func TestSetupLinksWhatsAppFromThePageAndOpensItByItself(t *testing.T) {
 	}
 	close(client.scanned)
 	waitFor("Linked.")
+	waitFor(`value="456@g.us"`) // the chat list loaded after linking
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
 	if client.attempts != 2 {
 		t.Fatalf("linking attempts %d, want 2", client.attempts)
+	}
+}
+
+// stallingClient stops at one step of setup, says it got there, and waits
+// until setup is stopped.
+type stallingClient struct {
+	*linkingClient
+	inDiscovery bool
+	reached     chan struct{}
+}
+
+func (c *stallingClient) LoginWithQR(ctx context.Context, display func(string)) error {
+	if c.inDiscovery {
+		return c.linkingClient.LoginWithQR(ctx, display)
+	}
+	close(c.reached)
+	<-ctx.Done()
+	return ctx.Err()
+}
+func (c *stallingClient) Groups(ctx context.Context) ([]storage.Group, error) {
+	close(c.reached)
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+func TestSetupStoppedWhileLinkingOrLoadingChatsExitsCleanly(t *testing.T) {
+	for _, inDiscovery := range []bool{false, true} {
+		scanned := make(chan struct{})
+		if inDiscovery {
+			close(scanned) // the phone links at once, so setup goes on to load the chat list
+		}
+		client := &stallingClient{linkingClient: &linkingClient{scanned: scanned}, inDiscovery: inDiscovery, reached: make(chan struct{})}
+		app := &App{Out: io.Discard, Err: io.Discard, Human: humancheck.NewGate(&humanStub{}),
+			OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return client, nil },
+			OpenURL:    func(string) error { return nil }}
+		ctx, cancel := context.WithCancel(context.Background())
+		done := make(chan error, 1)
+		go func() {
+			done <- app.Run(ctx, []string{"--data-dir", filepath.Join(t.TempDir(), "data"), "--api-addr", "127.0.0.1:" + freePort(t), "setup"})
+		}()
+		select {
+		case <-client.reached:
+		case err := <-done:
+			t.Fatalf("discovery %t: setup exited early: %v", inDiscovery, err)
+		}
+		cancel()
+		if err := <-done; err != nil {
+			t.Fatalf("discovery %t: stopping setup must be a clean exit: %v", inDiscovery, err)
+		}
+	}
+}
+
+func TestSetupStillFailsWhenLoadingChatsFails(t *testing.T) {
+	scanned := make(chan struct{})
+	close(scanned)
+	client := &linkingClient{scanned: scanned}
+	client.groupErr = errors.New("group list unavailable")
+	app := &App{Out: io.Discard, Err: io.Discard, Human: humancheck.NewGate(&humanStub{}),
+		OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return client, nil },
+		OpenURL:    func(string) error { return nil }}
+	err := app.Run(context.Background(), []string{"--data-dir", filepath.Join(t.TempDir(), "data"), "--api-addr", "127.0.0.1:" + freePort(t), "setup"})
+	if err == nil || !strings.Contains(err.Error(), "group list unavailable") {
+		t.Fatalf("a real failure must still be reported: %v", err)
 	}
 }
 

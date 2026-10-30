@@ -1,0 +1,31 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "whatsapp",
+  "version": "0.1.0",
+  "description": "Read, search and reply to your own WhatsApp chats from Codex, through the wasync archive on your computer.",
+  "homepage": "https://github.com/gehariharan/wasync",
+  "repository": "https://github.com/gehariharan/wasync",
+  "license": "MIT",
+  "keywords": ["whatsapp", "messaging", "archive"],
+  "extensions": {
+    "com.openai": {
+      "interface": {
+        "displayName": "WhatsApp (wasync)",
+        "shortDescription": "Your WhatsApp chats, read from a private archive on this computer",
+        "longDescription": "Link your own WhatsApp to wasync, a program that keeps an archive of the chats you choose on this computer. This plugin lets Codex read and search that archive and, only where you allow it, reply, react and edit. Codex asks for each chat and you approve it on your own computer with Touch ID, your password or Windows Hello. Nothing leaves your computer except messages you send.",
+        "developerName": "wasync",
+        "category": "Productivity",
+        "capabilities": ["Read chats", "Search messages", "Reply when allowed"],
+        "websiteURL": "https://github.com/gehariharan/wasync",
+        "defaultPrompt": [
+          "Set up WhatsApp.",
+          "Summarize what I missed in my family group.",
+          "Find the message where Sam sent the address."
+        ],
+        "brandColor": "#0F7A4A",
+        "brandColorDark": "#4CC38A"
+      },
+      "onboardingSkill": "./skills/setup/SKILL.md"
+    }
+  }
+}
