@@ -83,6 +83,13 @@ jobs:
       - name: Install with and without AXI for agents, and check the ZIP
         shell: pwsh
         run: ./scripts/test-windows-installer.ps1 -Version 0.1.0-preview.pr
+      - name: Check the agent install script in Windows PowerShell 5.1 and PowerShell 7
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-windows.ps1 -DryRun
+          if ($LASTEXITCODE -ne 0) { throw 'install-windows.ps1 failed in Windows PowerShell' }
+          pwsh -NoProfile -File ./scripts/install-windows.ps1 -DryRun -NoAxi
+          if ($LASTEXITCODE -ne 0) { throw 'install-windows.ps1 failed in PowerShell 7' }
+        shell: pwsh
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: windows-review-installer

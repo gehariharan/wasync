@@ -19,6 +19,48 @@ For development see [CONTRIBUTING.md](CONTRIBUTING.md). For releases see
 [docs/releasing.md](docs/releasing.md); for the one-time tap migration see
 [Homebrew installation](#homebrew-installation).
 
+## Let your agent set this up
+
+If you use the **Codex desktop app** on macOS or Windows, you can ask Codex to install wasync
+and set up WhatsApp for you. Paste this into a Codex conversation:
+
+> Set up WhatsApp for me with wasync from https://github.com/gehariharan/wasync. Follow the
+> "Let your agent set this up" section of its README: install wasync and whatsapp-axi on this
+> computer, add the WhatsApp plugin, then start the setup page. Tell me whenever I need to do
+> something on my own computer.
+
+What Codex runs for you, and why it will ask your permission first (Codex's default settings
+block the network and writing outside your project, so it must ask before each command):
+
+| Computer | Install (no administrator password) | Add the plugin |
+| --- | --- | --- |
+| macOS | `brew tap --custom-remote gehariharan/tap https://github.com/gehariharan/wasync.git`, then `brew trust --cask gehariharan/tap/wasync` if your Homebrew has `brew trust`, then `brew install --cask gehariharan/tap/wasync` and `brew install gehariharan/tap/whatsapp-axi` | `codex plugin marketplace add gehariharan/wasync`, then `codex plugin add whatsapp@wasync` |
+| Windows | `Invoke-WebRequest https://raw.githubusercontent.com/gehariharan/wasync/main/scripts/install-windows.ps1 -OutFile $env:TEMP\install-wasync.ps1` then `powershell -ExecutionPolicy Bypass -File $env:TEMP\install-wasync.ps1` | the same two `codex plugin` commands |
+
+The Windows script finds the newest release, checks the download against the release's
+published SHA-256 checksum, and runs Setup quietly for your account with the PATH entry and
+`whatsapp-axi` (`-NoAxi` leaves `whatsapp-axi` out, `-DryRun` shows what it would do). It
+changes no agent settings. Homebrew's `whatsapp-axi` builds from source, so that step takes a
+few minutes.
+
+After installing, **fully quit and reopen the Codex app** so it sees the new PATH. Then ask
+Codex to "set up WhatsApp". It opens the setup page; the steps only you can do are:
+
+1. scan the QR code with WhatsApp on your phone (*Linked devices → Link a device*);
+2. choose which chats wasync may keep;
+3. press **Connect** for the agent and confirm with Touch ID, your password or Windows Hello;
+4. later, approve each chat Codex asks for, the same way.
+
+No tool Codex has can approve anything, create a credential or read one (see
+[ADR-003](docs/architecture/ADR-003-mcp-tool-server.md)). If Codex says it has no WhatsApp tools
+after the restart, the plugin could not start `whatsapp-axi`: check `whatsapp-axi --version` in
+a terminal and that the Codex app was started after the install.
+
+> **Windows:** continuous integration runs the installer, the `whatsapp-axi mcp` tool server
+> and `wasync serve` on a Windows runner, but the Codex desktop app, Windows Hello, the
+> password prompt and the setup page in a real browser have not yet been exercised on a real
+> Windows PC by the author.
+
 ## Install a prebuilt package
 
 End users do not need Go, Xcode Command Line Tools, or a C compiler. The native
