@@ -8,7 +8,7 @@ description: Guide the user through setting up WhatsApp with wasync for the firs
 Run this when the person asks to set WhatsApp up or when `whatsapp_status` shows it is not ready. Use plain words; they may not use a terminal.
 
 1. **Tools missing?** If you have no `whatsapp_*` tools at all, the WhatsApp tool server did not start, most likely because `whatsapp-axi` is not installed or is not on the PATH the Codex app was started with. Tell them that in plain words and ask them to check in a terminal with `whatsapp-axi --version`.
-   - On a Mac: install whatsapp-axi with `brew install gehariharan/tap/whatsapp-axi` (or tick "AXI for agents" in the wasync `.pkg` installer), then quit the Codex app fully and open it again so it picks up the PATH.
+   - On a Mac: install whatsapp-axi with `brew tap --custom-remote gehariharan/tap https://github.com/gehariharan/wasync.git && brew install gehariharan/tap/whatsapp-axi` (or tick "AXI for agents" in the wasync `.pkg` installer), then quit the Codex app fully and open it again so it picks up the PATH.
    - On Windows: run the wasync Setup program from https://github.com/gehariharan/wasync/releases with "Also install whatsapp-axi" ticked and keep its PATH entry, then fully quit Codex and open it again.
    - Then stop and wait until the `whatsapp_*` tools appear before going on.
 2. **Check.** Call `whatsapp_status`.
