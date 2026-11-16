@@ -434,8 +434,16 @@ delivery and a durable commit, but does not guarantee complete delivery or repla
 after every failure. The library's optional decrypted-event buffer is not enabled
 because it could retain plaintext for unselected chats.
 
-After a terminal session error, such as being unlinked from the phone, restart
-wasync to establish a fresh client and re-pair if needed.
+If the phone unlinks wasync (WhatsApp → Linked Devices → remove), WhatsApp
+rejects the saved login from then on. Run `wasync login`, or press `c` in the
+TUI. wasync notices the rejection, says so, clears only the dead login from
+`session.db` and shows a new QR code in the same run. Your archive, chat
+choices and settings are not touched, and no file needs to be moved by hand.
+
+Other terminal session errors do not clear the saved login. If WhatsApp reports
+that the session was replaced by another client, that this client version is too
+old, or that the account is temporarily restricted, fix that cause and restart
+wasync.
 
 ## Pull data into your own database
 

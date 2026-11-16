@@ -90,7 +90,7 @@ func TestV1HealthDeepStateMapping(t *testing.T) {
 		{"reconnecting", true, "reconnecting", false, "", ""},
 		{"pairing", false, "pairing", false, "", ""},
 		{"offline", false, "offline", false, "", ""},
-		{"attention required", false, "attention_required", false, "WhatsApp unlinked this session; run wasync login again", "WhatsApp rejected the session; check the phone"},
+		{"attention required", false, "attention_required", false, whatsapp.ErrUnlinked.Error(), "WhatsApp rejected the session; check the phone. If it unlinked this device, run wasync login to link again"},
 		{"capture stopped", false, "capture_stopped", false, "Archive operation failed. Capture stopped; check disk space and restart.", "archive operation failed; capture stopped"},
 		{"unlinked", false, "unlinked", false, "", ""},
 		{"online", false, "online", true, "History batch had 3 unparseable messages; coverage remains uncertain.", "capture reported a problem; see the wasync terminal"},
