@@ -118,6 +118,95 @@ func (m Model) filtered() []storage.Group {
 	}
 	return groups
 }
+
+// chatTabs are the chat lists the chat list screen can show, in Tab order.
+var chatTabs = []struct{ kind, label string }{{"group", "Groups"}, {"direct", "Direct"}, {"all", "All"}}
+
+func (m *Model) setChatType(kind string) {
+	if m.chatType != kind {
+		m.chatType = kind
+		m.cursor = 0
+	}
+}
+
+// switchChatType moves to the next (delta 1) or previous (delta -1) chat list,
+// wrapping around.
+func (m *Model) switchChatType(delta int) {
+	at := 0
+	for i, t := range chatTabs {
+		if t.kind == m.chatType {
+			at = i
+		}
+	}
+	m.setChatType(chatTabs[(at+delta+len(chatTabs))%len(chatTabs)].kind)
+}
+
+// tabSegments returns the plain text of each tab. detail 2 adds how many chats
+// are on, 1 only the chat count, 0 just the name, so the strip can shrink to fit.
+// The active tab is wrapped in brackets so it stands out without colour.
+func (m Model) tabSegments(detail int) []string {
+	total, on := map[string]int{}, map[string]int{}
+	for _, g := range m.snapshot.Groups {
+		for _, kind := range []string{storage.ChatKind(g.ID), "all"} {
+			total[kind]++
+			if g.Enabled {
+				on[kind]++
+			}
+		}
+	}
+	segments := make([]string, len(chatTabs))
+	for i, t := range chatTabs {
+		text := t.label
+		if detail >= 1 {
+			text += fmt.Sprintf(" %d", total[t.kind])
+		}
+		if detail >= 2 {
+			text += fmt.Sprintf(" · %d on", on[t.kind])
+		}
+		if t.kind == m.chatType {
+			segments[i] = "[ " + text + " ]"
+		} else {
+			segments[i] = "  " + text + "  "
+		}
+	}
+	return segments
+}
+
+// fittingTabSegments picks the most detailed tab text that fits in width.
+func (m Model) fittingTabSegments(width int) []string {
+	for detail := 2; ; detail-- {
+		segments := m.tabSegments(detail)
+		if detail == 0 || ansi.StringWidth(strings.Join(segments, "")) <= width {
+			return segments
+		}
+	}
+}
+
+// tabStrip renders the always-visible Groups / Direct / All tabs.
+func (m Model) tabStrip(width int) string {
+	segments := m.fittingTabSegments(width)
+	parts := make([]string, len(segments))
+	for i, text := range segments {
+		if chatTabs[i].kind == m.chatType {
+			parts[i] = accent.Underline(true).Render(text)
+		} else {
+			parts[i] = dim.Render(text)
+		}
+	}
+	return clip(strings.Join(parts, ""), width)
+}
+
+// tabAt returns which tab sits at column x of the strip, or "" for none.
+func (m Model) tabAt(width, x int) string {
+	for i, text := range m.fittingTabSegments(width) {
+		if x < ansi.StringWidth(text) {
+			return chatTabs[i].kind
+		}
+		x -= ansi.StringWidth(text)
+	}
+	return ""
+}
+
 func (m Model) selected() (storage.Group, bool) {
 	groups := m.filtered()
 	if len(groups) == 0 {
@@ -285,6 +374,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				listWidth = m.width / 2
 			}
 		}
+		if m.mode == "groups" && mouse.Y == 3 && mouse.X < listWidth {
+			// The tab strip is the first line inside the list panel.
+			if kind := m.tabAt(listWidth-4, mouse.X-2); kind != "" {
+				m.setChatType(kind)
+			}
+			return m, nil
+		}
 		if mouse.X >= listWidth || mouse.Y < 5 {
 			return m, nil
 		}
@@ -300,9 +396,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if mouse.X >= 17 && mouse.X < 27 {
 					return m.Update(tea.KeyPressMsg{Code: 'N', Text: "N"})
 				}
-			}
-			if mouse.Y == 6 {
-				return m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 			}
 		}
 		if mouse.Y < firstRow {
@@ -557,15 +650,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "tab":
 			if m.mode == "groups" {
-				switch m.chatType {
-				case "group":
-					m.chatType = "direct"
-				case "direct":
-					m.chatType = "all"
-				default:
-					m.chatType = "group"
-				}
-				m.cursor = 0
+				m.switchChatType(1)
+			}
+		case "shift+tab":
+			if m.mode == "groups" {
+				m.switchChatType(-1)
+			}
+		case "1", "2", "3":
+			if m.mode == "groups" {
+				m.setChatType(chatTabs[int(key[0]-'1')].kind)
 			}
 		case "e":
 			if m.mode == "groups" {
@@ -722,6 +815,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.openAccessMode()
 			}
 		case "n", "right":
+			if m.mode == "groups" && key == "right" {
+				m.switchChatType(1)
+			}
 			if m.mode == "messages" && !m.pageBusy && m.page.Next.ID != 0 {
 				m.previous = append(m.previous, m.before)
 				m.before = m.page.Next
@@ -731,6 +827,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.loadPage()
 			}
 		case "p", "left":
+			if m.mode == "groups" && key == "left" {
+				m.switchChatType(-1)
+			}
 			if m.mode == "messages" && !m.pageBusy && len(m.previous) > 0 {
 				m.before = m.previous[len(m.previous)-1]
 				m.previous = m.previous[:len(m.previous)-1]
@@ -783,7 +882,11 @@ func truncateRunes(s string, n int) string {
 }
 func clip(s string, width int) string { return ansi.Truncate(s, max(width, 0), "…") }
 func panel(title, body string, width, height int) string {
-	title = accent.Render(clip(title, width-4))
+	return panelStyled(accent.Render(clip(title, width-4)), body, width, height)
+}
+
+// panelStyled is panel with a title the caller has already rendered.
+func panelStyled(title, body string, width, height int) string {
 	return lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("238")).Padding(0, 1).Width(width).Height(height).MaxWidth(width).MaxHeight(height).Render(title + "\n\n" + body)
 }
 func (m Model) View() tea.View {
@@ -818,7 +921,7 @@ func (m Model) View() tea.View {
 		top := header + "\n" + dim.Render(clip(status, w)) + "\n"
 		bodyHeight := h - 9
 		if m.help {
-			content = top + panel("KEYBOARD", "↑/↓ or j/k  Move selection\nMouse wheel  Scroll list\nPgUp/PgDn, Home/End  Jump\nSpace  Enable/disable selected chat\nm  Cycle chat media: manual / auto / inherit\nTab  Groups / Direct / All\nA/N  Enable/disable category (confirmation)\nEnter  Browse archived messages\n/  Filter groups or search message text\ne  Show enabled groups only\nr  Refresh group metadata\nh  Retry older history for this group\nc  Connect/pair again\nd  Clear selected message locally (confirmation)\nX  Revoke your message in WhatsApp (confirmation)\nW  Delete WhatsApp chat state (confirmation)\nD  Purge local chat archive (confirmation)\nM  How agents get chats: ask each time or sync all\nL  Unlink device and quit (confirmation)\n\nMessages: m download selected attachment once · n/p older/newer · R latest\nCtrl+D / Ctrl+U scroll selected message body\nEsc  Back/clear filter · q quit (keeps session linked)\n?  Close help", w, bodyHeight)
+			content = top + panel("KEYBOARD", "↑/↓ or j/k  Move selection\nMouse wheel  Scroll list\nPgUp/PgDn, Home/End  Jump\nSpace  Enable/disable selected chat\nm  Cycle chat media: manual / auto / inherit\nTab, ← →  Switch list: Groups / Direct / All\nShift+Tab  Previous list (1 / 2 / 3 jump straight to one)\nA/N  Enable/disable category (confirmation)\nEnter  Browse archived messages\n/  Filter groups or search message text\ne  Show enabled groups only\nr  Refresh group metadata\nh  Retry older history for this group\nc  Connect/pair again\nd  Clear selected message locally (confirmation)\nX  Revoke your message in WhatsApp (confirmation)\nW  Delete WhatsApp chat state (confirmation)\nD  Purge local chat archive (confirmation)\nM  How agents get chats: ask each time or sync all\nL  Unlink device and quit (confirmation)\n\nMessages: m download selected attachment once · n/p older/newer · R latest\nCtrl+D / Ctrl+U scroll selected message body\nEsc  Back/clear filter · q quit (keeps session linked)\n?  Close help", w, bodyHeight)
 		} else if m.confirm != "" {
 			description := m.confirmDescription()
 			title := "CONFIRM DESTRUCTIVE ACTION"
@@ -872,7 +975,7 @@ func (m Model) View() tea.View {
 		if m.editing != "" {
 			prompt = "/ " + clean(m.draft) + "▏   Enter apply · Esc done"
 		}
-		hint := "m media policy · Space toggle · A/N all/none · L logout · Enter messages · ? help · q quit"
+		hint := "Tab/← → switch · Space toggle · A/N all/none · m media · Enter open · L logout · ? help · q quit"
 		if m.mode == "messages" {
 			hint = "q quit · L logout · Enter full text · d clear locally · / search · n/p page · Esc back"
 		}
@@ -922,12 +1025,19 @@ func (m Model) groupsView(width, height int) string {
 	if len(groups) == 0 {
 		lines = append(lines, "No matching chats.", "Direct chats appear from history/live events.")
 	}
-	title := fmt.Sprintf("%s CHATS  %d", strings.ToUpper(m.chatType), len(groups))
-	if m.filter != "" {
-		title += "  / " + oneLine(m.filter)
+	hint := "Tab or ← → switch list · Shift+Tab back"
+	if m.filter != "" || m.enabledOnly {
+		hint = fmt.Sprintf("showing %d", len(groups))
+		if m.filter != "" {
+			hint += " matching / " + oneLine(m.filter)
+		}
+		if m.enabledOnly {
+			hint += " · enabled only"
+		}
+		hint += " · Esc clears"
 	}
-	toolbar := accent.Render("[A Select all]  [N None]") + "\n" + dim.Render("Tab: Groups / Direct / All · "+m.chatType) + "\n\n"
-	left := panel(title, toolbar+strings.Join(lines, "\n"), listWidth, height)
+	toolbar := accent.Render("[A Select all]  [N None]") + "\n" + dim.Render(clip(hint, listWidth-4)) + "\n\n"
+	left := panelStyled(m.tabStrip(listWidth-4), toolbar+strings.Join(lines, "\n"), listWidth, height)
 	if width < 90 {
 		return left
 	}

@@ -304,11 +304,13 @@ HTTP API by default.
 | ↑ / ↓ or j / k | Move through groups or messages |
 | Mouse wheel / click | Scroll / select a row; click a group checkbox to toggle capture |
 | PgUp / PgDn, Home / End | Jump through the list |
+| Tab / Shift+Tab, or → / ← | In the chat list, switch between the Groups, Direct and All tabs (forward / back) |
+| 1 / 2 / 3 | In the chat list, jump straight to Groups / Direct / All |
 | Space | Enable or disable capture for the selected group |
 | Enter | Open the group's archive; in messages, expand the full message |
 | / | Filter groups; in the archive, search message text |
 | e | Show enabled groups only |
-| n / p or → / ← | Older / newer message page |
+| n / p or → / ← | Older / newer message page (in the message view) |
 | R | Return to the latest message page |
 | Ctrl+D / Ctrl+U | Scroll the selected message body |
 | ↑ / ↓ in expanded message | Scroll the full message body |
@@ -909,7 +911,11 @@ $env:PATH = 'C:/msys64/ucrt64/bin;' + $env:PATH
 - The top **Select all** / **None** controls support mouse clicks or **A** / **N**.
   Confirm the count before applying. They apply to the current category, ignoring
   name and enabled-only filters. The default Groups category affects groups only.
-- **Tab** switches Groups / Direct / All. Direct chats require explicit selection.
+- The tab strip at the top of the chat list always shows **Groups**, **Direct** and **All**
+  with the active one in brackets, how many chats each holds and how many are on
+  (`[ Groups 206 · 5 on ]  Direct 506 · 0 on`). Switch with **Tab** / **Shift+Tab**,
+  **←** / **→**, **1** / **2** / **3**, or a mouse click on a tab. Direct chats require
+  explicit selection.
 - `wasync groups enable --all` and `wasync groups disable --all` provide the same
   operations from the CLI. Newly discovered groups remain disabled.
 - **L**, then **y**, unlinks the device and exits; `wasync logout` does the same
