@@ -312,6 +312,9 @@ func (c *Client) startFreshDevice(ctx context.Context) error {
 	if err := c.forgetCaptureAccount(ctx); err != nil {
 		return err
 	}
+	c.anchorMu.Lock()
+	c.anchors = nil
+	c.anchorMu.Unlock()
 	c.useDevice(c.container.NewDevice())
 	c.unlinked.Store(false)
 	// Forget signals left over from the rejected login.

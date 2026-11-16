@@ -244,6 +244,11 @@ func TestADifferentNumberPairingAfterAnUnlinkGetsItsOwnArchiveAccount(t *testing
 	if err = c.EnableDiscovery(ctx, store); err != nil {
 		t.Fatal(err)
 	}
+	group, err := types.ParseJID("120363000000000001@g.us")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.handleEvent(&events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: group, IsGroup: true, IsFromMe: true}, ID: "BEFORE-UNLINK", Timestamp: time.Now()}, Message: &waE2E.Message{Conversation: proto.String("old")}})
 	oldAccount := c.Status().AccountID
 	c.dial = func(context.Context) error {
 		c.handleEvent(&events.LoggedOut{OnConnect: true, Reason: events.ConnectFailureLoggedOut})
@@ -265,11 +270,7 @@ func TestADifferentNumberPairingAfterAnUnlinkGetsItsOwnArchiveAccount(t *testing
 		t.Fatal(err)
 	}
 
-	group, err := types.ParseJID("120363000000000001@g.us")
-	if err != nil {
-		t.Fatal(err)
-	}
-	c.handleEvent(&events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: group, Sender: other.ToNonAD(), IsGroup: true}, ID: "AFTER-REPAIR", Timestamp: time.Now()}, Message: &waE2E.Message{Conversation: proto.String("hi")}})
+	c.handleEvent(&events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: group, Sender: other.ToNonAD(), IsGroup: true}, ID: "AFTER-REPAIR", Timestamp: time.Now().Add(-time.Hour)}, Message: &waE2E.Message{Conversation: proto.String("hi")}})
 
 	newAccount, err := store.UseAccount(ctx, "15559999999@s.whatsapp.net")
 	if err != nil {
@@ -284,7 +285,7 @@ func TestADifferentNumberPairingAfterAnUnlinkGetsItsOwnArchiveAccount(t *testing
 	if anchor, err := store.KnownHistoryAnchor(ctx, newAccount, group.String()); err != nil || anchor.ID != "AFTER-REPAIR" {
 		t.Fatalf("new number's anchor %+v, %v", anchor, err)
 	}
-	if anchor, err := store.KnownHistoryAnchor(ctx, oldAccount, group.String()); err != nil || anchor.ID != "" {
-		t.Fatalf("the new number's data went to the unlinked account: %+v, %v", anchor, err)
+	if anchor, err := store.KnownHistoryAnchor(ctx, oldAccount, group.String()); err != nil || anchor.ID != "BEFORE-UNLINK" {
+		t.Fatalf("the unlinked account's anchor changed: %+v, %v", anchor, err)
 	}
 }
