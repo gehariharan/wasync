@@ -327,7 +327,11 @@ HTTP API by default.
 Group details show archived counts, last message time, observed history state and
 the potential gaps while this chat was being captured (the account's stretches of lost
 observation that overlap the time capture has been on for the chat, so chats turned on at
-different times differ; 0 while capture is off). Enabled groups appear first. The selected group stays
+different times differ; 0 while capture is off). A group WhatsApp supplies no name for is
+listed as `Unnamed group …` followed by the last six digits of its ID. An enabled group
+with no messages yet while its older history is queued or requested says so, and the
+status line counts such chats ("history still arriving for N chats") and any messages
+from enabled chats that could not be decrypted this session. Enabled groups appear first. The selected group stays
 selected when a refresh changes the ordering. The message list uses keyset
 pagination; new arrivals do not shift an older page while you browse it. Search
 uses a literal FTS5 phrase and is scoped to the open group.
@@ -777,7 +781,7 @@ encrypt data at rest.
 | `webhooks.json` | Webhook endpoints and their signing secrets; keep private |
 | `webhook-state.json` | Per-endpoint delivery position (journal sequence and retry timing) |
 | `webhook-deadletter.jsonl` | Events webhooks gave up on: identifiers and outcomes only |
-| `wasync.log` | Structured lifecycle logs from TUI sessions |
+| `wasync.log` | Structured lifecycle logs from TUI sessions, including warnings and errors from the WhatsApp encryption library, which never print to the terminal |
 | `device.lock` | Process ownership lock, retained after exit |
 | `*-wal`, `*-shm` | SQLite WAL sidecars when present |
 
