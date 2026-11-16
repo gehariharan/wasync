@@ -206,9 +206,15 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 				}
 			}
 		}, send)
+		// Exit cleanly in both cases so a login item does not restart into the same prompt.
 		if errors.Is(err, approvecred.ErrAccessDenied) {
-			// Exit cleanly so a login item does not restart into the same prompt.
 			const msg = "Approvals are off: wasync was not allowed to read its approval credential from the Keychain. Run wasync again to turn them back on."
+			fmt.Fprintln(a.Err, msg)
+			a.announce(msg)
+			return nil
+		}
+		if errors.Is(err, approvecred.ErrForeignItem) {
+			msg := fmt.Sprintf("Approvals are off: %v.", err)
 			fmt.Fprintln(a.Err, msg)
 			a.announce(msg)
 			return nil

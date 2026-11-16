@@ -11,11 +11,22 @@ import (
 
 type memory struct {
 	items   map[string]string
+	folders map[string]string
 	getErr  error
 	setErrs int
 }
 
-func newMemory() *memory { return &memory{items: map[string]string{}} }
+func newMemory() *memory {
+	return &memory{items: map[string]string{}, folders: map[string]string{}}
+}
+
+func (m *memory) List() ([]Item, error) {
+	var items []Item
+	for a := range m.items {
+		items = append(items, Item{Account: a, Folder: m.folders[a]})
+	}
+	return items, nil
+}
 
 func (m *memory) Get(a string) (string, error) {
 	if m.getErr != nil {
@@ -27,15 +38,16 @@ func (m *memory) Get(a string) (string, error) {
 	}
 	return v, nil
 }
-func (m *memory) Set(a, s string) error {
+func (m *memory) Set(a, s, folder string) error {
 	if m.setErrs > 0 {
 		m.setErrs--
 		return errors.New("keychain locked")
 	}
 	m.items[a] = s
+	m.folders[a] = folder
 	return nil
 }
-func (m *memory) Delete(a string) error { delete(m.items, a); return nil }
+func (m *memory) Delete(a string) error { delete(m.items, a); delete(m.folders, a); return nil }
 
 const legacy = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff"
 
@@ -203,5 +215,86 @@ func TestWithoutAKeychainTheFileLoaderRuns(t *testing.T) {
 	}
 	if InKeychain() {
 		t.Fatal("reports a Keychain it does not have")
+	}
+}
+
+func TestNewCredentialRecordsItsDataDirectory(t *testing.T) {
+	mem := newMemory()
+	Use(mem)
+	t.Cleanup(func() { Use(nil) })
+	dir := dataDir(t)
+	if _, err := Owner(dir, fileLoader(t)); err != nil {
+		t.Fatal(err)
+	}
+	acct, _ := account(dir)
+	if mem.folders[acct] != dir {
+		t.Fatalf("recorded folder %q, want %q", mem.folders[acct], dir)
+	}
+	items, err := Items()
+	if err != nil || len(items) != 1 || items[0] != (Item{Account: acct, Folder: dir}) {
+		t.Fatalf("items: %v %v", items, err)
+	}
+	if err := Forget(acct); err != nil {
+		t.Fatal(err)
+	}
+	if items, _ := Items(); len(items) != 0 {
+		t.Fatalf("the item was not removed: %v", items)
+	}
+}
+
+func TestStartingTwiceMakesOneItemPerDirectory(t *testing.T) {
+	mem := newMemory()
+	Use(mem)
+	t.Cleanup(func() { Use(nil) })
+	dir := dataDir(t)
+	for range 3 {
+		if _, err := Owner(dir, fileLoader(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rel, err := filepath.Rel(mustWd(t), dir)
+	if err == nil {
+		if _, err := Owner(rel, fileLoader(t)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(mem.items) != 1 {
+		t.Fatalf("%d items for one directory: %v", len(mem.items), mem.items)
+	}
+}
+
+func mustWd(t *testing.T) string {
+	t.Helper()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return wd
+}
+
+func TestWithoutAKeychainThereIsNothingToList(t *testing.T) {
+	Use(nil)
+	if _, err := Items(); !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("items: %v", err)
+	}
+	if err := Forget("approve:x"); !errors.Is(err, errors.ErrUnsupported) {
+		t.Fatalf("forget: %v", err)
+	}
+}
+
+// The real Keychain belongs to the person running the tests. A test binary gets
+// no Keychain by default, whichever package it is in, and a backend that is the
+// real one refuses to run unless the person asked for it.
+func TestATestBinaryNeverGetsTheRealKeychainByDefault(t *testing.T) {
+	t.Setenv(RealKeychainEnv, "")
+	if b := defaultBackend(); b != nil {
+		t.Fatalf("a test binary was given the real backend %T", b)
+	}
+	if err := refuseInTest(); !errors.Is(err, ErrRealKeychainInTest) {
+		t.Fatalf("refuseInTest: %v", err)
+	}
+	t.Setenv(RealKeychainEnv, "1")
+	if err := refuseInTest(); err != nil {
+		t.Fatalf("an explicit opt-in was refused: %v", err)
 	}
 }

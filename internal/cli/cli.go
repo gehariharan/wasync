@@ -97,6 +97,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   serve [--offline]                          Headless capture and local API
   setup                                      Link WhatsApp and choose chats in your browser, no terminal
   service install|uninstall|status           Start wasync by itself when you log in
+  keychain [prune [--apply]]                 List or remove leftover Keychain items (macOS)
   login [--select=true|false] [--observe 30s]  Pair or reuse session, then open the TUI
   logout                                     Unlink device; preserve cached groups
   groups list [--refresh] [--json]            List cached groups; optionally connect
@@ -216,6 +217,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	}
 	if args[0] == "service" {
 		return a.runService(parent, cfg, args[1:])
+	}
+	if args[0] == "keychain" {
+		return a.runKeychain(cfg, args[1:])
 	}
 	if args[0] == "clean" || args[0] == "delete" {
 		return a.runDestructiveRequest(parent, cfg, args)
