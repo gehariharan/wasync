@@ -378,3 +378,77 @@ func TestTabStillCyclesHistoryDepthInAccessRequestDialog(t *testing.T) {
 		t.Fatalf("Tab in a confirmation dialog changed the chat list to %q", m.chatType)
 	}
 }
+
+func TestUnnamedGroupsShowReadableLabelInListAndDetails(t *testing.T) {
+	m, _ := fixtureModel()
+	m.width, m.height = 140, 40
+	m.snapshot.Groups = []storage.Group{{ID: "120363266948712648@g.us", Enabled: true}, {ID: "1@g.us", Name: "Alpha"}}
+	view := m.View().Content
+	if strings.Count(view, "Unnamed group …712648") < 2 {
+		t.Fatalf("unnamed group missing from list or details:\n%s", view)
+	}
+	if strings.Contains(view, "[✓]  0") {
+		t.Fatalf("blank row rendered:\n%s", view)
+	}
+	m, _ = update(m, key("enter"))
+	if m.groupName != "Unnamed group …712648" {
+		t.Fatalf("message view title = %q", m.groupName)
+	}
+}
+
+func TestZeroArchivedWhileHistoryArrivesSaysSo(t *testing.T) {
+	m, _ := fixtureModel()
+	m.width, m.height = 200, 40
+	m.snapshot.Groups = []storage.Group{{ID: "1@g.us", Name: "Alpha", Enabled: true, HistoryRequest: "queued"}}
+	view := m.View().Content
+	if !strings.Contains(view, "history still arriving for 1 chat") || !strings.Contains(view, "Older history is still arriving from your phone.") {
+		t.Fatalf("history-pending explanation missing:\n%s", view)
+	}
+	m.snapshot.Groups[0].MessageCount = 3
+	m.snapshot.Groups[0].HistoryRequest = ""
+	view = m.View().Content
+	if strings.Contains(view, "still arriving") || !strings.Contains(view, "3 messages archived") {
+		t.Fatalf("explanation shown for a populated archive:\n%s", view)
+	}
+}
+
+func TestChatsWaitingForAnchorAreNotReportedAsArriving(t *testing.T) {
+	m, _ := fixtureModel()
+	m.width, m.height = 200, 40
+	m.snapshot.Groups = []storage.Group{
+		{ID: "1@g.us", Name: "Alpha", Enabled: true, HistoryRequest: "waiting_anchor"},
+		{ID: "2@g.us", Name: "Beta", Enabled: true, HistoryRequest: "waiting_anchor"},
+	}
+	view := m.View().Content
+	if strings.Contains(view, "still arriving") {
+		t.Fatalf("chats that have not asked the phone for history were reported as arriving:\n%s", view)
+	}
+	if !strings.Contains(view, "0 messages archived") || !strings.Contains(view, "known message") {
+		t.Fatalf("details pane lost the waiting-for-a-known-message explanation:\n%s", view)
+	}
+}
+
+func TestHistoryNoteCountsEmptyChatsEvenWhenSomeAreArchived(t *testing.T) {
+	m, _ := fixtureModel()
+	m.width, m.height = 200, 40
+	m.snapshot.Groups = []storage.Group{
+		{ID: "1@g.us", Name: "Alpha", Enabled: true, MessageCount: 87, HistoryRequest: "queued"},
+		{ID: "2@g.us", Name: "Beta", Enabled: true, HistoryRequest: "queued"},
+		{ID: "3@g.us", Name: "Gamma", Enabled: true, HistoryRequest: "waiting"},
+		{ID: "4@g.us", Name: "Delta", HistoryRequest: "queued"},
+		{ID: "5@g.us", Name: "Epsilon", Enabled: true},
+	}
+	view := m.View().Content
+	if !strings.Contains(view, "87 archived") || !strings.Contains(view, "history still arriving for 2 chats") {
+		t.Fatalf("status line does not explain the empty chats while others are archived:\n%s", view)
+	}
+}
+
+func TestStatusLineReportsUndecryptableMessages(t *testing.T) {
+	m, _ := fixtureModel()
+	m.width, m.height = 200, 40
+	m.snapshot.Status.Undecryptable = 2
+	if view := m.View().Content; !strings.Contains(view, "2 message(s) could not be decrypted") {
+		t.Fatalf("undecryptable count not shown:\n%s", view)
+	}
+}

@@ -673,7 +673,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == "groups" {
 				if g, ok := m.selected(); ok {
 					m.groupID = g.ID
-					m.groupName = g.Name
+					m.groupName = g.DisplayName()
 					m.mode = "messages"
 					m.search = ""
 					m.before = storage.Cursor{}
@@ -915,6 +915,12 @@ func (m Model) View() tea.View {
 		}
 		header := accent.Render("  wasync") + dim.Render("  /  personal chat archive")
 		status := fmt.Sprintf("  %s   ·   %d enabled   ·   %d archived   ·   +%d writes this session", state, enabled, total, m.snapshot.Status.Stored)
+		if note := historyArrivingNote(m.snapshot.Groups); note != "" {
+			status += "   ·   " + note
+		}
+		if n := m.snapshot.Status.Undecryptable; n > 0 {
+			status += fmt.Sprintf("   ·   %d message(s) could not be decrypted (recorded as gaps)", n)
+		}
 		if m.snapshot.APIURL != "" {
 			status += "   ·   API " + m.snapshot.APIURL
 		}
@@ -1016,7 +1022,7 @@ func (m Model) groupsView(width, height int) string {
 		if i == m.cursor {
 			cursor = "› "
 		}
-		line := clip(fmt.Sprintf("%s%s  %s", cursor, mark, oneLine(g.Name)), listWidth-16) + fmt.Sprintf("  %d", g.MessageCount)
+		line := clip(fmt.Sprintf("%s%s  %s", cursor, mark, oneLine(g.DisplayName())), listWidth-16) + fmt.Sprintf("  %d", g.MessageCount)
 		if i == m.cursor {
 			line = selectedStyle.Render(clip(line, listWidth-4))
 		}
@@ -1063,7 +1069,7 @@ func (m Model) groupsView(width, height int) string {
 				history += "\n" + oneLine(g.HistoryRequestError)
 			}
 		}
-		details = accent.Render(clip(oneLine(g.Name), width-listWidth-5)) + "\n\n" + oneLine(g.ID) + "\n\n" + enabled + "\nMedia: " + oneLine(g.MediaPolicy) + " (m to change)" + fmt.Sprintf("\n%d messages archived\n\nLast message\n%s\n\n%s\n%d potential gaps while capturing this chat\n\nEnter to browse messages.\nm to cycle saved media policy.\nh to retry older history.\nD to purge this archive.", g.MessageCount, last, history, g.GapCount)
+		details = accent.Render(clip(oneLine(g.DisplayName()), width-listWidth-5)) + "\n\n" + oneLine(g.ID) + "\n\n" + enabled + "\nMedia: " + oneLine(g.MediaPolicy) + " (m to change)" + fmt.Sprintf("\n%s\n\nLast message\n%s\n\n%s\n%d potential gaps while capturing this chat\n\nEnter to browse messages.\nm to cycle saved media policy.\nh to retry older history.\nD to purge this archive.", archivedLine(g), last, history, g.GapCount)
 	}
 	details = ansi.Hardwrap(details, width-listWidth-5, false)
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, panel("CAPTURE DETAILS", details, width-listWidth, height))
@@ -1357,4 +1363,48 @@ func (m Model) confirmDescription() string {
 		return oneLine(kind) + "\n\n" + scope + "\n\nChat: " + oneLine(chat) + "\nMessage: " + oneLine(message) + "\n\nType DELETE " + m.confirmID[max(0, len(m.confirmID)-6):] + " then Enter to approve.\n> " + oneLine(m.confirmDraft) + "\nn / Esc reject"
 	}
 	return oneLine(kind) + "\n\n" + scope + "\n\nChat: " + oneLine(chat) + "\nMessage: " + oneLine(message) + "\n\nThis action requires your confirmation.\ny approve · n reject"
+}
+
+// historyPending reports whether a chat's older history has been asked for and
+// has not yet answered, so an empty archive is expected rather than a problem.
+func historyPending(g storage.Group) bool {
+	switch g.HistoryRequest {
+	case "queued", "sending", "waiting":
+		return true
+	}
+	return false
+}
+
+// awaitingHistory reports an enabled chat that shows no messages only because
+// its older history has not arrived from the phone yet.
+func awaitingHistory(g storage.Group) bool {
+	return g.MessageCount == 0 && g.Enabled && historyPending(g)
+}
+
+// archivedLine is the details-pane count. While history is still on its way a
+// bare "0 messages archived" reads like a failure, so it says what is happening.
+func archivedLine(g storage.Group) string {
+	if awaitingHistory(g) {
+		return "0 messages archived yet\nOlder history is still arriving from your phone."
+	}
+	return fmt.Sprintf("%d messages archived", g.MessageCount)
+}
+
+// historyArrivingNote tells the status line how many chats still show nothing
+// because their history is on its way, which is what a freshly paired account
+// looks like even after some messages have been archived.
+func historyArrivingNote(groups []storage.Group) string {
+	n := 0
+	for _, g := range groups {
+		if awaitingHistory(g) {
+			n++
+		}
+	}
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return "history still arriving for 1 chat"
+	}
+	return fmt.Sprintf("history still arriving for %d chats", n)
 }
