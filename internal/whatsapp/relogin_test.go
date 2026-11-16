@@ -9,13 +9,16 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gehariharan/wasync/internal/storage"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waAdv"
+	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 	waLog "go.mau.fi/whatsmeow/util/log"
+	"google.golang.org/protobuf/proto"
 
 	"go.mau.fi/whatsmeow/store/sqlstore"
 )
@@ -29,7 +32,7 @@ func savePairedFixture(t *testing.T, path string) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
-	device := c.client.Store
+	device := c.wa().Store
 	jid, err := types.ParseJID("15550000000:1@s.whatsapp.net")
 	if err != nil {
 		t.Fatal(err)
@@ -116,7 +119,7 @@ func TestLoginAfterThePhoneUnlinkedClearsTheSavedLoginAndShowsANewQR(t *testing.
 	if c.Paired() {
 		t.Fatal("the rejected login is still in use")
 	}
-	if bytes.Equal(oldNoise, c.client.Store.NoiseKey.Priv[:]) {
+	if bytes.Equal(oldNoise, c.wa().Store.NoiseKey.Priv[:]) {
 		t.Fatal("the new pairing reused the old device keys")
 	}
 	if err = c.Close(); err != nil {
@@ -217,5 +220,71 @@ func TestTheUnlinkedMessageDoesNotSendThePersonBackToAFailingCommand(t *testing.
 	}
 	if strings.Contains(msg, "login again") {
 		t.Fatalf("message %q repeats the old looping advice", msg)
+	}
+}
+
+// A different WhatsApp number may scan the new QR code. What it captures must
+// be filed under that number, not under the login the phone removed.
+func TestADifferentNumberPairingAfterAnUnlinkGetsItsOwnArchiveAccount(t *testing.T) {
+	ctx := context.Background()
+	dir := privateTestDir(t)
+	session := filepath.Join(dir, "session.db")
+	savePairedFixture(t, session)
+	store, err := storage.Open(ctx, filepath.Join(dir, "archive.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { store.Close() })
+
+	c, err := Open(ctx, session, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { c.Close() })
+	if err = c.EnableDiscovery(ctx, store); err != nil {
+		t.Fatal(err)
+	}
+	oldAccount := c.Status().AccountID
+	c.dial = func(context.Context) error {
+		c.handleEvent(&events.LoggedOut{OnConnect: true, Reason: events.ConnectFailureLoggedOut})
+		return nil
+	}
+	c.pairing = &openPairer{attempts: [][]whatsmeow.QRChannelItem{{
+		{Event: whatsmeow.QRChannelEventCode, Code: "2@OTHER"},
+		whatsmeow.QRChannelSuccess,
+	}}}
+	other, err := types.ParseJID("15559999999:3@s.whatsapp.net")
+	if err != nil {
+		t.Fatal(err)
+	}
+	scan := func(string) {
+		c.wa().Store.ID = &other
+		c.handleEvent(&events.Connected{})
+	}
+	if err = c.login(ctx, scan, func(string) {}); err != nil {
+		t.Fatal(err)
+	}
+
+	group, err := types.ParseJID("120363000000000001@g.us")
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.handleEvent(&events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: group, Sender: other.ToNonAD(), IsGroup: true}, ID: "AFTER-REPAIR", Timestamp: time.Now()}, Message: &waE2E.Message{Conversation: proto.String("hi")}})
+
+	newAccount, err := store.UseAccount(ctx, "15559999999@s.whatsapp.net")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if newAccount == oldAccount {
+		t.Fatal("the two numbers share one archive account")
+	}
+	if got := c.Status().AccountID; got != newAccount {
+		t.Fatalf("capture reports account %d, want the new number's %d (old was %d)", got, newAccount, oldAccount)
+	}
+	if anchor, err := store.KnownHistoryAnchor(ctx, newAccount, group.String()); err != nil || anchor.ID != "AFTER-REPAIR" {
+		t.Fatalf("new number's anchor %+v, %v", anchor, err)
+	}
+	if anchor, err := store.KnownHistoryAnchor(ctx, oldAccount, group.String()); err != nil || anchor.ID != "" {
+		t.Fatalf("the new number's data went to the unlinked account: %+v, %v", anchor, err)
 	}
 }

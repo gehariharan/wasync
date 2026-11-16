@@ -436,9 +436,10 @@ because it could retain plaintext for unselected chats.
 
 If the phone unlinks wasync (WhatsApp → Linked Devices → remove), WhatsApp
 rejects the saved login from then on. Run `wasync login`, or press `c` in the
-TUI. wasync notices the rejection, says so, clears only the dead login from
-`session.db` and shows a new QR code in the same run. Your archive, chat
-choices and settings are not touched, and no file needs to be moved by hand.
+TUI. wasync notices the rejection, clears only the dead login from `session.db`
+and shows a new QR code in the same run; `wasync login` also prints a note
+saying the login was cleared. Your archive, chat choices and settings are not
+touched, and no file needs to be moved by hand.
 
 Other terminal session errors do not clear the saved login. If WhatsApp reports
 that the session was replaced by another client, that this client version is too

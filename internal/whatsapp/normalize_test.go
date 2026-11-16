@@ -120,7 +120,7 @@ func TestHistoryAndLiveUseSameConsentAndDedup(t *testing.T) {
 	if err != nil || len(disabled.Items) != 0 {
 		t.Fatal("disabled history was archived")
 	}
-	if !c.client.SynchronousAck {
+	if !c.wa().SynchronousAck {
 		t.Fatal("acks can precede handler completion")
 	}
 }

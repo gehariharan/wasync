@@ -20,11 +20,11 @@ func (c *Client) RevokeOwnMessage(ctx context.Context, chat string, message stor
 	if !message.FromMe || message.MessageID == "" {
 		return fmt.Errorf("only your own archived messages can be revoked")
 	}
-	if !c.client.IsConnected() {
+	if !c.wa().IsConnected() {
 		return fmt.Errorf("connect before revoking")
 	}
-	id := c.client.GenerateMessageID()
-	_, err = c.client.SendMessage(ctx, jid, c.client.BuildRevoke(jid, types.EmptyJID, message.MessageID), whatsmeow.SendRequestExtra{ID: id, Timeout: 45 * time.Second, CheckPermissions: true})
+	id := c.wa().GenerateMessageID()
+	_, err = c.wa().SendMessage(ctx, jid, c.wa().BuildRevoke(jid, types.EmptyJID, message.MessageID), whatsmeow.SendRequestExtra{ID: id, Timeout: 45 * time.Second, CheckPermissions: true})
 	if err != nil {
 		return fmt.Errorf("WhatsApp revocation outcome unknown; inspect WhatsApp before trying again")
 	}
@@ -35,7 +35,7 @@ func (c *Client) DeleteWhatsAppChat(ctx context.Context, chat string, last stora
 	if err != nil {
 		return err
 	}
-	if !c.client.IsConnected() {
+	if !c.wa().IsConnected() {
 		return fmt.Errorf("connect before deleting chat state")
 	}
 	if last.MessageID == "" || last.Timestamp.IsZero() {
@@ -48,11 +48,11 @@ func (c *Client) DeleteWhatsAppChat(ctx context.Context, chat string, last stora
 	if last.FromMe {
 		sender = types.EmptyJID
 	}
-	key := c.client.BuildMessageKey(jid, sender, last.MessageID)
+	key := c.wa().BuildMessageKey(jid, sender, last.MessageID)
 	patch := appstate.BuildDeleteChat(jid, last.Timestamp, key, true)
 	requestCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	if err = c.client.SendAppState(requestCtx, patch); err != nil {
+	if err = c.wa().SendAppState(requestCtx, patch); err != nil {
 		return fmt.Errorf("WhatsApp chat deletion outcome unknown; inspect WhatsApp before trying again")
 	}
 	return nil

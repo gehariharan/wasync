@@ -49,7 +49,7 @@ type Client struct {
 	historyCancel   context.CancelFunc
 	historyDone     chan struct{}
 	sendHistory     historySender
-	client          *whatsmeow.Client
+	client          atomic.Pointer[whatsmeow.Client]
 	container       *sqlstore.Container
 	connected       chan struct{}
 	fatal           chan error
@@ -94,7 +94,7 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {
 	}
 	c := &Client{container: container, connected: make(chan struct{}, 1), fatal: make(chan error, 1), log: log, background: ctx}
 	c.sendHistory = func(ctx context.Context, to types.JID, m *waE2E.Message, extra whatsmeow.SendRequestExtra) error {
-		_, err := c.client.SendMessage(ctx, to, m, extra)
+		_, err := c.wa().SendMessage(ctx, to, m, extra)
 		return err
 	}
 	c.connection.Store("offline")
@@ -106,10 +106,12 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {
 // useDevice points the client at a device from the store. The same setup runs
 // again when an unlinked device is replaced by a fresh one.
 func (c *Client) useDevice(device *store.Device) {
-	c.client = whatsmeow.NewClient(device, waLog.Noop)
-	c.client.BackgroundEventCtx = c.background
-	c.client.InitialAutoReconnect = true
-	c.client.SynchronousAck = true
+	wa := whatsmeow.NewClient(device, waLog.Noop)
+	wa.BackgroundEventCtx = c.background
+	wa.InitialAutoReconnect = true
+	wa.SynchronousAck = true
+	wa.AddEventHandlerWithSuccessStatus(c.handleEvent)
+	c.client.Store(wa)
 	c.health.paired.Store(device.ID != nil)
 	if device.ID != nil {
 		id := *device.ID
@@ -117,7 +119,6 @@ func (c *Client) useDevice(device *store.Device) {
 	} else {
 		c.deviceID.Store(nil)
 	}
-	c.client.AddEventHandlerWithSuccessStatus(c.handleEvent)
 }
 
 func (c *Client) Close() error {
@@ -127,7 +128,7 @@ func (c *Client) Close() error {
 	if c.historyCancel != nil {
 		c.historyCancel()
 	}
-	c.client.Disconnect()
+	c.wa().Disconnect()
 	if c.historyDone != nil {
 		<-c.historyDone
 	}
@@ -136,12 +137,13 @@ func (c *Client) Close() error {
 	}
 	return errors.Join(c.finishCapture(), c.container.Close())
 }
-func (c *Client) Paired() bool { return c.client.Store.ID != nil }
+func (c *Client) Paired() bool { return c.wa().Store.ID != nil }
 func (c *Client) AccountJID() string {
-	if !c.Paired() {
+	id := c.wa().Store.ID
+	if id == nil {
 		return ""
 	}
-	return c.client.Store.ID.ToNonAD().String()
+	return id.ToNonAD().String()
 }
 func (c *Client) onEvent(evt any) {
 	switch v := evt.(type) {
@@ -199,7 +201,7 @@ func (c *Client) Connect(ctx context.Context) error {
 		return ErrNotPaired
 	}
 	c.connection.Store("connecting")
-	connect := c.client.ConnectContext
+	connect := c.wa().ConnectContext
 	if c.dial != nil {
 		connect = c.dial
 	}
@@ -236,13 +238,13 @@ func (c *Client) login(ctx context.Context, display func(string), notice func(st
 	if c.unlinked.Load() {
 		// The phone removed this device, so the saved login is dead. Replace it
 		// here instead of asking the person to run the command that just failed.
-		notice("The phone unlinked this device from WhatsApp, so the saved login was cleared. Your messages are kept. Starting a new pairing…")
 		c.log.Warn("whatsapp unlinked this device; clearing the saved login and starting a new pairing")
 		if err := c.startFreshDevice(ctx); err != nil {
 			return err
 		}
+		notice("The phone unlinked this device from WhatsApp, so the saved login was cleared. Your messages are kept. Starting a new pairing…")
 	}
-	var p pairer = c.client
+	var p pairer = c.wa()
 	if c.pairing != nil {
 		p = c.pairing
 	}
@@ -297,8 +299,8 @@ func (c *Client) login(ctx context.Context, display func(string), notice func(st
 // a new, unpaired one. Only the device row in session.db goes, through the
 // library's own delete; the message archive is a separate database.
 func (c *Client) startFreshDevice(ctx context.Context) error {
-	c.client.RemoveEventHandlers()
-	c.client.Disconnect()
+	c.wa().RemoveEventHandlers()
+	c.wa().Disconnect()
 	// The library also deletes the device after reporting the logout, but
 	// that runs in the background and can be cut short when the command ends.
 	// Deleting a row that is already gone is harmless.
@@ -306,6 +308,9 @@ func (c *Client) startFreshDevice(ctx context.Context) error {
 		if err := c.container.DeleteDevice(ctx, &store.Device{ID: id}); err != nil {
 			return fmt.Errorf("clear the unlinked WhatsApp login: %w", err)
 		}
+	}
+	if err := c.forgetCaptureAccount(ctx); err != nil {
+		return err
 	}
 	c.useDevice(c.container.NewDevice())
 	c.unlinked.Store(false)
@@ -333,7 +338,7 @@ func (c *Client) waitAuthenticated(ctx context.Context) error {
 	}
 }
 func (c *Client) Groups(ctx context.Context) ([]storage.Group, error) {
-	groups, err := c.client.GetJoinedGroups(ctx)
+	groups, err := c.wa().GetJoinedGroups(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("discover WhatsApp groups: %w", err)
 	}
@@ -366,8 +371,8 @@ func (c *Client) Observation() Observation {
 }
 
 func (c *Client) Logout(ctx context.Context) error {
-	if err := c.client.Logout(ctx); err != nil {
-		if !c.client.IsConnected() {
+	if err := c.wa().Logout(ctx); err != nil {
+		if !c.wa().IsConnected() {
 			c.connection.Store("offline")
 		}
 		return fmt.Errorf("unlink failed; local session retained unless WhatsApp removed it: %w", err)
@@ -376,3 +381,5 @@ func (c *Client) Logout(ctx context.Context) error {
 	c.health.paired.Store(false)
 	return nil
 }
+
+func (c *Client) wa() *whatsmeow.Client { return c.client.Load() }

@@ -108,7 +108,7 @@ func (c *Client) handleEvent(evt any) bool {
 			case c.fatal <- fmt.Errorf("archive operation failed; capture stopped: %w", err):
 			default:
 			}
-			go c.client.Disconnect()
+			go c.wa().Disconnect()
 			return false
 		}
 	}
@@ -278,7 +278,7 @@ func (c *Client) captureEvent(evt any) error {
 					failures++
 					continue
 				}
-				event, err := c.client.ParseWebMessage(jid, web)
+				event, err := c.wa().ParseWebMessage(jid, web)
 				if err != nil {
 					failures++
 					continue
@@ -364,5 +364,24 @@ func (c *Client) StopCapture(err error) {
 	case c.fatal <- err:
 	default:
 	}
-	go c.client.Disconnect()
+	go c.wa().Disconnect()
+}
+
+// forgetCaptureAccount closes the capture run of a login that was replaced, so
+// the next Connected event binds the capture to whichever account pairs next.
+func (c *Client) forgetCaptureAccount(ctx context.Context) error {
+	p := c.capture
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if run := p.run.Load(); run != 0 && !p.failed.Load() {
+		if err := p.store.EndCapture(ctx, run); err != nil {
+			return fmt.Errorf("close the capture run of the unlinked login: %w", err)
+		}
+	}
+	p.account.Store(0)
+	p.run.Store(0)
+	return nil
 }

@@ -138,13 +138,13 @@ func (c *Client) historyStep(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	requestID := c.client.GenerateMessageID()
+	requestID := c.wa().GenerateMessageID()
 	started, err := p.store.StartHistoryRequest(ctx, account, job.GroupID, requestID, anchor)
 	if err != nil || !started {
 		return err
 	}
 	info := types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, IsGroup: jid.Server == types.GroupServer, IsFromMe: anchor.FromMe}, ID: anchor.ID, Timestamp: anchor.Timestamp}
-	message := c.client.BuildHistorySyncRequest(&info, historyPageSize)
+	message := c.wa().BuildHistorySyncRequest(&info, historyPageSize)
 	sendCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	// Equivalent to SendPeerMessage, with a preassigned ID so even a fast response
 	// can be correlated before the send acknowledgement arrives. Only an own-device

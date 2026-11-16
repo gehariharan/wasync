@@ -201,7 +201,7 @@ func (c *Client) downloadMedia(ctx context.Context, job mediaJob) error {
 	}
 	transfer := c.mediaTransfer
 	if transfer == nil {
-		transfer = c.client.DownloadToFile
+		transfer = c.wa().DownloadToFile
 	}
 	err = transfer(ctx, job.attachment, &boundedMediaFile{File: f, limit: job.size + 64})
 	if err == nil {

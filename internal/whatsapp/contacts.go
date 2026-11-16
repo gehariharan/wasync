@@ -42,10 +42,11 @@ func (c *Client) nameSource() nameSource {
 	if c.names != nil {
 		return c.names
 	}
-	if c.client == nil || c.client.Store == nil || c.client.Store.Contacts == nil || c.client.Store.LIDs == nil {
+	wa := c.wa()
+	if wa == nil || wa.Store == nil || wa.Store.Contacts == nil || wa.Store.LIDs == nil {
 		return nil
 	}
-	return storeNames{c.client.Store.Contacts, c.client.Store.LIDs}
+	return storeNames{wa.Store.Contacts, wa.Store.LIDs}
 }
 
 const maxContactNameRunes = 256
