@@ -1437,9 +1437,12 @@ itself at login, it stops without restarting and shows one notification: approva
 off until you run wasync again. There is one Keychain item per data directory (named
 `approve:` plus a short hash of its path, service `wasync`), so a wasync started with
 a temporary `--data-dir` leaves an item behind. `wasync keychain` lists them without
-reading any secret, and `wasync keychain prune --apply` removes the ones whose folder
-is gone or that predate wasync recording the folder, always keeping the item for the
-data directory you are using; without `--apply` it only shows the plan. If macOS
+reading any secret, and `wasync keychain prune --apply` removes the ones whose recorded
+folder is gone, always keeping the item for the data directory you are using; without
+`--apply` it only shows the plan. Items made before wasync recorded the folder are
+listed as "unknown folder - not removed" and are never deleted, because prune cannot
+tell whether a running wasync still uses them; to remove one, open Keychain Access,
+search for wasync and delete the named item. If macOS
 refuses to let this build of wasync edit an item an earlier build made (error -25244),
 wasync replaces the item once; if it cannot, it says which item to delete in Keychain
 Access instead of asking again. A holder of `send.token` can request sending any regular local file

@@ -15,14 +15,15 @@ import (
 // keychainRow is one stored approval credential and what prune would do with it.
 type keychainRow struct {
 	approvecred.Item
-	Remove bool
-	Why    string
+	Remove  bool
+	Unknown bool
+	Why     string
 }
 
 // planKeychain decides, for each approval credential, whether it is still wanted.
 // Each data directory has exactly one, named after the directory, so a credential
 // is a leftover when its directory is gone. Items made before wasync recorded the
-// directory cannot be checked; they stay only if they are this data directory's.
+// directory cannot be checked, so they are never removed.
 func planKeychain(items []approvecred.Item, current string) []keychainRow {
 	var rows []keychainRow
 	for _, item := range items {
@@ -34,7 +35,7 @@ func planKeychain(items []approvecred.Item, current string) []keychainRow {
 		case item.Account == current:
 			row.Why = "this data directory"
 		case item.Folder == "":
-			row.Remove, row.Why = true, "made before wasync recorded its folder, and not this data directory"
+			row.Unknown, row.Why = true, "unknown folder - not removed"
 		default:
 			if _, err := os.Stat(item.Folder); errors.Is(err, fs.ErrNotExist) {
 				row.Remove, row.Why = true, "its folder is gone: "+item.Folder
@@ -80,14 +81,21 @@ func (a *App) runKeychain(cfg config.Config, args []string) error {
 		return err
 	}
 	rows := planKeychain(items, current)
-	leftover := 0
+	leftover, unknown := 0, 0
 	for _, row := range rows {
 		verb := "keep  "
-		if row.Remove {
+		switch {
+		case row.Remove:
 			verb = "remove"
 			leftover++
+		case row.Unknown:
+			verb = "skip  "
+			unknown++
 		}
 		fmt.Fprintf(a.Out, "%s  %s  %s\n", verb, row.Account, row.Why)
+	}
+	if unknown > 0 {
+		fmt.Fprintf(a.Out, "%d item(s) were made before wasync recorded their folder, so prune cannot tell whether they are still in use and never removes them. To remove one by hand, open Keychain Access, search for wasync, and delete the item with that name.\n", unknown)
 	}
 	switch {
 	case len(rows) == 0:

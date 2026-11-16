@@ -71,9 +71,10 @@ func TestKeychainListsWhatPruneWouldRemoveAndRemovesNothing(t *testing.T) {
 		for _, want := range []string{
 			"keep    approve:1111111111111111  its folder exists",
 			"remove  approve:2222222222222222  its folder is gone",
-			"remove  approve:3333333333333333  made before wasync recorded its folder",
+			"skip    approve:3333333333333333  unknown folder - not removed",
+			"open Keychain Access, search for wasync, and delete the item",
 			"this data directory",
-			"2 to remove",
+			"1 to remove",
 		} {
 			if !strings.Contains(out, want) {
 				t.Errorf("%v: missing %q in:\n%s", args, want, out)
@@ -94,10 +95,34 @@ func TestKeychainPruneApplyRemovesLeftoversAndKeepsTheRest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(k.removed, ","); got != "approve:2222222222222222,approve:3333333333333333" {
+	if got := strings.Join(k.removed, ","); got != "approve:2222222222222222" {
 		t.Fatalf("removed %q", got)
 	}
-	if !strings.Contains(out, "Removed 2.") {
+	if !strings.Contains(out, "Removed 1.") {
+		t.Fatalf("output:\n%s", out)
+	}
+}
+
+func TestKeychainPruneFromAnotherDataDirKeepsALiveCredentialWithNoRecordedFolder(t *testing.T) {
+	live := filepath.Join(t.TempDir(), "default-data")
+	if err := os.Mkdir(live, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	liveAccount, err := approvecred.Account(live)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k := &listKeychain{items: []approvecred.Item{{Account: liveAccount}}}
+	approvecred.Use(k)
+	t.Cleanup(func() { approvecred.Use(nil) })
+	out, err := runKeychain(t, filepath.Join(t.TempDir(), "throwaway"), "prune", "--apply")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(k.removed) != 0 {
+		t.Fatalf("removed a live credential whose folder was never recorded: %v\n%s", k.removed, out)
+	}
+	if !strings.Contains(out, liveAccount+"  unknown folder - not removed") {
 		t.Fatalf("output:\n%s", out)
 	}
 }
@@ -109,7 +134,7 @@ func TestKeychainPruneReportsWhatItCouldNotRemove(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), "approve:2222222222222222") {
 		t.Fatalf("err %v", err)
 	}
-	if got := strings.Join(k.removed, ","); got != "approve:3333333333333333" || !strings.Contains(out, "Removed 1.") {
+	if got := strings.Join(k.removed, ","); got != "" || !strings.Contains(out, "Removed 0.") {
 		t.Fatalf("removed %q\n%s", got, out)
 	}
 }

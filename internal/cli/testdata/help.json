@@ -32,13 +32,13 @@
     },
     {
       "description": "List wasync's Keychain items, or remove the ones left behind by data directories that are gone (macOS).",
-      "details": "On macOS wasync keeps one approval credential per data directory in your login Keychain. Without an argument this lists them and says which ones prune would remove; it never reads a secret, so it raises no prompt. Items are kept for this data directory and for any other whose recorded folder still exists. Items whose folder is gone are removable, and so are older items made before wasync recorded the folder (an older item for a second, real data directory goes too: its owner makes a fresh credential at its next start). prune only shows the plan; prune --apply removes it. Elsewhere the credential is a private file and there is nothing to clean up.",
+      "details": "On macOS wasync keeps one approval credential per data directory in your login Keychain. Without an argument this lists them and says which ones prune would remove; it never reads a secret, so it raises no prompt. Items are kept for this data directory and for any other whose recorded folder still exists. Items whose folder is gone are removable. Older items made before wasync recorded the folder are listed as unknown folder - not removed, because prune cannot tell whether a running wasync still uses them; remove one by hand in Keychain Access (search for wasync and delete the named item). prune only shows the plan; prune --apply removes it. Elsewhere the credential is a private file and there is nothing to clean up.",
       "path": "keychain",
       "usage": "keychain [prune [--apply]]"
     },
     {
       "description": "Show, or with --apply remove, the Keychain items prune considers leftover.",
-      "details": "Without --apply nothing is removed. The item for this data directory is never removed.",
+      "details": "Without --apply nothing is removed. The item for this data directory, and any item whose folder was never recorded, is never removed.",
       "path": "keychain prune",
       "usage": "keychain prune [--apply]"
     },
