@@ -66,7 +66,7 @@ func CaptureErrorSummary(state, detail string) *string {
 	case state == StateCaptureStopped:
 		s = "archive operation failed; capture stopped"
 	case state == StateAttentionRequired:
-		s = "WhatsApp rejected the session; check the phone"
+		s = "WhatsApp rejected the session; check the phone. If it unlinked this device, run wasync login to link again"
 	case detail != "":
 		s = "capture reported a problem; see the wasync terminal"
 	default:

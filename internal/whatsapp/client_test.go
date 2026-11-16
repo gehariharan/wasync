@@ -65,7 +65,7 @@ func TestSavedDeviceCredentialsSurviveRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Synthetic local fixture only: this does not pair with or contact WhatsApp.
-	device := c.client.Store
+	device := c.wa().Store
 	jid, err := types.ParseJID("15550000000:1@s.whatsapp.net")
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestSavedDeviceCredentialsSurviveRestart(t *testing.T) {
 	if !c.Paired() || c.AccountJID() != "15550000000@s.whatsapp.net" {
 		t.Fatal("saved device identity did not survive restart")
 	}
-	if !bytes.Equal(noise, c.client.Store.NoiseKey.Priv[:]) {
+	if !bytes.Equal(noise, c.wa().Store.NoiseKey.Priv[:]) {
 		t.Fatal("device keys were regenerated")
 	}
 }

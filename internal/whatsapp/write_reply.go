@@ -135,7 +135,7 @@ func (c *Client) Reply(ctx context.Context, in ReplyInput) (SendResult, error) {
 	if err := c.requireConnected("replying"); err != nil {
 		return out, err
 	}
-	message, err := replyMessage(in, *c.client.Store.ID)
+	message, err := replyMessage(in, *c.wa().Store.ID)
 	if err != nil {
 		return out, err
 	}

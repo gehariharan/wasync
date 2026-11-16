@@ -75,7 +75,8 @@ func (c *Client) RequestMedia(ctx context.Context, chat, message string) (MediaR
 		result.Status = "already_downloaded"
 		return result, nil
 	}
-	online := c.client != nil && c.client.IsConnected()
+	wa := c.wa()
+	online := wa != nil && wa.IsConnected()
 	if c.mediaConnected != nil {
 		online = c.mediaConnected()
 	}

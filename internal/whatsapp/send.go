@@ -59,7 +59,7 @@ func (c *Client) Send(ctx context.Context, in SendInput) (SendResult, error) {
 	if err := in.Validate(); err != nil {
 		return out, err
 	}
-	if !c.Paired() || !c.client.IsConnected() {
+	if !c.Paired() || !c.wa().IsConnected() {
 		return out, fmt.Errorf("connect your paired device before sending")
 	}
 	jid, _ := ParseChat(in.To)
@@ -84,7 +84,7 @@ func (c *Client) Send(ctx context.Context, in SendInput) (SendResult, error) {
 		// UploadReader encrypts to a temporary file and streams the upload. Limit
 		// reads to this file's initial length so appending cannot grow a transfer.
 		plaintext := &contextReader{ctx: ctx, reader: io.NewSectionReader(f, 0, info.Size())}
-		uploaded, err := c.client.UploadReader(ctx, plaintext, nil, mediaType)
+		uploaded, err := c.wa().UploadReader(ctx, plaintext, nil, mediaType)
 		if err != nil {
 			return out, fmt.Errorf("attachment upload failed; conversation message was not sent")
 		}
@@ -96,16 +96,16 @@ func (c *Client) Send(ctx context.Context, in SendInput) (SendResult, error) {
 			message.DocumentMessage = &waE2E.DocumentMessage{Caption: proto.String(in.Text), FileName: proto.String(filepath.Base(in.File)), Mimetype: proto.String(mime), URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey, FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256, FileLength: &uploaded.FileLength}
 		}
 	}
-	out.MessageID = c.client.GenerateMessageID()
+	out.MessageID = c.wa().GenerateMessageID()
 	out.Status = "unknown"
-	response, err := c.client.SendMessage(ctx, jid, message, whatsmeow.SendRequestExtra{ID: out.MessageID, Timeout: 45 * time.Second, CheckPermissions: true})
+	response, err := c.wa().SendMessage(ctx, jid, message, whatsmeow.SendRequestExtra{ID: out.MessageID, Timeout: 45 * time.Second, CheckPermissions: true})
 	if err != nil {
 		return out, fmt.Errorf("send outcome unknown; check WhatsApp before retrying; do not retry automatically")
 	}
 	out.Status = "server_acknowledged"
 	out.Timestamp = response.Timestamp
 	if c.capture != nil {
-		event := &events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, Sender: c.client.Store.ID.ToNonAD(), IsFromMe: true, IsGroup: jid.Server == types.GroupServer}, ID: out.MessageID, Timestamp: response.Timestamp}, Message: message, RawMessage: message}
+		event := &events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, Sender: c.wa().Store.ID.ToNonAD(), IsFromMe: true, IsGroup: jid.Server == types.GroupServer}, ID: out.MessageID, Timestamp: response.Timestamp}, Message: message, RawMessage: message}
 		if err = c.captureEvent(event); err != nil {
 			out.ArchiveWarning = "Message acknowledged, but local archive failed; do not resend"
 			c.StopCapture(err)

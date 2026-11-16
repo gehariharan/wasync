@@ -68,7 +68,7 @@ func validText(text string) error {
 
 // requireConnected is the shared precondition of every write.
 func (c *Client) requireConnected(action string) error {
-	if !c.Paired() || !c.client.IsConnected() {
+	if !c.Paired() || !c.wa().IsConnected() {
 		return fmt.Errorf("connect your paired device before %s", action)
 	}
 	return nil
@@ -77,16 +77,16 @@ func (c *Client) requireConnected(action string) error {
 // sendWrite sends one built message and archives the sender's own copy, as
 // Send does. A transport error leaves the outcome unknown and is never retried.
 func (c *Client) sendWrite(ctx context.Context, jid types.JID, message *waE2E.Message, out SendResult) (SendResult, error) {
-	out.MessageID = c.client.GenerateMessageID()
+	out.MessageID = c.wa().GenerateMessageID()
 	out.Status = "unknown"
-	response, err := c.client.SendMessage(ctx, jid, message, whatsmeow.SendRequestExtra{ID: out.MessageID, Timeout: 45 * time.Second, CheckPermissions: true})
+	response, err := c.wa().SendMessage(ctx, jid, message, whatsmeow.SendRequestExtra{ID: out.MessageID, Timeout: 45 * time.Second, CheckPermissions: true})
 	if err != nil {
 		return out, fmt.Errorf("send outcome unknown; check WhatsApp before retrying; do not retry automatically")
 	}
 	out.Status = "server_acknowledged"
 	out.Timestamp = response.Timestamp
 	if c.capture != nil {
-		event := &events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, Sender: c.client.Store.ID.ToNonAD(), IsFromMe: true, IsGroup: jid.Server == types.GroupServer}, ID: out.MessageID, Timestamp: response.Timestamp}, Message: message, RawMessage: message}
+		event := &events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, Sender: c.wa().Store.ID.ToNonAD(), IsFromMe: true, IsGroup: jid.Server == types.GroupServer}, ID: out.MessageID, Timestamp: response.Timestamp}, Message: message, RawMessage: message}
 		if err = c.captureEvent(event); err != nil {
 			out.ArchiveWarning = "Message acknowledged, but local archive failed; do not resend"
 			c.StopCapture(err)

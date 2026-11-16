@@ -96,7 +96,7 @@ func TestProbeSessionReadsPairingWithoutCreatingFiles(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Synthetic local fixture only: this does not pair with or contact WhatsApp.
-	device := c.client.Store
+	device := c.wa().Store
 	device.ID = &jid
 	device.Account = &waAdv.ADVSignedDeviceIdentity{Details: []byte("fixture"), AccountSignature: make([]byte, 64), AccountSignatureKey: make([]byte, 32), DeviceSignature: make([]byte, 64)}
 	if err = device.Save(ctx); err != nil {
