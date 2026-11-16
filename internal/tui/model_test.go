@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/gehariharan/wasync/internal/storage"
 )
 
@@ -248,5 +249,132 @@ func TestAgentRequestNeedsTypedConfirmation(t *testing.T) {
 	cmd()
 	if f.requested != "00000000000000000000000000123456" {
 		t.Fatal("wrong approval request executed")
+	}
+}
+
+func tabFixture() Model {
+	m, _ := fixtureModel()
+	m.snapshot.Groups = []storage.Group{
+		{ID: "1@g.us", Name: "Alpha", Enabled: true},
+		{ID: "2@g.us", Name: "Beta"},
+		{ID: "491@s.whatsapp.net", Name: "Dana"},
+		{ID: "492@s.whatsapp.net", Name: "Eli", Enabled: true},
+		{ID: "493@s.whatsapp.net", Name: "Fay", Enabled: true},
+	}
+	return m
+}
+
+func TestChatTypeKeysSwitchTabs(t *testing.T) {
+	steps := []struct {
+		press string
+		want  string
+	}{
+		{"tab", "direct"}, {"tab", "all"}, {"tab", "group"},
+		{"shift+tab", "all"}, {"shift+tab", "direct"},
+		{"right", "all"}, {"left", "direct"}, {"left", "group"},
+		{"3", "all"}, {"2", "direct"}, {"1", "group"},
+	}
+	m := tabFixture()
+	for _, step := range steps {
+		var msg tea.KeyPressMsg
+		switch step.press {
+		case "tab":
+			msg = tea.KeyPressMsg{Code: tea.KeyTab}
+		case "shift+tab":
+			msg = tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+		case "right":
+			msg = tea.KeyPressMsg{Code: tea.KeyRight}
+		case "left":
+			msg = tea.KeyPressMsg{Code: tea.KeyLeft}
+		default:
+			msg = key(step.press)
+		}
+		m, _ = update(m, msg)
+		if m.chatType != step.want {
+			t.Fatalf("%s: chat type = %q, want %q", step.press, m.chatType, step.want)
+		}
+	}
+}
+
+func TestSwitchingTabsResetsCursorAndKeepsMessagePagingKeys(t *testing.T) {
+	m := tabFixture()
+	m, _ = update(m, key("down"))
+	if m.cursor != 1 {
+		t.Fatal("cursor did not move")
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.cursor != 0 || len(m.filtered()) != 3 {
+		t.Fatalf("direct tab: cursor %d, %d chats", m.cursor, len(m.filtered()))
+	}
+	// In the message view the arrows still page and must not change the tab.
+	m, _ = update(m, key("enter"))
+	if m.mode != "messages" {
+		t.Fatal("did not open messages")
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyRight})
+	m, _ = update(m, key("1"))
+	if m.chatType != "direct" {
+		t.Fatalf("message view changed chat type to %q", m.chatType)
+	}
+}
+
+func TestTabStripIsAlwaysVisibleAndMarksActiveTab(t *testing.T) {
+	m := tabFixture()
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "[ Groups 2 · 1 on ]") || !strings.Contains(view, "Direct 3 · 2 on") || !strings.Contains(view, "All 5 · 3 on") {
+		t.Fatalf("tab strip missing or wrong:\n%s", view)
+	}
+	if strings.Contains(view, "[ Direct") {
+		t.Fatal("inactive tab is marked active")
+	}
+	if !strings.Contains(view, "Tab or ← → switch list") {
+		t.Fatal("key hint missing next to the tabs")
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	view = ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "[ Direct 3 · 2 on ]") || strings.Contains(view, "[ Groups") {
+		t.Fatalf("active tab did not follow Tab:\n%s", view)
+	}
+	// Filtering narrows the list but not the per-tab counts.
+	m, _ = update(m, key("e"))
+	view = ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "[ Direct 3 · 2 on ]") || !strings.Contains(view, "showing 2") {
+		t.Fatalf("counts or filter note wrong:\n%s", view)
+	}
+}
+
+func TestTabStripShrinksInNarrowPanes(t *testing.T) {
+	m := tabFixture()
+	m.width = 50
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "[ Groups 2 ]") || !strings.Contains(view, "All 5") {
+		t.Fatalf("narrow tab strip missing:\n%s", view)
+	}
+	for _, line := range strings.Split(view, "\n") {
+		if ansi.StringWidth(line) > 50 {
+			t.Fatalf("line wider than the terminal: %q", line)
+		}
+	}
+}
+
+func TestClickingATabSelectsIt(t *testing.T) {
+	m := tabFixture()
+	// Panel border + padding put the strip's first column at x=2, on row 3.
+	m, _ = update(m, tea.MouseClickMsg{X: 2 + 24, Y: 3, Button: tea.MouseLeft})
+	if m.chatType != "direct" {
+		t.Fatalf("click did not select Direct, got %q", m.chatType)
+	}
+	m, _ = update(m, tea.MouseClickMsg{X: 3, Y: 3, Button: tea.MouseLeft})
+	if m.chatType != "group" {
+		t.Fatalf("click did not select Groups, got %q", m.chatType)
+	}
+}
+
+func TestTabStillCyclesHistoryDepthInAccessRequestDialog(t *testing.T) {
+	m := tabFixture()
+	m.confirm = "agent-action"
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.chatType != "group" {
+		t.Fatalf("Tab in a confirmation dialog changed the chat list to %q", m.chatType)
 	}
 }
