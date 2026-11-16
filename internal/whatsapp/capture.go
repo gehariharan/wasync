@@ -14,9 +14,12 @@ import (
 )
 
 type CaptureStatus struct {
-	Connection        string
-	Error             string
-	Stored, Skipped   int64
+	Connection      string
+	Error           string
+	Stored, Skipped int64
+	// Undecryptable counts messages from enabled chats that WhatsApp could not
+	// decrypt this session. Each one is also recorded as a capture gap.
+	Undecryptable     int64
 	AccountID         int64
 	HistoryProcessing bool
 	Observation       Observation
@@ -35,6 +38,7 @@ type capture struct {
 	mu              sync.Mutex
 	account, run    atomic.Int64
 	stored, skipped atomic.Int64
+	undecryptable   atomic.Int64
 	history         atomic.Bool
 	failed          atomic.Bool
 }
@@ -176,6 +180,7 @@ func (c *Client) captureEvent(evt any) error {
 				return err
 			}
 			if enabled {
+				p.undecryptable.Add(1)
 				return p.store.Gap(p.ctx, account, "a selected-group message could not be decrypted")
 			}
 		}
@@ -322,6 +327,7 @@ func (c *Client) Status() CaptureStatus {
 	if p := c.capture; p != nil {
 		status.Stored = p.stored.Load()
 		status.Skipped = p.skipped.Load()
+		status.Undecryptable = p.undecryptable.Load()
 		status.AccountID = p.account.Load()
 		status.HistoryProcessing = p.history.Load()
 	}

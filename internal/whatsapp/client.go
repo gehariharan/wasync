@@ -9,6 +9,7 @@ import (
 	"go.mau.fi/whatsmeow/types"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -65,14 +66,18 @@ type Client struct {
 	pairing         pairer                      // test seam; nil uses the whatsmeow client
 	dial            func(context.Context) error // test seam; nil connects the whatsmeow client
 	background      context.Context
-	deviceID        atomic.Pointer[types.JID] // the linked device row in session.db, for clearing it
-	unlinked        atomic.Bool               // WhatsApp rejected the saved login; it must be replaced
+	deviceID        atomic.Pointer[types.JID]                                  // the linked device row in session.db, for clearing it
+	unlinked        atomic.Bool                                                // WhatsApp rejected the saved login; it must be replaced
+	groupInfo       func(context.Context, types.JID) (*types.GroupInfo, error) // test seam; nil uses the whatsmeow client
 }
 
 func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {
 	if err := storage.Prepare(path); err != nil {
 		return nil, err
 	}
+	// Package-level loggers inside the libraries (libsignal) must follow our
+	// log destination, never the terminal.
+	routeLibraryLogs(log)
 	// Upstream logs can contain protocol payloads. Only our explicit lifecycle events are logged.
 	container, err := sqlstore.New(ctx, "sqlite3", storage.DSN(path), waLog.Noop)
 	if err != nil {
@@ -346,10 +351,41 @@ func (c *Client) Groups(ctx context.Context) ([]storage.Group, error) {
 		return nil, fmt.Errorf("discover WhatsApp groups: %w", err)
 	}
 	result := make([]storage.Group, 0, len(groups))
+	lookups := 0
 	for _, g := range groups {
-		result = append(result, storage.Group{ID: g.JID.String(), Name: g.Name})
+		name := g.Name
+		if strings.TrimSpace(name) == "" && lookups < maxSubjectLookups {
+			// The joined-groups list sometimes arrives without a subject; ask
+			// for this group's own details before falling back to a placeholder.
+			lookups++
+			name = c.groupSubject(ctx, g.JID)
+		}
+		result = append(result, storage.Group{ID: g.JID.String(), Name: name})
 	}
 	return result, nil
+}
+
+// maxSubjectLookups bounds the extra requests one discovery may make for
+// groups that arrived without a subject.
+const maxSubjectLookups = 25
+
+// groupSubject fetches one group's subject. Failure is not an error: the group
+// is simply shown under a placeholder until a later refresh succeeds.
+func (c *Client) groupSubject(ctx context.Context, jid types.JID) string {
+	fetch := c.groupInfo
+	if fetch == nil {
+		fetch = c.wa().GetGroupInfo
+	}
+	lookup, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	info, err := fetch(lookup, jid)
+	if err != nil || info == nil {
+		if err != nil {
+			c.log.Debug("group subject lookup failed", "error", err)
+		}
+		return ""
+	}
+	return strings.TrimSpace(info.Name)
 }
 
 // Observe keeps connectivity alive for a bounded, explicit diagnostic window.
