@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -127,9 +128,9 @@ type refusingKeychain struct {
 	sets int
 }
 
-func (k *refusingKeychain) Get(string) (string, error) { return "", k.err }
-func (k *refusingKeychain) Set(string, string) error   { k.sets++; return nil }
-func (k *refusingKeychain) Delete(string) error        { return nil }
+func (k *refusingKeychain) Get(string) (string, error)       { return "", k.err }
+func (k *refusingKeychain) Set(string, string, string) error { k.sets++; return nil }
+func (k *refusingKeychain) Delete(string) error              { return nil }
 
 func TestServeStopsCleanlyWhenTheKeychainIsRefused(t *testing.T) {
 	keychain := &refusingKeychain{err: approvecred.ErrAccessDenied}
@@ -159,6 +160,36 @@ func TestServeStopsCleanlyWhenTheKeychainIsRefused(t *testing.T) {
 	keychain.err, notes = errors.New("keychain read failed (-1)"), nil
 	if err := serve(); err == nil || len(notes) != 0 {
 		t.Fatalf("any other Keychain failure must still fail: %v %q", err, notes)
+	}
+}
+
+// foreignKeychain holds nothing readable and cannot write: macOS refuses to let
+// this build replace an item that a different build of wasync made.
+type foreignKeychain struct{}
+
+func (foreignKeychain) Get(string) (string, error) { return "", approvecred.ErrNotFound }
+func (foreignKeychain) Set(account, _, _ string) error {
+	return fmt.Errorf("%w; delete the %q item in Keychain Access and run wasync again", approvecred.ErrForeignItem, account)
+}
+func (foreignKeychain) Delete(string) error { return nil }
+
+func TestServeStopsCleanlyAndSaysWhichItemToDeleteWhenItCannotBeReplaced(t *testing.T) {
+	approvecred.Use(foreignKeychain{})
+	t.Cleanup(func() { approvecred.Use(nil) })
+	client := &boundedSyncClient{}
+	var notes []string
+	var stderr bytes.Buffer
+	app := &App{Out: io.Discard, Err: &stderr, Human: humancheck.NewGate(&humanStub{}),
+		Notify:     func(_, text string) { notes = append(notes, text) },
+		OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return client, nil }}
+	if err := app.Run(context.Background(), []string{"--data-dir", filepath.Join(t.TempDir(), "data"), "--api-addr", "127.0.0.1:" + freePort(t), "serve"}); err != nil {
+		t.Fatalf("an item that cannot be replaced must exit successfully so the login item does not restart it: %v", err)
+	}
+	if len(notes) != 1 || !strings.Contains(notes[0], "Approvals are off") || !strings.Contains(notes[0], "Keychain Access") || !strings.Contains(notes[0], "approve:") {
+		t.Fatalf("notifications %q", notes)
+	}
+	if client.connect {
+		t.Fatal("the owner started without its approval credential")
 	}
 }
 

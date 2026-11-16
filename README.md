@@ -828,6 +828,13 @@ go test -race -tags sqlite_fts5 ./...
 go vet -tags sqlite_fts5 ./...
 ```
 
+Tests never touch your real login Keychain: a test binary is given no Keychain
+unless you set `WASYNC_TEST_KEYCHAIN=1`, which only the Keychain's own round-trip
+test in `internal/approvecred` uses (`WASYNC_TEST_KEYCHAIN=1 go test -tags
+sqlite_fts5 ./internal/approvecred`). Anything that starts a built `wasync` (not a
+test binary) with a throwaway `--data-dir` does make a real Keychain item, because
+each data directory has its own.
+
 Tests use synthetic events and temporary files. They cover Phase 1 migration,
 consent checks at commit time, live/history deduplication, account isolation,
 original timestamps, out-of-order edits/revokes, search index updates, expiry,
@@ -1427,7 +1434,18 @@ instead of a file (an existing file is moved there when wasync next starts), so 
 program that asks for it makes macOS ask for your password; Windows and Linux keep
 the private file. If you cancel or deny the Keychain prompt when wasync starts by
 itself at login, it stops without restarting and shows one notification: approvals stay
-off until you run wasync again. A holder of `send.token` can request sending any regular local file
+off until you run wasync again. There is one Keychain item per data directory (named
+`approve:` plus a short hash of its path, service `wasync`), so a wasync started with
+a temporary `--data-dir` leaves an item behind. `wasync keychain` lists them without
+reading any secret, and `wasync keychain prune --apply` removes the ones whose recorded
+folder is gone, always keeping the item for the data directory you are using; without
+`--apply` it only shows the plan. Items made before wasync recorded the folder are
+listed as "unknown folder - not removed" and are never deleted, because prune cannot
+tell whether a running wasync still uses them; to remove one, open Keychain Access,
+search for wasync and delete the named item. If macOS
+refuses to let this build of wasync edit an item an earlier build made (error -25244),
+wasync replaces the item once; if it cannot, it says which item to delete in Keychain
+Access instead of asking again. A holder of `send.token` can request sending any regular local file
 the owner process can read; it is a privileged credential, not a read-only API key.
 Download `queue_full`/`failed` states have no automatic retry; another delivery of
 valid WhatsApp media metadata is required to attempt them again. Sending an
