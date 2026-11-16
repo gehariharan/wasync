@@ -412,6 +412,22 @@ func TestZeroArchivedWhileHistoryArrivesSaysSo(t *testing.T) {
 	}
 }
 
+func TestChatsWaitingForAnchorAreNotReportedAsArriving(t *testing.T) {
+	m, _ := fixtureModel()
+	m.width, m.height = 200, 40
+	m.snapshot.Groups = []storage.Group{
+		{ID: "1@g.us", Name: "Alpha", Enabled: true, HistoryRequest: "waiting_anchor"},
+		{ID: "2@g.us", Name: "Beta", Enabled: true, HistoryRequest: "waiting_anchor"},
+	}
+	view := m.View().Content
+	if strings.Contains(view, "still arriving") {
+		t.Fatalf("chats that have not asked the phone for history were reported as arriving:\n%s", view)
+	}
+	if !strings.Contains(view, "0 messages archived") || !strings.Contains(view, "known message") {
+		t.Fatalf("details pane lost the waiting-for-a-known-message explanation:\n%s", view)
+	}
+}
+
 func TestHistoryNoteCountsEmptyChatsEvenWhenSomeAreArchived(t *testing.T) {
 	m, _ := fixtureModel()
 	m.width, m.height = 200, 40

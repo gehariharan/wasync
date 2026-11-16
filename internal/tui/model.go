@@ -1369,7 +1369,7 @@ func (m Model) confirmDescription() string {
 // has not yet answered, so an empty archive is expected rather than a problem.
 func historyPending(g storage.Group) bool {
 	switch g.HistoryRequest {
-	case "queued", "waiting_anchor", "sending", "waiting":
+	case "queued", "sending", "waiting":
 		return true
 	}
 	return false
