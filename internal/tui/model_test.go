@@ -398,10 +398,10 @@ func TestUnnamedGroupsShowReadableLabelInListAndDetails(t *testing.T) {
 
 func TestZeroArchivedWhileHistoryArrivesSaysSo(t *testing.T) {
 	m, _ := fixtureModel()
-	m.width, m.height = 160, 40
+	m.width, m.height = 200, 40
 	m.snapshot.Groups = []storage.Group{{ID: "1@g.us", Name: "Alpha", Enabled: true, HistoryRequest: "queued"}}
 	view := m.View().Content
-	if !strings.Contains(view, "history is still arriving") || !strings.Contains(view, "Older history is still arriving from your phone.") {
+	if !strings.Contains(view, "history still arriving for 1 chat") || !strings.Contains(view, "Older history is still arriving from your phone.") {
 		t.Fatalf("history-pending explanation missing:\n%s", view)
 	}
 	m.snapshot.Groups[0].MessageCount = 3
@@ -409,6 +409,22 @@ func TestZeroArchivedWhileHistoryArrivesSaysSo(t *testing.T) {
 	view = m.View().Content
 	if strings.Contains(view, "still arriving") || !strings.Contains(view, "3 messages archived") {
 		t.Fatalf("explanation shown for a populated archive:\n%s", view)
+	}
+}
+
+func TestHistoryNoteCountsEmptyChatsEvenWhenSomeAreArchived(t *testing.T) {
+	m, _ := fixtureModel()
+	m.width, m.height = 200, 40
+	m.snapshot.Groups = []storage.Group{
+		{ID: "1@g.us", Name: "Alpha", Enabled: true, MessageCount: 87, HistoryRequest: "queued"},
+		{ID: "2@g.us", Name: "Beta", Enabled: true, HistoryRequest: "queued"},
+		{ID: "3@g.us", Name: "Gamma", Enabled: true, HistoryRequest: "waiting"},
+		{ID: "4@g.us", Name: "Delta", HistoryRequest: "queued"},
+		{ID: "5@g.us", Name: "Epsilon", Enabled: true},
+	}
+	view := m.View().Content
+	if !strings.Contains(view, "87 archived") || !strings.Contains(view, "history still arriving for 2 chats") {
+		t.Fatalf("status line does not explain the empty chats while others are archived:\n%s", view)
 	}
 }
 

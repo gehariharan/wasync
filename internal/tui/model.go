@@ -915,7 +915,7 @@ func (m Model) View() tea.View {
 		}
 		header := accent.Render("  wasync") + dim.Render("  /  personal chat archive")
 		status := fmt.Sprintf("  %s   ·   %d enabled   ·   %d archived   ·   +%d writes this session", state, enabled, total, m.snapshot.Status.Stored)
-		if note := historyArrivingNote(m.snapshot.Groups, enabled, total); note != "" {
+		if note := historyArrivingNote(m.snapshot.Groups); note != "" {
 			status += "   ·   " + note
 		}
 		if n := m.snapshot.Status.Undecryptable; n > 0 {
@@ -1375,26 +1375,36 @@ func historyPending(g storage.Group) bool {
 	return false
 }
 
+// awaitingHistory reports an enabled chat that shows no messages only because
+// its older history has not arrived from the phone yet.
+func awaitingHistory(g storage.Group) bool {
+	return g.MessageCount == 0 && g.Enabled && historyPending(g)
+}
+
 // archivedLine is the details-pane count. While history is still on its way a
 // bare "0 messages archived" reads like a failure, so it says what is happening.
 func archivedLine(g storage.Group) string {
-	if g.MessageCount == 0 && g.Enabled && historyPending(g) {
+	if awaitingHistory(g) {
 		return "0 messages archived yet\nOlder history is still arriving from your phone."
 	}
 	return fmt.Sprintf("%d messages archived", g.MessageCount)
 }
 
-// historyArrivingNote explains an all-zero archive in the status line. It only
-// speaks when nothing is archived and at least one enabled chat is waiting for
-// history, which is what a freshly paired account looks like.
-func historyArrivingNote(groups []storage.Group, enabled int, total int64) string {
-	if total != 0 || enabled == 0 {
-		return ""
-	}
+// historyArrivingNote tells the status line how many chats still show nothing
+// because their history is on its way, which is what a freshly paired account
+// looks like even after some messages have been archived.
+func historyArrivingNote(groups []storage.Group) string {
+	n := 0
 	for _, g := range groups {
-		if g.Enabled && historyPending(g) {
-			return "history is still arriving"
+		if awaitingHistory(g) {
+			n++
 		}
 	}
-	return ""
+	switch n {
+	case 0:
+		return ""
+	case 1:
+		return "history still arriving for 1 chat"
+	}
+	return fmt.Sprintf("history still arriving for %d chats", n)
 }
