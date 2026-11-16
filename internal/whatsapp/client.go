@@ -75,9 +75,6 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {
 	if err := storage.Prepare(path); err != nil {
 		return nil, err
 	}
-	// Package-level loggers inside the libraries (libsignal) must follow our
-	// log destination, never the terminal.
-	routeLibraryLogs(log)
 	// Upstream logs can contain protocol payloads. Only our explicit lifecycle events are logged.
 	container, err := sqlstore.New(ctx, "sqlite3", storage.DSN(path), waLog.Noop)
 	if err != nil {
@@ -105,6 +102,9 @@ func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {
 	c.connection.Store("offline")
 	c.lastError.Store("")
 	c.useDevice(device)
+	// Package-level loggers inside the libraries (libsignal) must follow our
+	// log destination, never the terminal.
+	routeLibraryLogs(c.log)
 	return c, nil
 }
 
@@ -127,6 +127,7 @@ func (c *Client) useDevice(device *store.Device) {
 }
 
 func (c *Client) Close() error {
+	defer stopRoutingLibraryLogs(c.log)
 	if c.mediaCancel != nil {
 		c.mediaCancel()
 	}

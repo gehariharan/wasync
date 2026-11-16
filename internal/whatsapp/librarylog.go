@@ -33,6 +33,12 @@ func routeLibraryLogs(l *slog.Logger) {
 	libraryLog.Store(l)
 }
 
+// stopRoutingLibraryLogs discards third-party package logging again, unless
+// it has since been routed to a different logger.
+func stopRoutingLibraryLogs(l *slog.Logger) {
+	libraryLog.CompareAndSwap(l, nil)
+}
+
 func libraryLogger() *slog.Logger {
 	if l := libraryLog.Load(); l != nil {
 		return l.With("component", "libsignal")

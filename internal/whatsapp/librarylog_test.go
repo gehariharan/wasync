@@ -76,6 +76,37 @@ func TestLibraryLoggingNeverReachesTheTerminal(t *testing.T) {
 	}
 }
 
+func TestClosedClientNoLongerReceivesLibraryLogs(t *testing.T) {
+	var first, second bytes.Buffer
+	ctx := context.Background()
+	open := func(buf *bytes.Buffer) *Client {
+		c, err := Open(ctx, filepath.Join(privateTestDir(t), "session.db"), slog.New(slog.NewJSONHandler(buf, nil)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return c
+	}
+	a := open(&first)
+	b := open(&second)
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	signallog.Warning("after closing the earlier client")
+	if first.Len() != 0 || !strings.Contains(second.String(), "after closing the earlier client") {
+		t.Fatalf("closing an older client changed where library logs go: first=%q second=%q", first.String(), second.String())
+	}
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	second.Reset()
+	if out := captureTerminal(t, func() { signallog.Warning("after closing every client") }); out != "" {
+		t.Fatalf("library logging reached the terminal after close: %q", out)
+	}
+	if second.Len() != 0 {
+		t.Fatalf("a closed client still received library logs: %q", second.String())
+	}
+}
+
 func TestBenignRetryIsKeptAsDebugOnly(t *testing.T) {
 	var logged bytes.Buffer
 	routeLibraryLogs(slog.New(slog.NewJSONHandler(&logged, &slog.HandlerOptions{Level: slog.LevelDebug})))
