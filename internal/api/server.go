@@ -133,6 +133,16 @@ type Owner struct {
 	// Human, when enabled, makes every approval wait for the person to confirm
 	// with the operating system's own prompt (see internal/humancheck).
 	Human *humancheck.Gate
+	// Info says which wasync this is; commands show it so a person can see
+	// what they reached.
+	Info OwnerInfo
+	// Paired reports whether a phone is linked; nil while there is no WhatsApp connection.
+	Paired func() bool
+	// Unlink removes the linked device through the live connection; nil
+	// while there is no WhatsApp connection (offline), when there is nothing to unlink.
+	Unlink func(context.Context) error
+	// Stop shuts the owner down cleanly.
+	Stop func()
 }
 
 // StartOwner starts the local API for a running owner.
@@ -152,6 +162,7 @@ func StartOwner(o Owner) (*Server, error) {
 	h := &handler{dataDir: dir, agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, reject: o.Reject, syncer: syncer, ops: ops, human: o.Human}
 	h.sender = o.Sender
 	h.setup, h.service, h.serviceSpec, h.axiPath = o.Setup, o.Service, o.ServiceSpec, o.AxiPath
+	h.info, h.paired, h.unlink, h.stop = o.Info, o.Paired, o.Unlink, o.Stop
 	{ // Policy configuration is available even when the media owner is offline.
 		h.sendToken, err = loadNamedToken(dir, "send.token")
 		if err != nil {
@@ -202,6 +213,10 @@ type handler struct {
 	service          service.Manager
 	serviceSpec      service.Spec
 	axiPath          func() (string, error)
+	info             OwnerInfo
+	paired           func() bool
+	unlink           func(context.Context) error
+	stop             func()
 	approveToken     string
 	syncer           whatsapp.Syncer
 	approvals        *approval.Queue
@@ -225,6 +240,9 @@ func (h *handler) routes() http.Handler {
 		writeJSON(w, 200, map[string]string{"status": "ok"})
 	})
 	mux.HandleFunc("GET /api/status", h.getStatus)
+	mux.HandleFunc("GET "+ownerPath, h.getOwner)
+	mux.HandleFunc("POST "+stopPath, h.stopOwner)
+	mux.HandleFunc("POST "+logoutPath, h.logoutOwner)
 	mux.HandleFunc("POST /api/send", h.send)
 	mux.HandleFunc("POST /api/reply", h.reply)
 	mux.HandleFunc("POST /api/react", h.react)
@@ -288,7 +306,7 @@ func (h *handler) routes() http.Handler {
 			return
 		}
 		requiredToken := h.token
-		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") || r.URL.Path == accessModePath || r.URL.Path == uiLinkPath {
+		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") || r.URL.Path == accessModePath || r.URL.Path == uiLinkPath || r.URL.Path == stopPath || r.URL.Path == logoutPath {
 			if r.URL.Path == "/api/send" && h.sender == nil || strings.HasPrefix(r.URL.Path, "/api/actions") && h.approvals == nil {
 				fail(w, 503, "sending unavailable")
 				return
@@ -332,7 +350,7 @@ func (h *handler) routes() http.Handler {
 			return
 		}
 		timeout := 10 * time.Second
-		if r.URL.Path == "/api/sync" || strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath {
+		if r.URL.Path == "/api/sync" || strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath || r.URL.Path == logoutPath {
 			timeout = 90 * time.Second
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -340,6 +358,12 @@ func (h *handler) routes() http.Handler {
 		mux.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+const (
+	ownerPath  = "/api/owner"
+	stopPath   = "/api/stop"
+	logoutPath = "/api/logout"
+)
 
 func writeJSON(w http.ResponseWriter, code int, value any) {
 	w.Header().Set("Content-Type", "application/json")

@@ -22,6 +22,7 @@ func (a *App) tuiAction(offline bool) action {
 			return fmt.Errorf("the TUI requires an interactive terminal; use wasync help for scriptable commands")
 		}
 		a.MediaDownload = nil
+		a.ownerClient = nil
 		a.Approvals = &approval.Queue{OnAccess: func(r approval.Request) {
 			a.announce("Agent " + printable(r.Access.Agent) + " is asking for a WhatsApp chat.")
 		}, OnRequest: func(approval.Request) {
@@ -78,6 +79,7 @@ func (a *App) tuiAction(offline bool) action {
 			send = active.Send
 		}
 		a.Operations = operationsOf(client)
+		a.ownerClient = client
 		session := tui.NewSession(clientCtx, store, live)
 		session.Approvals = a.Approvals
 		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir

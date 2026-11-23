@@ -21,6 +21,7 @@ import (
 )
 
 func (a *App) ownerCommand(ctx context.Context, cfg config.Config, method, path string, body []byte, credential string) error {
+	cfg = withOwnerAPI(cfg)
 	var token []byte
 	if credential == approvecred.FileName {
 		secret, err := approvecred.Read(cfg.DataDir)
@@ -40,6 +41,9 @@ func (a *App) ownerCommand(ctx context.Context, cfg config.Config, method, path 
 	}
 	response, err := commandRequest(ctx, cfg, method, path, body, token)
 	if err != nil {
+		if owner, ok := liveOwner(cfg); ok {
+			return fmt.Errorf("could not reach %s: %w\nIf it is stuck, stop it with: %s", describeOwner(owner), err, commandFor(cfg, "stop"))
+		}
 		return fmt.Errorf("command channel unavailable; start wasync serve or the TUI: %w", err)
 	}
 	defer response.Body.Close()

@@ -80,6 +80,11 @@ type App struct {
 	Setup *setup.State
 	// NewLink returns a one-time link to a page of the running owner's local web page.
 	NewLink func(page string) string
+
+	// ownerRec is what this process has recorded about itself as the owner of
+	// the data directory; ownerClient is its WhatsApp connection, nil offline.
+	ownerRec    processlock.Owner
+	ownerClient Client
 }
 
 func New() *App {
@@ -100,6 +105,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   keychain [prune [--apply]]                 List or remove leftover Keychain items (macOS)
   login [--select=true|false] [--observe 30s]  Pair or reuse session, then open the TUI
   logout                                     Unlink device; preserve cached groups
+  stop                                       Stop the wasync that is running (serve, TUI or run)
   groups list [--refresh] [--json]            List cached groups; optionally connect
   groups enable GROUP_ID|--all               Enable selected or all cached groups
   groups disable GROUP_ID|--all              Disable capture preference
@@ -228,6 +234,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	if args[0] == "clean" || args[0] == "delete" {
 		return a.runDestructiveRequest(parent, cfg, args)
 	}
+	if args[0] == "stop" {
+		return a.runStop(parent, cfg, args[1:])
+	}
 	if args[0] == "sync" {
 		return a.runSync(parent, cfg, args[1:])
 	}
@@ -274,17 +283,19 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 		return err
 	}
 	lock, err := processlock.Acquire(filepath.Join(cfg.DataDir, "device.lock"))
-	if errors.Is(err, processlock.ErrBusy) && (args[0] == "groups" || args[0] == "chats") {
-		return a.targetsThroughOwner(parent, cfg, args)
-	}
-	if errors.Is(err, processlock.ErrBusy) && args[0] == "setup" {
-		// wasync is already running: open its setup page instead of starting a second one.
-		return a.openPage(parent, cfg, "setup")
+	if errors.Is(err, processlock.ErrBusy) {
+		return a.throughOwner(parent, cfg, args)
 	}
 	if err != nil {
 		return err
 	}
 	defer func() { result = errors.Join(result, lock.Close()) }()
+	// Say who holds the directory, so any other command can name and reach this one.
+	a.ownerRec = processlock.Owner{Kind: args[0], PID: os.Getpid(), DataDir: cfg.DataDir, StartedAt: time.Now().UTC(), StartedBy: a.startedBy()}
+	if err = processlock.WriteOwner(cfg.DataDir, a.ownerRec); err != nil {
+		return err
+	}
+	defer processlock.RemoveOwner(cfg.DataDir, a.ownerRec.PID)
 	ctx := parent
 	// Login bounds only its pairing and discovery phase; the TUI it may
 	// continue into runs until the user quits.
@@ -313,6 +324,24 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	}
 	log := slog.New(slog.NewJSONHandler(logOut, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	return action(ctx, cfg, store, log)
+}
+
+// throughOwner runs a command while another wasync holds the data directory:
+// by working through that wasync where the command can, and otherwise by
+// saying plainly which one it is and how to stop it.
+func (a *App) throughOwner(ctx context.Context, cfg config.Config, args []string) error {
+	switch args[0] {
+	case "groups", "chats":
+		return a.targetsThroughOwner(ctx, withOwnerAPI(cfg), args)
+	case "setup":
+		// wasync is already running: open its setup page instead of starting a second one.
+		return a.openPage(ctx, withOwnerAPI(cfg), "setup")
+	case "logout":
+		return a.logoutThroughOwner(ctx, cfg)
+	case "status":
+		return a.statusThroughOwner(ctx, cfg)
+	}
+	return a.busyError(cfg, args[0])
 }
 
 type action func(context.Context, config.Config, *storage.Store, *slog.Logger) error
