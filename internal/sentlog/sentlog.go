@@ -49,6 +49,11 @@ type Entry struct {
 	MessageID string    `json:"message_id,omitempty"`
 	Outcome   string    `json:"outcome"`
 	Code      string    `json:"error_code,omitempty"`
+	// Open marks a send allowed by open sending rather than by a chat the
+	// owner approved; NewNumber marks one that started a chat the archive
+	// had never seen. Open sending counts both against its hourly caps.
+	Open      bool `json:"open,omitempty"`
+	NewNumber bool `json:"new_number,omitempty"`
 }
 
 // Log appends entries to the sent log. Only the running owner writes it, so a
