@@ -317,7 +317,7 @@ func TestSetupLinksWhatsAppFromThePageAndOpensItByItself(t *testing.T) {
 	}
 	close(client.scanned)
 	waitFor("Linked.")
-	waitFor(`value="456@g.us"`) // the chat list loaded after linking
+	waitFor("2 chats found") // chat discovery finished after linking
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)

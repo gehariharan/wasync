@@ -11,7 +11,6 @@ import (
 	"github.com/gehariharan/wasync/internal/axicred"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	linking "github.com/gehariharan/wasync/internal/setup"
-	"github.com/gehariharan/wasync/internal/storage"
 )
 
 // The setup page walks a first-time person through what the terminal used to:
@@ -21,13 +20,6 @@ import (
 // program at login still end in the operating system's confirmation prompt, and
 // where the computer has none the page only shows the command to run instead.
 
-const maxSetupChats = 300
-
-type setupChat struct {
-	ID, Name, Kind string
-	Enabled        bool
-}
-
 type setupAgent struct{ Name, Status string }
 
 type setupData struct {
@@ -35,8 +27,7 @@ type setupData struct {
 	Paired, Pairing   bool
 	QR                template.HTML
 	Failure           string
-	Chats             []setupChat
-	MoreChats         int
+	Syncing, Total    int
 	Agents            []setupAgent
 	AxiPath           string
 	HasSavedCred      bool
@@ -86,12 +77,11 @@ func (h *handler) setupHome(w http.ResponseWriter, r *http.Request, sess uiSessi
 			http.Error(w, "archive unavailable", http.StatusInternalServerError)
 			return
 		}
+		d.Total = len(groups)
 		for _, g := range groups {
-			if len(d.Chats) == maxSetupChats {
-				d.MoreChats++
-				continue
+			if g.Enabled {
+				d.Syncing++
 			}
-			d.Chats = append(d.Chats, setupChat{ID: g.ID, Name: humancheck.Clean(g.Name, 80), Kind: storage.ChatKind(g.ID), Enabled: g.Enabled})
 		}
 		clients, _ := agentauth.List(h.dataDir)
 		now := time.Now()
@@ -117,54 +107,6 @@ func (h *handler) setupRender(w http.ResponseWriter, d *setupData) {
 	if err := setupTemplate.Execute(w, d); err != nil {
 		http.Error(w, "page error", http.StatusInternalServerError)
 	}
-}
-
-// setupChats saves which chats are captured: the ticked ones on, the other
-// listed ones off. This is a capture choice, not agent access, so it needs no
-// system prompt; an agent still sees nothing it has not been granted.
-func (h *handler) setupChats(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	if !h.uiForm(w, r, sess) {
-		return
-	}
-	account, err := h.store.Account(r.Context())
-	if err != nil || account == nil {
-		h.uiBack(w, r, "unpaired")
-		return
-	}
-	groups, err := h.store.GroupSummaries(r.Context(), account.ID)
-	if err != nil {
-		h.uiBack(w, r, "failed")
-		return
-	}
-	if len(groups) > maxSetupChats {
-		groups = groups[:maxSetupChats]
-	}
-	want := map[string]bool{}
-	for _, id := range r.PostForm["chat"] {
-		want[id] = true
-	}
-	var on, off []string
-	for _, g := range groups {
-		switch {
-		case want[g.ID] && !g.Enabled:
-			on = append(on, g.ID)
-		case !want[g.ID] && g.Enabled:
-			off = append(off, g.ID)
-		}
-	}
-	for _, change := range []struct {
-		ids     []string
-		enabled bool
-	}{{on, true}, {off, false}} {
-		if len(change.ids) == 0 {
-			continue
-		}
-		if err := h.store.SetEnabled(r.Context(), account.ID, change.ids, change.enabled); err != nil {
-			h.uiBack(w, r, "failed")
-			return
-		}
-	}
-	h.uiBack(w, r, "saved")
 }
 
 // setupAgent creates an agent credential and saves it where whatsapp-axi reads
@@ -291,16 +233,13 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 </section>
 
 {{if .Paired}}
-<h2>2. Choose chats to keep</h2>
+<h2>2. Choose chats to sync</h2>
 <section class="card">
-<form method="post" action="/ui/setup/chats"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<p class="mut">wasync archives only the chats you tick, on this computer. Agents see none of them until you connect one in step 3 and approve what it may read.</p>
-<fieldset><legend>Chats</legend>
-{{range .Chats}}<label><input type="checkbox" name="chat" value="{{.ID}}"{{if .Enabled}} checked{{end}}> {{.Name}} <span class="mut">{{.Kind}}</span></label>
-{{else}}<p class="mut">No chats yet. They appear a moment after linking; use Refresh.</p>{{end}}
-{{if .MoreChats}}<p class="mut">{{.MoreChats}} more chats are not listed here. Use the full-screen view (<code>wasync</code>) to pick them.</p>{{end}}</fieldset>
-<button class="go">Save selection</button>
-</form></section>
+{{if .Syncing}}<p><strong>{{.Syncing}} of {{.Total}} chats are syncing.</strong> They may be left over from before you linked this phone. <a href="/ui/chats/pick">Review them</a>, or start fresh.</p>
+<form method="post" action="/ui/chats/pick"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="action" value="clearall">Start fresh: stop syncing all</button> <a href="/ui/chats/pick">Choose chats…</a></form>
+{{else}}<p>Nothing is syncing yet. wasync keeps only the chats you tick, on this computer. Agents see none of them until you connect one in step 3 and approve what it may read.</p>
+<p><a href="/ui/chats/pick"><strong>Choose chats…</strong></a> {{if .Total}}<span class="mut">{{.Total}} chats found.</span>{{else}}<span class="mut">Chats appear a moment after linking; refresh if none are listed.</span>{{end}}</p>{{end}}
+</section>
 
 <h2>3. Connect an agent</h2>
 <section class="card">
