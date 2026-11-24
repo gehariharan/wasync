@@ -58,10 +58,18 @@ func WriteOwner(dir string, o Owner) error {
 	if err = tmp.Close(); err != nil {
 		return fmt.Errorf("write owner record: %w", err)
 	}
-	if err = os.Rename(tmp.Name(), filepath.Join(dir, OwnerFile)); err != nil {
-		return fmt.Errorf("write owner record: %w", err)
+	// Windows refuses to replace a file another process has open for reading,
+	// which a command checking the owner can do at that instant, so retry briefly.
+	dst := filepath.Join(dir, OwnerFile)
+	for i := 0; ; i++ {
+		if err = os.Rename(tmp.Name(), dst); err == nil {
+			return nil
+		}
+		if i >= 50 {
+			return fmt.Errorf("write owner record: %w", err)
+		}
+		time.Sleep(20 * time.Millisecond)
 	}
-	return nil
 }
 
 // ReadOwner returns the record only when it names a process that is still

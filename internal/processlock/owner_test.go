@@ -3,6 +3,7 @@ package processlock
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -18,7 +19,7 @@ func TestOwnerRecordRoundTripsForALiveProcess(t *testing.T) {
 		t.Fatalf("read back %+v %v, want %+v", got, ok, want)
 	}
 	info, err := os.Stat(filepath.Join(dir, OwnerFile))
-	if err != nil || info.Mode().Perm()&0o077 != 0 {
+	if err != nil || (runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0) {
 		t.Fatalf("record is not private: %v %v", info, err)
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 1 {
