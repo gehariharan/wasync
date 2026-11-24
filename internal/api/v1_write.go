@@ -88,5 +88,6 @@ func (h *handler) v1Reply(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	result, err := h.ops.Reply(r.Context(), in)
+	h.recordSent(agentName(r), "reply", m.GroupID, result, err)
 	v1WriteResult(w, id, result, err)
 }

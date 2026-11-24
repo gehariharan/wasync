@@ -25,6 +25,7 @@ import (
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/query"
+	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/service"
 	linking "github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
@@ -151,6 +152,7 @@ func StartOwner(o Owner) (*Server, error) {
 	}
 	h := &handler{dataDir: dir, agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, reject: o.Reject, syncer: syncer, ops: ops, human: o.Human}
 	h.sender = o.Sender
+	h.sent = sentlog.New(dir)
 	h.setup, h.service, h.serviceSpec, h.axiPath = o.Setup, o.Service, o.ServiceSpec, o.AxiPath
 	{ // Policy configuration is available even when the media owner is offline.
 		h.sendToken, err = loadNamedToken(dir, "send.token")
@@ -213,6 +215,7 @@ type handler struct {
 	store            *storage.Store
 	token, authority string
 	status           func() whatsapp.CaptureStatus
+	sent             *sentlog.Log
 }
 
 func (h *handler) routes() http.Handler {

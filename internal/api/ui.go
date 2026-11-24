@@ -200,6 +200,8 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		h.uiMode(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats":
 		h.chatsPage(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/sent":
+		h.sentPage(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats/pick":
 		h.pickPage(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/chats/pick":
@@ -441,7 +443,7 @@ button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
 </style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Wide}} class="wide"{{end}}>
-<nav><a href="/ui/chats">Chats</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
+<nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
 
 var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}
 <h1>wasync approvals</h1>

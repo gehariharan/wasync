@@ -147,7 +147,7 @@ func TestToolMenuHasNoWayToApproveOrGrant(t *testing.T) {
 		}
 	}
 	sort.Strings(names)
-	want := []string{"whatsapp_access_status", "whatsapp_changes", "whatsapp_doctor", "whatsapp_edit", "whatsapp_list_chats", "whatsapp_message", "whatsapp_react", "whatsapp_read_messages", "whatsapp_reply", "whatsapp_request_access", "whatsapp_search", "whatsapp_start_setup", "whatsapp_status", "whatsapp_thread"}
+	want := []string{"whatsapp_access_status", "whatsapp_changes", "whatsapp_doctor", "whatsapp_edit", "whatsapp_list_chats", "whatsapp_message", "whatsapp_react", "whatsapp_read_messages", "whatsapp_reply", "whatsapp_request_access", "whatsapp_search", "whatsapp_send", "whatsapp_start_setup", "whatsapp_status", "whatsapp_thread"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("tool menu changed:\n got %v\nwant %v", names, want)
 	}
@@ -156,7 +156,7 @@ func TestToolMenuHasNoWayToApproveOrGrant(t *testing.T) {
 			t.Errorf("%s should be marked read-only", name)
 		}
 	}
-	for _, name := range []string{"whatsapp_reply", "whatsapp_react", "whatsapp_edit", "whatsapp_request_access", "whatsapp_start_setup"} {
+	for _, name := range []string{"whatsapp_send", "whatsapp_reply", "whatsapp_react", "whatsapp_edit", "whatsapp_request_access", "whatsapp_start_setup"} {
 		if readOnly[name] {
 			t.Errorf("%s changes something and must not be marked read-only", name)
 		}
@@ -176,6 +176,7 @@ func TestToolsRunTheMatchingCommandLine(t *testing.T) {
 		{"whatsapp_thread", map[string]any{"ref": "m1_x", "before": 3}, []string{"thread", "--before", "3", "--", "m1_x"}},
 		{"whatsapp_message", map[string]any{"ref": "m1_x", "full": true}, []string{"message", "--full", "--", "m1_x"}},
 		{"whatsapp_changes", map[string]any{"consumer": "codex", "limit": 50}, []string{"observe", "--consumer", "codex", "--limit", "50"}},
+		{"whatsapp_send", map[string]any{"chat": "one@g.us", "text": "--chat sneaky"}, []string{"send", "--chat", "one@g.us", "--text", "--chat sneaky"}},
 		{"whatsapp_reply", map[string]any{"ref": "m1_x", "text": "--text sneaky"}, []string{"reply", "--text", "--text sneaky", "--", "m1_x"}},
 		{"whatsapp_react", map[string]any{"ref": "m1_x", "emoji": "👍"}, []string{"react", "--", "m1_x", "👍"}},
 		{"whatsapp_react", map[string]any{"ref": "m1_x", "remove": true}, []string{"react", "--remove", "--", "m1_x"}},
@@ -211,6 +212,10 @@ func TestBadArgumentsNeverReachACommand(t *testing.T) {
 		{"whatsapp_status", map[string]any{"approve": true}},
 		{"whatsapp_reply", map[string]any{"ref": "m", "text": long}},
 		{"whatsapp_reply", map[string]any{"ref": "m", "text": ""}},
+		{"whatsapp_send", map[string]any{"chat": "a"}},
+		{"whatsapp_send", map[string]any{"text": "hi"}},
+		{"whatsapp_send", map[string]any{"chat": "a", "text": long}},
+		{"whatsapp_send", map[string]any{"chat": "a", "text": "hi", "file": "/etc/passwd"}},
 		{"whatsapp_react", map[string]any{"ref": "m"}},
 		{"whatsapp_react", map[string]any{"ref": "m", "emoji": "👍", "remove": true}},
 		{"whatsapp_request_access", map[string]any{}},

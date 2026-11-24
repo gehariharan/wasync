@@ -180,3 +180,72 @@ func TestReplyUsageErrors(t *testing.T) {
 		t.Fatalf("usage errors reached the API: %v", srv.Requests)
 	}
 }
+
+func TestSendPostsANewMessageOnceAndPrintsAcknowledgement(t *testing.T) {
+	h, srv := writerHarness(t)
+	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	out, code := h.run(t, "send", "--chat", " one@g.us ", "--text", "Rent sent today")
+	if code != ExitOK {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	mustContain(t, out, "transport: api", "send:", "target: one@g.us", "message_id: NEW1", "status: server_acknowledged", "never retry automatically")
+	n, body := posts(srv)
+	if n != 1 {
+		t.Fatalf("posts %d, requests %v", n, srv.Requests)
+	}
+	var sent map[string]any
+	if err := json.Unmarshal([]byte(body), &sent); err != nil || sent["chat"] != "one@g.us" || sent["text"] != "Rent sent today" || len(sent) != 2 {
+		t.Fatalf("body %s", body)
+	}
+	if got := srv.Auth[len(srv.Auth)-1]; got != "Bearer wsa_writer" {
+		t.Fatalf("credential %q", got)
+	}
+	out, code = h.run(t, "send", "--chat", "one@g.us", "--text", "again", "--json")
+	var js struct {
+		Transport string          `json:"transport"`
+		Data      json.RawMessage `json:"data"`
+	}
+	if code != ExitOK || json.Unmarshal([]byte(out), &js) != nil || js.Transport != "api" || !strings.Contains(string(js.Data), `"message_id":"NEW1"`) {
+		t.Fatalf("json %d %s", code, out)
+	}
+}
+
+func TestSendNeedsAChatAndTextAndSendsNothingWithoutThem(t *testing.T) {
+	h, srv := writerHarness(t)
+	for _, args := range [][]string{{"send", "--text", "hi"}, {"send", "--chat", "one@g.us"}, {"send", "--chat", "  ", "--text", "hi"}, {"send", "one@g.us", "--text", "hi"}} {
+		if out, code := h.run(t, args...); code == ExitOK {
+			t.Fatalf("%v succeeded:\n%s", args, out)
+		}
+	}
+	if n, _ := posts(srv); n != 0 {
+		t.Fatalf("an incomplete send reached the API: %d", n)
+	}
+}
+
+// A refusal, including "this chat was never given to you", is reported as
+// wasync words it and is never turned into a retry or another route.
+func TestSendReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		status int
+		code   string
+		help   string
+	}{
+		{"chat not allowed", 403, "forbidden", "Chat 15551230000@s.whatsapp.net is not in the allowlist for scope send."},
+		{"missing scope", 403, "forbidden", "Missing scope send."},
+		{"unknown outcome", 502, "send_failed", "check WhatsApp before retrying; do not retry automatically"},
+		{"owner offline", 503, "owner_offline", "start wasync tui or wasync serve with a paired session"},
+	} {
+		h, srv := writerHarness(t)
+		srv.Routes["/messages"] = map[string]any{"request_id": "r-x", "error_code": tc.code, "error": "refused: " + tc.name, "help": tc.help}
+		srv.Codes["/messages"] = tc.status
+		out, code := h.run(t, "send", "--chat", "15551230000@s.whatsapp.net", "--text", "hello")
+		if code != ExitError {
+			t.Errorf("%s: exit %d\n%s", tc.name, code, out)
+		}
+		mustContain(t, out, tc.code, "refused: "+tc.name, tc.help)
+		if n, _ := posts(srv); n != 1 {
+			t.Errorf("%s: %d posts; a refused or unknown write must not be retried", tc.name, n)
+		}
+	}
+}

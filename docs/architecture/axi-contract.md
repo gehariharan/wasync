@@ -72,9 +72,12 @@ are shared by reads and counts in [`storage`](../../internal/storage/messages.go
 | `GET /api/v1/messages/{ref}/thread` | `query thread --ref` | `thread` | `read.messages` |
 | `GET /api/v1/changes?after=&limit=` | `query changes --after` | `observe` | `observe` |
 | `GET/PUT /api/v1/checkpoints/{consumer}` | read only | `observe --consumer`, `observe ack` | `observe` |
+| `POST /api/v1/messages` | – (owner only) | `send --chat CHAT --text` | `send`, chat allowlist |
 | `POST /api/v1/messages/{ref}/reply` | – (owner only) | `reply` | `send`, chat allowlist |
 | `PUT/DELETE /api/v1/messages/{ref}/reaction` | – (owner only) | `react REF EMOJI`, `react REF --remove` | `react`, chat allowlist |
 | `POST /api/v1/messages/{ref}/edit` | – (owner only) | `edit REF --text` | `edit.own`, chat allowlist |
+
+`POST /api/v1/messages` (feature `write.send`) sends a new message, not a quote, to a chat the credential's allowlist already holds; a chat or number the agent was not given is refused with `forbidden`, never turned into a grant. Every send, by the owner or an agent, is also noted in a private sent log (`sent-log.jsonl`: who, which chat, when, the WhatsApp message ID and the outcome, never the text) that the web app's Sent page reads.
 
 Writes (features `write.reply`, `write.react`, `write.edit`) act on a message wasync has archived, are authorized
 and audited before they run (the audit entry holds scope, chat and ref, never text),

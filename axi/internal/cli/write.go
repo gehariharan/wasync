@@ -141,3 +141,43 @@ func (a *App) runReply(ctx context.Context, inv invocation) error {
 	}
 	return a.writeResult(inv, t, ref, "reply", resp, res)
 }
+
+const sendUsage = "whatsapp-axi send --chat CHAT_JID --text TEXT [--json]"
+
+var sendCommand = &command{
+	name:        "send",
+	usage:       sendUsage,
+	description: "Send a new message to a chat (running wasync, scope send and an allowlisted chat); sends once, never retries",
+	flags: []flagSpec{
+		{name: "--chat", value: "CHAT_JID", description: "the chat to send to, as listed by `chats`; it must be one the person approved for sending"},
+		{name: "--text", value: "TEXT", description: "the message text; WhatsApp text, at most 16000 bytes"},
+		jsonFlag,
+	},
+	examples: []string{`whatsapp-axi send --chat 120363000000000001@g.us --text "Rent sent today"`},
+	run:      (*App).runSend,
+}
+
+// runSend posts one new message. It is not a quoted reply: it needs no earlier
+// message to anchor on, but the chat must still be one the person approved, and
+// wasync refuses anything else and says why.
+func (a *App) runSend(ctx context.Context, inv invocation) error {
+	chat, ok := inv.flag("--chat")
+	if !ok || strings.TrimSpace(chat) == "" {
+		return usageErr("usage: "+sendUsage, "`send` needs --chat, the chat JID from `chats`")
+	}
+	text, ok := inv.flag("--text")
+	if !ok {
+		return usageErr("usage: "+sendUsage, "`send` needs --text")
+	}
+	chat = strings.TrimSpace(chat)
+	w, t, err := a.writeTransport(ctx, "send", "sending")
+	if err != nil {
+		return err
+	}
+	var res contract.WriteResult
+	resp, err := post(ctx, w, t, "/messages", map[string]any{"chat": chat, "text": text}, &res)
+	if err != nil {
+		return writeExplain(err, "send")
+	}
+	return a.writeResult(inv, t, chat, "send", resp, res)
+}
