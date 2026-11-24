@@ -27,7 +27,7 @@ The implemented commands are:
 | `search` | Search message text, newest first, optionally with the messages around each hit |
 | `thread` | Show a message with the messages before and after it in its chat, oldest first |
 | `message` | Show one message by its ref (m1_...) |
-| `send` | Send a new message to a chat (running wasync, scope send and an allowlisted chat); sends once, never retries |
+| `send` | Send a new message to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number only while they have switched on open sending); sends once, never retries |
 | `reply` | Quote the message REF in a reply (running wasync, scope send and an allowlisted chat); sends once, never retries |
 | `react` | React to the message REF with an emoji, or clear your reaction (running wasync, scope react and an allowlisted chat); sends once, never retries |
 | `edit` | Replace the text of one of your own recent messages REF (running wasync, scope edit.own and an allowlisted chat); wasync refuses other people's messages and edits past WhatsApp's window |
@@ -78,8 +78,9 @@ tracked state and restart with `--from-oldest`. Stop polling when the task is do
 ## Writing
 
 Only ask for a write when the user asked for it. `whatsapp-axi send --chat CHAT_JID --text TEXT`
-sends a new message to an approved chat; wasync refuses a chat or number you were not given, so ask the
-person to allow it rather than trying another route. `whatsapp-axi reply REF --text TEXT`
+sends a new message to an approved chat, and `--to PHONE_NUMBER` to a number while the person has switched on open
+sending; wasync refuses a chat or number you were not given, so ask the person to allow it (the Agents page
+of the wasync web app) rather than trying another route. `whatsapp-axi reply REF --text TEXT`
 quotes an archived message in its chat; `--mentions` takes user JIDs and the text must
 tag each as @NUMBER. `whatsapp-axi react REF EMOJI` (or `--remove`) sets or clears your reaction, and
 `whatsapp-axi edit REF --text TEXT` rewrites one of your own recent text messages (wasync refuses

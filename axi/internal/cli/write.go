@@ -142,42 +142,53 @@ func (a *App) runReply(ctx context.Context, inv invocation) error {
 	return a.writeResult(inv, t, ref, "reply", resp, res)
 }
 
-const sendUsage = "whatsapp-axi send --chat CHAT_JID --text TEXT [--json]"
+const sendUsage = "whatsapp-axi send (--chat CHAT_JID | --to PHONE_NUMBER) --text TEXT [--json]"
 
 var sendCommand = &command{
 	name:        "send",
 	usage:       sendUsage,
-	description: "Send a new message to a chat (running wasync, scope send and an allowlisted chat); sends once, never retries",
+	description: "Send a new message to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number only while they have switched on open sending); sends once, never retries",
 	flags: []flagSpec{
-		{name: "--chat", value: "CHAT_JID", description: "the chat to send to, as listed by `chats`; it must be one the person approved for sending"},
+		{name: "--chat", value: "CHAT_JID", description: "the chat to send to, as listed by `chats`; it must be one the person approved for sending, unless open sending is on"},
+		{name: "--to", value: "PHONE_NUMBER", description: "a phone number with its country code, such as +15551230000; wasync refuses it unless the person has switched on open sending"},
 		{name: "--text", value: "TEXT", description: "the message text; WhatsApp text, at most 16000 bytes"},
 		jsonFlag,
 	},
-	examples: []string{`whatsapp-axi send --chat 120363000000000001@g.us --text "Rent sent today"`},
+	examples: []string{`whatsapp-axi send --chat 120363000000000001@g.us --text "Rent sent today"`, `whatsapp-axi send --to +15551230000 --text "Hi, it is Sam from the flat"`},
 	run:      (*App).runSend,
 }
 
 // runSend posts one new message. It is not a quoted reply: it needs no earlier
-// message to anchor on, but the chat must still be one the person approved, and
-// wasync refuses anything else and says why.
+// message to anchor on. The chat must be one the person approved, or open
+// sending must be on; wasync refuses anything else and says why.
 func (a *App) runSend(ctx context.Context, inv invocation) error {
-	chat, ok := inv.flag("--chat")
-	if !ok || strings.TrimSpace(chat) == "" {
-		return usageErr("usage: "+sendUsage, "`send` needs --chat, the chat JID from `chats`")
+	chat, hasChat := inv.flag("--chat")
+	to, hasTo := inv.flag("--to")
+	chat, to = strings.TrimSpace(chat), strings.TrimSpace(to)
+	switch {
+	case hasChat && hasTo:
+		return usageErr("usage: "+sendUsage, "give --chat or --to, not both")
+	case (!hasChat || chat == "") && (!hasTo || to == ""):
+		return usageErr("usage: "+sendUsage, "`send` needs --chat (the chat JID from `chats`) or --to (a phone number)")
 	}
 	text, ok := inv.flag("--text")
 	if !ok {
 		return usageErr("usage: "+sendUsage, "`send` needs --text")
 	}
-	chat = strings.TrimSpace(chat)
-	w, t, err := a.writeTransport(ctx, "send", "sending")
+	body, target, command := map[string]any{"text": text}, chat, "send"
+	if hasTo {
+		body["to"], target, command = to, to, "send.to"
+	} else {
+		body["chat"] = chat
+	}
+	w, t, err := a.writeTransport(ctx, command, "sending")
 	if err != nil {
 		return err
 	}
 	var res contract.WriteResult
-	resp, err := post(ctx, w, t, "/messages", map[string]any{"chat": chat, "text": text}, &res)
+	resp, err := post(ctx, w, t, "/messages", body, &res)
 	if err != nil {
 		return writeExplain(err, "send")
 	}
-	return a.writeResult(inv, t, chat, "send", resp, res)
+	return a.writeResult(inv, t, target, "send", resp, res)
 }

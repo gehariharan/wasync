@@ -249,3 +249,45 @@ func TestSendReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
 		}
 	}
 }
+
+func TestSendToANumberPostsTheNumberAndNeedsTheNewFeature(t *testing.T) {
+	h, srv := writerHarness(t)
+	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	out, code := h.run(t, "send", "--to", " +1 555 123 0000 ", "--text", "Hi, it is Sam")
+	if code != ExitOK {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	mustContain(t, out, "send:", "target: +1 555 123 0000", "status: server_acknowledged")
+	n, body := posts(srv)
+	var sent map[string]any
+	if n != 1 || json.Unmarshal([]byte(body), &sent) != nil || sent["to"] != "+1 555 123 0000" || sent["text"] != "Hi, it is Sam" || len(sent) != 2 {
+		t.Fatalf("posts %d body %s", n, body)
+	}
+	for _, args := range [][]string{
+		{"send", "--chat", "one@g.us", "--to", "+15551230000", "--text", "hi"},
+		{"send", "--to", " ", "--text", "hi"},
+		{"send", "--to", "+15551230000"},
+	} {
+		if out, code := h.run(t, args...); code == ExitOK {
+			t.Fatalf("%v succeeded:\n%s", args, out)
+		}
+	}
+	if n, _ := posts(srv); n != 1 {
+		t.Fatalf("an invalid send reached the API: %d posts", n)
+	}
+
+	// A wasync that cannot send to a number is told so before anything is posted.
+	old, oldSrv := writerHarness(t)
+	v := testutil.FakeVersion()
+	v.Features = []string{"write.send"}
+	oldSrv.Version = v
+	oldSrv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	out, code = old.run(t, "send", "--to", "+15551230000", "--text", "hi")
+	if code == ExitOK {
+		t.Fatalf("send --to succeeded against a wasync without write.send.to:\n%s", out)
+	}
+	mustContain(t, out, "write.send.to")
+	if n, _ := posts(oldSrv); n != 0 {
+		t.Fatalf("posted to a wasync without write.send.to: %d", n)
+	}
+}

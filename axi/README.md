@@ -48,7 +48,7 @@ Settings, all optional:
 - **Read-only by default, enforced by wasync.** Scopes, chat allowlists, rate limits, expiry and the audit
   log are checked inside wasync's API. Flags, confirmations and agent skills in whatsapp-axi are
   convenience, not a security boundary.
-- **Writes need a scope you grant, per chat.** `whatsapp-axi send --chat CHAT_JID --text TEXT` (a new message)
+- **Writes need a scope you grant, per chat.** `whatsapp-axi send --chat CHAT_JID --text TEXT` (a new message; `--to PHONE_NUMBER` instead of `--chat` works only while the person has switched on open sending in the wasync web app)
   and `whatsapp-axi reply REF --text TEXT` (a quoted reply) post to wasync's API,
   which refuses them unless the credential holds `send` and the chat is in its allowlist
   (`wasync agents grant <name> --scope read.chats,read.messages,send --on-demand`, then the person

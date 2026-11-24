@@ -231,6 +231,7 @@ type handler struct {
 	token, authority string
 	status           func() whatsapp.CaptureStatus
 	sent             *sentlog.Log
+	openMu           sync.Mutex
 }
 
 func (h *handler) routes() http.Handler {

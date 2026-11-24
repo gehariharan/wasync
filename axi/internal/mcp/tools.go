@@ -286,20 +286,30 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_send", description: "Send a new message to a chat. It sends once and is never retried. wasync refuses unless the person granted the send scope and approved this chat; a chat or number it was not given is refused, so ask the person to allow it first.",
-		props:    map[string]any{"chat": str("The chat JID, as listed by whatsapp_chats."), "text": str("The message text (up to 16000 bytes).")},
-		required: []string{"chat", "text"}, ann: hints("Send on WhatsApp", annotations{OpenWorldHint: true}),
+		name: "whatsapp_send", description: "Send a new message to a chat or a phone number. It sends once and is never retried. wasync refuses unless the person granted the send scope and approved this chat; a number or chat you were not given is refused unless the person has switched on open sending, so ask them to allow it rather than trying another route.",
+		props:    map[string]any{"chat": str("The chat JID, as listed by whatsapp_list_chats. Give this or to."), "to": str("A phone number with its country code, such as +15551230000. Give this or chat."), "text": str("The message text (up to 16000 bytes).")},
+		required: []string{"text"}, ann: hints("Send on WhatsApp", annotations{OpenWorldHint: true}),
 		build: func(a map[string]any) ([]string, error) {
-			if err := unknown(a, "chat", "text"); err != nil {
+			if err := unknown(a, "chat", "to", "text"); err != nil {
 				return nil, err
 			}
-			chat, err := getStr(a, "chat", true, 256)
+			chat, err := getStr(a, "chat", false, 256)
 			if err != nil {
 				return nil, err
+			}
+			to, err := getStr(a, "to", false, 64)
+			if err != nil {
+				return nil, err
+			}
+			if (chat == "") == (to == "") {
+				return nil, fmt.Errorf("give exactly one of chat or to")
 			}
 			text, err := getStr(a, "text", true, textMax)
 			if err != nil {
 				return nil, err
+			}
+			if to != "" {
+				return []string{"send", "--to", to, "--text", text}, nil
 			}
 			return []string{"send", "--chat", chat, "--text", text}, nil
 		},
