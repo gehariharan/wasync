@@ -193,3 +193,25 @@ func TestHelperHoldsTheDataDirectory(t *testing.T) {
 	fmt.Println("ready")
 	<-ctx.Done()
 }
+
+// Stopping is approved with the approval credential. When it cannot be read
+// (missing here, as when the Keychain prompt is cancelled), stop reports that
+// and leaves the owner running instead of signalling its process.
+func TestStopWithoutTheApprovalCredentialLeavesTheOwnerRunning(t *testing.T) {
+	owner := startServeOwner(t)
+	if err := os.Remove(filepath.Join(owner.dir, "approve.token")); err != nil {
+		t.Fatal(err)
+	}
+	app, out, _ := otherApp(t)
+	err := app.Run(context.Background(), []string{"--data-dir", owner.dir, "stop"})
+	if err == nil {
+		t.Fatalf("stop succeeded without the approval credential:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "Stopped") {
+		t.Fatalf("stop claimed success:\n%s", out.String())
+	}
+	time.Sleep(300 * time.Millisecond)
+	if !owner.held() {
+		t.Fatal("the owner was stopped without approval")
+	}
+}

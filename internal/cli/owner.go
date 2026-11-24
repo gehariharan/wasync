@@ -34,6 +34,13 @@ type ownerBusyError struct{ message string }
 func (e *ownerBusyError) Error() string        { return e.message }
 func (e *ownerBusyError) Is(target error) bool { return target == processlock.ErrBusy }
 
+// credentialError means the approval credential could not be read, so no
+// request was sent. Nothing may act in place of the approval it stands for.
+type credentialError struct{ err error }
+
+func (e *credentialError) Error() string { return e.err.Error() }
+func (e *credentialError) Unwrap() error { return e.err }
+
 // startedBy says how this process was started, when that can be told.
 func (a *App) startedBy() string {
 	getenv := a.Getenv
@@ -175,7 +182,7 @@ func (a *App) reachOwner(cfg config.Config, doing string) (channel, error) {
 func (a *App) call(ctx context.Context, ch channel, method, path, credential string, extra map[string]any) (int, []byte, error) {
 	token, err := a.readCredential(ch.cfg, credential)
 	if err != nil {
-		return 0, nil, err
+		return 0, nil, &credentialError{err}
 	}
 	var body []byte
 	if method == "POST" {
@@ -330,11 +337,16 @@ func (a *App) runStop(ctx context.Context, cfg config.Config, args []string) err
 		callCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 		code, data, err := a.call(callCtx, ch, "POST", "/api/stop", approvecred.FileName, nil)
 		cancel()
+		var denied *credentialError
 		switch {
+		case errors.As(err, &denied):
+			return err
 		case err != nil:
 			apiFailure = err
 		case code/100 == 2:
 			stopped = true
+		case code == 401 || code == 403:
+			return fmt.Errorf("%s did not accept the approval to stop it: %s", describeOwner(owner), apiError(data, code))
 		default:
 			apiFailure = errors.New(apiError(data, code))
 		}
