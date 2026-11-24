@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -213,5 +215,63 @@ func TestStopWithoutTheApprovalCredentialLeavesTheOwnerRunning(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if !owner.held() {
 		t.Fatal("the owner was stopped without approval")
+	}
+}
+
+// holdAsOwner makes this test process the owner of a fresh data directory,
+// with an approval credential file and the given API address on record.
+func holdAsOwner(t *testing.T, apiAddr string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "private")
+	if err := localfs.EnsureDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "approve.token"), []byte(strings.Repeat("ab", 32)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lock, err := processlock.Acquire(filepath.Join(dir, "device.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { lock.Close() })
+	if err = processlock.WriteOwner(dir, processlock.Owner{Kind: "serve", PID: os.Getpid(), DataDir: dir, APIAddr: apiAddr, StartedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// Any reply from the owner's API means it was reachable, so a refusal is never
+// answered by signalling its process; the error says how to stop it instead.
+func TestStopReportsAnAPIRefusalInsteadOfSignallingTheOwner(t *testing.T) {
+	for _, status := range []int{http.StatusServiceUnavailable, http.StatusConflict, http.StatusInternalServerError} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(status)
+			_, _ = w.Write([]byte(`{"error":"refused for the test"}`))
+		}))
+		dir := holdAsOwner(t, strings.TrimPrefix(server.URL, "http://"))
+		app, out, _ := otherApp(t)
+		err := app.Run(context.Background(), []string{"--data-dir", dir, "stop"})
+		server.Close()
+		pid := fmt.Sprintf("%d", os.Getpid())
+		if err == nil || !strings.Contains(err.Error(), "refused for the test") || !strings.Contains(err.Error(), "PID "+pid) || !strings.Contains(err.Error(), "end process "+pid) {
+			t.Fatalf("status %d: error does not name the PID and how to stop it: %v\n%s", status, err, out.String())
+		}
+		if strings.Contains(err.Error(), "will not signal") || strings.Contains(out.String(), "Stopped") {
+			t.Fatalf("status %d: stop went on to the signal fallback: %v", status, err)
+		}
+	}
+}
+
+// An owner whose API is not answering at all is still stopped by signal; this
+// process is the owner here, so reaching the fallback shows as its refusal to signal itself.
+func TestStopStillFallsBackWhenTheAPIIsUnreachable(t *testing.T) {
+	dead := httptest.NewServer(http.NotFoundHandler())
+	addr := strings.TrimPrefix(dead.URL, "http://")
+	dead.Close()
+	dir := holdAsOwner(t, addr)
+	app, out, _ := otherApp(t)
+	err := app.Run(context.Background(), []string{"--data-dir", dir, "stop"})
+	if err == nil || !strings.Contains(err.Error(), "will not signal its own process") {
+		t.Fatalf("an unreachable API did not reach the signal fallback: %v\n%s", err, out.String())
 	}
 }

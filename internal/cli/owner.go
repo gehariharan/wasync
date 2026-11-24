@@ -345,10 +345,8 @@ func (a *App) runStop(ctx context.Context, cfg config.Config, args []string) err
 			apiFailure = err
 		case code/100 == 2:
 			stopped = true
-		case code == 401 || code == 403:
-			return fmt.Errorf("%s did not accept the approval to stop it: %s", describeOwner(owner), apiError(data, code))
 		default:
-			apiFailure = errors.New(apiError(data, code))
+			return fmt.Errorf("%s answered but did not stop: %s.\nwasync stop only works through an owner that accepts the approval. Quit it in its own window, or end process %d yourself (Task Manager on Windows)", describeOwner(owner), apiError(data, code), owner.PID)
 		}
 	}
 	if !stopped && apiFailure != nil && waitReleased(ctx, cfg, time.Second) {
