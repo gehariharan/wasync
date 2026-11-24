@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -19,9 +20,9 @@ import (
 )
 
 type ownerFixture struct {
-	server               *Server
-	read, control        string
-	stopped, unlinkCalls atomic.Int32
+	server                 *Server
+	read, control, approve string
+	stopped, unlinkCalls   atomic.Int32
 }
 
 func startOwnerFixture(t *testing.T, unlink func(context.Context) error) *ownerFixture {
@@ -38,7 +39,7 @@ func startOwnerFixture(t *testing.T, unlink func(context.Context) error) *ownerF
 	f := &ownerFixture{}
 	o := Owner{Addr: "127.0.0.1:0", Dir: dir, Store: store, Status: func() whatsapp.CaptureStatus { return whatsapp.CaptureStatus{Connection: "online"} },
 		Info: OwnerInfo{Kind: "serve", PID: 4242, DataDir: dir, StartedAt: time.Date(2026, 11, 23, 9, 0, 0, 0, time.UTC), StartedBy: "login item"},
-		Stop: func() { f.stopped.Add(1) }}
+		Stop: func() { f.stopped.Add(1) }, Approve: func(int64, string) error { return nil }}
 	if unlink != nil {
 		o.Paired = func() bool { return true }
 		o.Unlink = func(ctx context.Context) error { f.unlinkCalls.Add(1); return unlink(ctx) }
@@ -51,6 +52,9 @@ func startOwnerFixture(t *testing.T, unlink func(context.Context) error) *ownerF
 		t.Fatal(err)
 	}
 	if f.control, err = loadNamedToken(dir, "send.token"); err != nil {
+		t.Fatal(err)
+	}
+	if f.approve, err = loadNamedToken(dir, approvecred.FileName); err != nil {
 		t.Fatal(err)
 	}
 	return f
@@ -98,11 +102,14 @@ func TestOwnerEndpointNamesTheOwner(t *testing.T) {
 	}
 }
 
-func TestStopAndLogoutNeedTheControlCredential(t *testing.T) {
+func TestStopAndLogoutNeedTheApprovalCredential(t *testing.T) {
 	f := startOwnerFixture(t, func(context.Context) error { return nil })
 	for _, path := range []string{"/api/stop", "/api/logout"} {
 		if code, _ := f.call(t, "POST", path, f.read, ""); code != 401 {
 			t.Fatalf("%s accepted the read-only credential: %d", path, code)
+		}
+		if code, _ := f.call(t, "POST", path, f.control, `{"pid":4242}`); code != 401 {
+			t.Fatalf("%s accepted the sending credential: %d", path, code)
 		}
 	}
 	if f.stopped.Load() != 0 || f.unlinkCalls.Load() != 0 {
@@ -112,7 +119,7 @@ func TestStopAndLogoutNeedTheControlCredential(t *testing.T) {
 
 func TestStopShutsTheOwnerDownOnce(t *testing.T) {
 	f := startOwnerFixture(t, nil)
-	if code, out := f.call(t, "POST", "/api/stop", f.control, `{"pid":4242}`); code != 202 || out["stopping"] != true {
+	if code, out := f.call(t, "POST", "/api/stop", f.approve, `{"pid":4242}`); code != 202 || out["stopping"] != true {
 		t.Fatalf("stop: %d %v", code, out)
 	}
 	deadline := time.Now().Add(2 * time.Second)
@@ -127,7 +134,7 @@ func TestStopShutsTheOwnerDownOnce(t *testing.T) {
 func TestStopAndLogoutRefuseADifferentProcess(t *testing.T) {
 	f := startOwnerFixture(t, func(context.Context) error { return nil })
 	for _, path := range []string{"/api/stop", "/api/logout"} {
-		if code, _ := f.call(t, "POST", path, f.control, `{"pid":1}`); code != 409 {
+		if code, _ := f.call(t, "POST", path, f.approve, `{"pid":1}`); code != 409 {
 			t.Fatalf("%s acted for the wrong process: %d", path, code)
 		}
 	}
@@ -138,7 +145,7 @@ func TestStopAndLogoutRefuseADifferentProcess(t *testing.T) {
 
 func TestLogoutUnlinksThenStops(t *testing.T) {
 	f := startOwnerFixture(t, func(context.Context) error { return nil })
-	code, out := f.call(t, "POST", "/api/logout", f.control, `{"pid":4242}`)
+	code, out := f.call(t, "POST", "/api/logout", f.approve, `{"pid":4242}`)
 	if code != 200 || out["unlinked"] != true || out["stopping"] != true {
 		t.Fatalf("logout: %d %v", code, out)
 	}
@@ -153,7 +160,7 @@ func TestLogoutUnlinksThenStops(t *testing.T) {
 
 func TestFailedLogoutKeepsTheOwnerRunning(t *testing.T) {
 	f := startOwnerFixture(t, func(context.Context) error { return errors.New("WhatsApp refused") })
-	code, out := f.call(t, "POST", "/api/logout", f.control, "")
+	code, out := f.call(t, "POST", "/api/logout", f.approve, "")
 	if code != 502 || out["unlinked"] != false {
 		t.Fatalf("failed logout: %d %v", code, out)
 	}
@@ -165,11 +172,11 @@ func TestFailedLogoutKeepsTheOwnerRunning(t *testing.T) {
 
 func TestLogoutWhenNothingIsLinkedOrOffline(t *testing.T) {
 	f := startOwnerFixture(t, func(context.Context) error { return ErrNotLinked })
-	if code, out := f.call(t, "POST", "/api/logout", f.control, ""); code != 409 || out["unlinked"] != false {
+	if code, out := f.call(t, "POST", "/api/logout", f.approve, ""); code != 409 || out["unlinked"] != false {
 		t.Fatalf("not linked: %d %v", code, out)
 	}
 	offline := startOwnerFixture(t, nil)
-	if code, _ := offline.call(t, "POST", "/api/logout", offline.control, ""); code != 503 {
+	if code, _ := offline.call(t, "POST", "/api/logout", offline.approve, ""); code != 503 {
 		t.Fatalf("offline owner claimed to unlink: %d", code)
 	}
 	if f.stopped.Load() != 0 || offline.stopped.Load() != 0 {

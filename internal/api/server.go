@@ -312,7 +312,7 @@ func (h *handler) routes() http.Handler {
 				return
 			}
 			requiredToken = h.sendToken
-			if strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath || r.URL.Path == uiLinkPath {
+			if strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath || r.URL.Path == uiLinkPath || r.URL.Path == stopPath || r.URL.Path == logoutPath {
 				if h.approve == nil || h.approveToken == "" {
 					fail(w, 503, "interactive approval unavailable")
 					return

@@ -13,8 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/config"
-	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/service"
 )
@@ -173,11 +173,7 @@ func (a *App) reachOwner(cfg config.Config, doing string) (channel, error) {
 // the owner checks it against. The body always names the owner's PID, so a
 // different wasync that took over the address refuses it.
 func (a *App) call(ctx context.Context, ch channel, method, path, credential string, extra map[string]any) (int, []byte, error) {
-	tokenPath := filepath.Join(ch.cfg.DataDir, credential)
-	if err := localfs.CheckPrivateFile(tokenPath); err != nil {
-		return 0, nil, err
-	}
-	token, err := os.ReadFile(tokenPath)
+	token, err := a.readCredential(ch.cfg, credential)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -242,7 +238,7 @@ func (a *App) logoutThroughOwner(ctx context.Context, cfg config.Config) error {
 	fmt.Fprintf(a.Out, "Another wasync owns this data directory, so logout is going through it: %s.\n", describeOwner(ch.owner))
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
-	code, data, err := a.call(ctx, ch, "POST", "/api/logout", "send.token", nil)
+	code, data, err := a.call(ctx, ch, "POST", "/api/logout", approvecred.FileName, nil)
 	if err != nil {
 		return unreachable(cfg, ch, "unlink the device", err)
 	}
@@ -332,7 +328,7 @@ func (a *App) runStop(ctx context.Context, cfg config.Config, args []string) err
 		ch := channel{cfg: cfg, owner: owner}
 		ch.cfg.APIAddr = owner.APIAddr
 		callCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-		code, data, err := a.call(callCtx, ch, "POST", "/api/stop", "send.token", nil)
+		code, data, err := a.call(callCtx, ch, "POST", "/api/stop", approvecred.FileName, nil)
 		cancel()
 		switch {
 		case err != nil:

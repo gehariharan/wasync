@@ -1421,6 +1421,9 @@ or `run` owner is running, logout goes through it: it says which owner it used,
 unlinks the device, and that owner then stops, because it cannot capture without a
 linked phone. Run `wasync setup` or `wasync login` afterwards to pair a new phone;
 nothing needs to be killed. `wasync status` likewise reads from the running owner.
+Unlinking and stopping are signed with the approval credential (the one `approve`
+and `access` use, kept in the Keychain on macOS), not the sending credential, so
+something that can only send messages cannot unlink the phone or stop capture.
 
 `wasync stop` stops the owner (the `serve` started by hand or by the login item,
 the TUI or `run`) cleanly and waits until the data directory is free. It asks the

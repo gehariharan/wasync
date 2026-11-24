@@ -50,13 +50,13 @@
     },
     {
       "description": "Unlink the saved WhatsApp device session.",
-      "details": "Connects to WhatsApp when a saved session exists. Local archives and chat preferences remain on disk. It works from any folder. If another wasync (serve, the TUI or run) owns the data directory, logout goes through that one: it says which one it used (kind, PID and data directory), unlinks the device, and that wasync then stops because it cannot capture without a linked phone, so wasync setup or wasync login can pair a new phone straight away.",
+      "details": "Connects to WhatsApp when a saved session exists. Local archives and chat preferences remain on disk. It works from any folder. If another wasync (serve, the TUI or run) owns the data directory, logout goes through that one: it says which one it used (kind, PID and data directory), signs the request with the approval credential (the Keychain asks you on macOS; the sending credential is not enough), unlinks the device, and that wasync then stops because it cannot capture without a linked phone, so wasync setup or wasync login can pair a new phone straight away.",
       "path": "logout",
       "usage": "logout"
     },
     {
       "description": "Stop the wasync that owns the data directory (serve, the TUI or run).",
-      "details": "Works from any folder, so nobody has to find the process and kill it. It says which wasync it is stopping (kind, PID, how it was started and the data directory), asks it to shut down cleanly through its local API (or, when it has none, by asking the process to stop as Ctrl-C would), and waits until the data directory is free. It does not unlink the phone; use logout for that. Stopping a wasync started by the login item does not remove the login item; wasync service uninstall does. With nothing running it says so and succeeds.",
+      "details": "Works from any folder, so nobody has to find the process and kill it. It says which wasync it is stopping (kind, PID, how it was started and the data directory), asks it to shut down cleanly through its local API, signed with the approval credential (or, when it has none, by asking the process to stop as Ctrl-C would), and waits until the data directory is free. It does not unlink the phone; use logout for that. Stopping a wasync started by the login item does not remove the login item; wasync service uninstall does. With nothing running it says so and succeeds.",
       "path": "stop",
       "usage": "stop"
     },
