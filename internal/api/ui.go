@@ -166,6 +166,11 @@ var notices = map[string]struct {
 	"failed":    {"That did not work and nothing changed. The request may have expired.", false},
 	"nogate":    {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
 	"saved":     {"Saved.", true},
+	"sendon":    {"That agent may now send in the chats you approve for it.", true},
+	"sendoff":   {"That agent can no longer send.", true},
+	"openon":    {"Open sending is on for the next hour.", true},
+	"openoff":   {"Open sending is off.", true},
+	"agentall":  {"That agent reads every chat, so it cannot be given sending here. Set it up again in a terminal with a chat list.", false},
 	"unpaired":  {"Link WhatsApp first (step 1).", false},
 	"newcode":   {"Asking WhatsApp for a new code…", true},
 	"exists":    {"An agent with that name already exists. Choose another name, or revoke it first.", false},
@@ -200,6 +205,10 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		h.uiMode(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats":
 		h.chatsPage(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/agents":
+		h.agentsPage(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/agents":
+		h.agentsAct(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/sent":
 		h.sentPage(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats/pick":
@@ -443,7 +452,7 @@ button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
 </style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Wide}} class="wide"{{end}}>
-<nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
+<nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
 
 var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}
 <h1>wasync approvals</h1>

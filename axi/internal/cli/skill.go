@@ -74,8 +74,9 @@ tracked state and restart with ` + "`--from-oldest`" + `. Stop polling when the 
 ## Writing
 
 Only ask for a write when the user asked for it. ` + "`whatsapp-axi send --chat CHAT_JID --text TEXT`" + `
-sends a new message to an approved chat; wasync refuses a chat or number you were not given, so ask the
-person to allow it rather than trying another route. ` + "`whatsapp-axi reply REF --text TEXT`" + `
+sends a new message to an approved chat, and ` + "`--to PHONE_NUMBER`" + ` to a number while the person has switched on open
+sending; wasync refuses a chat or number you were not given, so ask the person to allow it (the Agents page
+of the wasync web app) rather than trying another route. ` + "`whatsapp-axi reply REF --text TEXT`" + `
 quotes an archived message in its chat; ` + "`--mentions`" + ` takes user JIDs and the text must
 tag each as @NUMBER. ` + "`whatsapp-axi react REF EMOJI`" + ` (or ` + "`--remove`" + `) sets or clears your reaction, and
 ` + "`whatsapp-axi edit REF --text TEXT`" + ` rewrites one of your own recent text messages (wasync refuses

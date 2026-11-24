@@ -13,6 +13,7 @@
     "thread": {"features": ["message.ref", "thread"]},
     "message": {"features": ["message.ref"]},
     "send": {"features": ["write.send"]},
+    "send.to": {"features": ["write.send", "write.send.to"]},
     "reply": {"features": ["message.ref", "write.reply"]},
     "react": {"features": ["message.ref", "write.react"]},
     "edit": {"features": ["message.ref", "write.edit"]},

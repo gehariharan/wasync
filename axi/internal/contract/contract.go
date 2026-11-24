@@ -126,6 +126,7 @@ const (
 	FeatureCheckpoints   = "checkpoints"
 	FeatureDiagnostics   = "diagnostics"
 	FeatureWriteSend     = "write.send"
+	FeatureWriteSendTo   = "write.send.to"
 	FeatureWriteReply    = "write.reply"
 	FeatureWriteReact    = "write.react"
 	FeatureWriteEdit     = "write.edit"

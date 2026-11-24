@@ -1044,9 +1044,17 @@ reaction), `not_found` (not archived or another account), `owner_offline`
 not be retried automatically. `whatsapp-axi reply REF --text TEXT` calls it.
 
 To send a new message rather than a quoted reply, agents use
-`POST /api/v1/messages` with `{ "chat", "text" }` (`whatsapp-axi send --chat CHAT_JID
---text TEXT`). It needs the same `send` scope and an approved chat, and refuses a chat or
-number the agent was not given. Every send, by you or by an agent, is noted in
+`POST /api/v1/messages` with `{ "chat", "text" }` or `{ "to", "text" }` (`whatsapp-axi send --chat CHAT_JID
+--text TEXT`, or `--to PHONE_NUMBER`). It needs the same `send` scope and an approved chat, and refuses a chat or
+number the agent was not given, unless you have switched on open sending.
+
+Open sending is on the web app's Agents page (`wasync web`, then Agents). Switching it on asks
+you to confirm with Touch ID, your password or Windows Hello, and lasts one hour: any agent that
+already holds the `send` scope may then message any chat or phone number, up to 15 messages and 5
+new numbers an hour in total. Each message is marked in the Sent page. Turning it off, or stopping
+one agent's sending, needs no confirmation. On a computer with no system confirmation the page is
+read-only, so open sending cannot be switched on there. The same page lets you allow sending for an
+agent that asks for chats one at a time. Every send, by you or by an agent, is noted in
 `sent-log.jsonl` in the data folder (who, which chat, when, the WhatsApp message ID and
 the outcome, never the text) and listed on the web app's Sent page (`wasync web`, then
 Sent).
