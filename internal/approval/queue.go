@@ -54,6 +54,7 @@ type Request struct {
 type Queue struct {
 	mu       sync.Mutex
 	requests []Request
+	dir      string // where waiting requests are kept across restarts; see Persist
 	// OnAccess, when set, is called (outside the lock) for each newly queued
 	// chat access request, so a headless owner can tell its operator.
 	OnAccess func(Request)
@@ -108,9 +109,10 @@ func (q *Queue) add(account int64, in Input) (Request, error) {
 	if _, err := rand.Read(id); err != nil {
 		return Request{}, err
 	}
-	r := Request{ID: hex.EncodeToString(id), Account: account, Input: in, Expires: time.Now().Add(5 * time.Minute), Status: StatusPending}
+	r := Request{ID: hex.EncodeToString(id), Account: account, Input: in, Expires: time.Now().Add(RequestTTL), Status: StatusPending}
 	q.evictOld()
 	q.requests = append(q.requests, r)
+	q.save()
 	return r, nil
 }
 
@@ -126,10 +128,15 @@ func (q *Queue) evictOld() {
 	}
 }
 func (q *Queue) expire() {
+	changed := false
 	for i := range q.requests {
 		if q.requests[i].Status == StatusPending && time.Now().After(q.requests[i].Expires) {
 			q.requests[i].Status = "expired"
+			changed = true
 		}
+	}
+	if changed {
+		q.save()
 	}
 }
 func (q *Queue) Pending(account int64) *Request {
@@ -157,6 +164,7 @@ func (q *Queue) Take(account int64, id string) (Request, error) {
 				return Request{}, fmt.Errorf("choose the chat and the history depth before approving")
 			}
 			q.requests[i].Status = "executing"
+			q.save()
 			return r.clone(), nil
 		}
 	}
@@ -171,6 +179,7 @@ func (q *Queue) Finish(id, status string, err error) {
 			if err != nil {
 				q.requests[i].Error = err.Error()
 			}
+			q.save()
 			return
 		}
 	}
