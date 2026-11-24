@@ -16,8 +16,17 @@ import (
 	"github.com/gehariharan/wasync/internal/whatsapp"
 )
 
+// tuiRetirement is said when the terminal screen closes, so it is still on the
+// screen afterwards. The screen keeps working while the browser app takes over.
+const tuiRetirement = "The terminal screen is being retired. Chats, sent messages, agents and approvals now live in the browser: run `wasync web`. Setting up and syncing run without it too: `wasync serve`."
+
 func (a *App) tuiAction(offline bool) action {
 	return func(ctx context.Context, cfg config.Config, store *storage.Store, _ *slog.Logger) (result error) {
+		defer func() {
+			if a.Interactive {
+				fmt.Fprintln(a.Err, tuiRetirement)
+			}
+		}()
 		if !a.Interactive {
 			return fmt.Errorf("the TUI requires an interactive terminal; use wasync help for scriptable commands")
 		}
@@ -28,6 +37,9 @@ func (a *App) tuiAction(offline bool) action {
 		}, OnRequest: func(approval.Request) {
 			a.announce("A request to delete data is waiting for you.")
 		}}
+		if err := a.Approvals.Persist(cfg.DataDir); err != nil {
+			a.announce(err.Error())
+		}
 		if offline {
 			session := tui.NewSession(ctx, store, nil)
 			session.Approvals = a.Approvals

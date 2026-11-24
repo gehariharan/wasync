@@ -346,6 +346,17 @@ Browse the archive without connecting:
 ./bin/wasync tui --offline
 ```
 
+> **The terminal screen is being retired.** Chats, sent messages, agents and approvals are in the browser
+> app (`wasync web`), and `wasync serve` keeps syncing without a terminal screen. The TUI keeps working for
+> now and says so when it closes; it will be removed in a later release.
+
+`wasync web` opens the browser app: a two-pane view of your synced chats and their messages (a small
+robot marks chats an agent can read), a picker for which chats sync, an Agents page, a Sent page for what
+you and agents sent, and Approvals. Write to an open chat from the box under its messages, or start a
+message to a new number with the pencil icon. Messages you send there go out once, as you, and appear
+in Sent; a message that is not sent is not kept. A request an agent makes waits 30 minutes for you and
+survives a restart of wasync.
+
 `wasync tui` and `wasync run` both open the live TUI. Fullscreen operation has no
 three-minute command timeout. The `--timeout` setting still applies to the
 scriptable diagnostic commands below.
@@ -1215,8 +1226,9 @@ The TUI must be running with its command channel enabled. Requests return JSON
 messages. The TUI displays the exact action and requires typing `DELETE CODE`
 shown in the dialog, then Enter. **n** rejects. There is no `--yes`. Alternatively, an interactive terminal can run
 `wasync actions approve REQUEST_ID`, inspect the exact scope and target, and type
-the displayed confirmation. Requests expire after five minutes and are
-discarded when the owning process exits. Approval cannot be replayed. Inspect request status
+the displayed confirmation. Requests wait 30 minutes and are kept in a private
+file (`pending-approvals.json`), so restarting wasync does not lose one that is still waiting; a
+request that was already being carried out is never restored. Approval cannot be replayed. Inspect request status
 before retrying; `failed_or_unknown` can include an ambiguous remote outcome.
 
 Pending requests use authenticated `POST /api/actions` and status is available

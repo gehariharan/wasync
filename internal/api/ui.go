@@ -166,6 +166,11 @@ var notices = map[string]struct {
 	"failed":    {"That did not work and nothing changed. The request may have expired.", false},
 	"nogate":    {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
 	"saved":     {"Saved.", true},
+	"sentok":    {"Sent: WhatsApp accepted it. It shows in the chat once WhatsApp passes it back.", true},
+	"sendfail":  {"That was not sent, or WhatsApp did not confirm it. Check WhatsApp before sending it again.", false},
+	"offline":   {"wasync is not connected to WhatsApp, so nothing was sent.", false},
+	"notext":    {"Write a message first.", false},
+	"badto":     {"Enter the phone number with its country code, such as +15551230000.", false},
 	"sendon":    {"That agent may now send in the chats you approve for it.", true},
 	"sendoff":   {"That agent can no longer send.", true},
 	"openon":    {"Open sending is on for the next hour.", true},
@@ -211,6 +216,10 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		h.agentsAct(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/sent":
 		h.sentPage(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats/new":
+		h.composeNewPage(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/chats/send":
+		h.composeSend(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats/pick":
 		h.pickPage(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/chats/pick":
@@ -247,7 +256,12 @@ func (h *handler) uiEnter(w http.ResponseWriter, r *http.Request) {
 
 // uiForm reads a small POST form after checking its request-forgery token.
 func (h *handler) uiForm(w http.ResponseWriter, r *http.Request, sess uiSession) bool {
-	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
+	return h.uiFormLimit(w, r, sess, 8<<10)
+}
+
+// uiFormLimit is uiForm for a form that may be larger, such as a message.
+func (h *handler) uiFormLimit(w http.ResponseWriter, r *http.Request, sess uiSession, limit int64) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
 	if err := r.ParseForm(); err != nil || subtle.ConstantTimeCompare([]byte(r.PostForm.Get("csrf")), []byte(sess.csrf)) != 1 {
 		http.Error(w, "invalid form", http.StatusForbidden)
 		return false

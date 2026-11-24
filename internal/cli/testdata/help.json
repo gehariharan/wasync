@@ -1,8 +1,8 @@
 {
   "commands": [
     {
-      "description": "Open the interactive TUI (default when no command is supplied).",
-      "details": "Capture enabled chats while connected; --offline browses the local archive. An interactive terminal is required.",
+      "description": "Open the interactive TUI (default when no command is supplied). Being retired: use `wasync web`.",
+      "details": "Capture enabled chats while connected; --offline browses the local archive. An interactive terminal is required. The browser app (`wasync web`) now has the chats, sent messages, agents and approvals, and `wasync serve` keeps syncing without a terminal screen; the TUI will be removed in a later release.",
       "path": "tui",
       "usage": "tui [--offline]"
     },
