@@ -26,7 +26,7 @@ func TestAccessRequestPostsOnceAndExplainsTheNextStep(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "transport: api", "access_request:", "request_id: "+accessID, "status: pending", "access: read+send", "Nothing is granted yet", "does not say whether the name matched", "wasync actions approve "+accessID, "whatsapp-axi access status "+accessID, "expires after five minutes")
+	mustContain(t, out, "transport: api", "access_request:", "request_id: "+accessID, "status: pending", "access: read+send", "Nothing is granted yet", "does not say whether the name matched", "wasync actions approve "+accessID, "whatsapp-axi access status "+accessID, "expires after 30 minutes")
 	n, body := posts(srv)
 	var sent map[string]any
 	if n != 1 || json.Unmarshal([]byte(body), &sent) != nil || sent["match"] != "+15551234567" || sent["send"] != true || sent["edit"] != true || sent["chat"] != nil {
