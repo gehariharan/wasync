@@ -111,6 +111,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   access mode [ask|all]                      How agents get chats: ask each time or sync all
   actions approve REQUEST_ID                 Interactive typed approval, no --yes
   approvals                                  Open the approval page in your browser
+  web                                        Open the web app (chats) in your browser
   actions status REQUEST_ID                  Inspect a pending/completed request
   media policy --chat ID [--mode auto|manual|inherit]  Saved per-chat media setting
   media download --chat ID --message-id ID    One-time attachment download (live owner)
@@ -215,6 +216,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	if args[0] == "approvals" {
 		return a.runApprovals(parent, cfg, args[1:])
 	}
+	if args[0] == "web" {
+		return a.runWeb(parent, cfg, args[1:])
+	}
 	if args[0] == "service" {
 		return a.runService(parent, cfg, args[1:])
 	}
@@ -270,7 +274,7 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 		return err
 	}
 	lock, err := processlock.Acquire(filepath.Join(cfg.DataDir, "device.lock"))
-	if errors.Is(err, processlock.ErrBusy) && (args[0] == "groups" || args[0] == "chats") {
+	if errors.Is(err, processlock.ErrBusy) && (args[0] == "groups" || args[0] == "web") {
 		return a.targetsThroughOwner(parent, cfg, args)
 	}
 	if errors.Is(err, processlock.ErrBusy) && args[0] == "setup" {

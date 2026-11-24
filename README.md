@@ -1258,6 +1258,7 @@ syncing all chats, without typing in a terminal:
 
 ```sh
 wasync approvals          # opens the approval page in your browser
+wasync web                # opens the web app: synced chats, their messages, and a picker
 ```
 
 With wasync running (the TUI or `wasync serve`), this opens a page listing the
