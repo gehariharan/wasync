@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/gehariharan/wasync/internal/localfs"
 )
 
 func TestSwitchLastsOneHourThenTurnsItselfOff(t *testing.T) {
@@ -60,7 +62,7 @@ func TestStopIsHarmlessTwiceAndDamageMeansOff(t *testing.T) {
 func privateDir(t *testing.T) string {
 	t.Helper()
 	dir := filepath.Join(t.TempDir(), "data")
-	if err := os.Mkdir(dir, 0o700); err != nil {
+	if err := localfs.EnsureDir(dir); err != nil {
 		t.Fatal(err)
 	}
 	return dir
