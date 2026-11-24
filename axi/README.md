@@ -10,7 +10,7 @@ It has no WhatsApp code of its own. It never connects to WhatsApp, never opens t
 session store, never takes wasync's device lock and never starts `wasync serve`.
 
 > Status: early development. Today it implements the home view, the read commands (`chats`, `messages`,
-> `search`, `thread`, `message`), `observe`, `reply`, `react`, `edit`, `version`, `doctor`, `setup` (agent hooks and skill)
+> `search`, `thread`, `message`), `observe`, `send`, `reply`, `react`, `edit`, `version`, `doctor`, `setup` (agent hooks and skill)
 > and `help`.
 
 ## How it reads wasync
@@ -48,8 +48,9 @@ Settings, all optional:
 - **Read-only by default, enforced by wasync.** Scopes, chat allowlists, rate limits, expiry and the audit
   log are checked inside wasync's API. Flags, confirmations and agent skills in whatsapp-axi are
   convenience, not a security boundary.
-- **Writes need a scope you grant, per chat.** `whatsapp-axi reply REF --text TEXT` posts to wasync's API,
-  which refuses it unless the credential holds `send` and the message's chat is in its allowlist
+- **Writes need a scope you grant, per chat.** `whatsapp-axi send --chat CHAT_JID --text TEXT` (a new message)
+  and `whatsapp-axi reply REF --text TEXT` (a quoted reply) post to wasync's API,
+  which refuses them unless the credential holds `send` and the chat is in its allowlist
   (`wasync agents grant <name> --scope read.chats,read.messages,send --on-demand`, then the person
   approves each chat when you ask for it).
   `whatsapp-axi react REF EMOJI|--remove` needs the separate `react` scope the same way, and
@@ -195,7 +196,7 @@ Protocol](https://modelcontextprotocol.io) tools over standard input and output,
 without a terminal such as the Codex desktop app. It opens no network port. Tools:
 `whatsapp_status`, `whatsapp_doctor`, `whatsapp_list_chats`, `whatsapp_read_messages`,
 `whatsapp_search`, `whatsapp_thread`, `whatsapp_message`, `whatsapp_changes`,
-`whatsapp_reply`, `whatsapp_react`, `whatsapp_edit`, `whatsapp_request_access`,
+`whatsapp_send`, `whatsapp_reply`, `whatsapp_react`, `whatsapp_edit`, `whatsapp_request_access`,
 `whatsapp_access_status` and `whatsapp_start_setup` (opens the wasync setup page in the
 person's browser). There is deliberately no tool to approve, grant, revoke or reveal a
 credential. The Codex plugin that wires it up is `plugins/whatsapp/` at the repository root.

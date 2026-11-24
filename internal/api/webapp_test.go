@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/storage"
 )
 
@@ -159,5 +160,49 @@ func TestChatPickerAsksForOlderMessagesOnlyWhenTheBoxIsTicked(t *testing.T) {
 		if !g.Enabled || (g.HistoryRequest == "queued") != tc.queued {
 			t.Fatalf("%s: enabled=%v history=%q, want queued=%v", tc.chat, g.Enabled, g.HistoryRequest, tc.queued)
 		}
+	}
+}
+
+func TestSentPageShowsWhoSentWhatToWhomAndHowItWent(t *testing.T) {
+	f, c, _ := chatsFixture(t)
+	ctx := context.Background()
+	at := time.Now().Add(-time.Hour)
+	if _, err := f.store.Apply(ctx, f.account, []storage.Message{{GroupID: familyChat, MessageID: "OUT1", SenderID: "me@lid", Timestamp: at, Type: "text", Text: "rent is paid <b>today</b>", FromMe: true, Source: "live"}}); err != nil {
+		t.Fatal(err)
+	}
+	log := sentlog.New(f.dir)
+	for _, e := range []sentlog.Entry{
+		{Time: at, Actor: "whatsapp-axi", Kind: "send", Chat: familyChat, MessageID: "OUT1", Outcome: sentlog.OutcomeSent},
+		{Time: at.Add(time.Minute), Actor: sentlog.Owner, Kind: "reply", Chat: phoneChat, Outcome: sentlog.OutcomeFailed},
+		{Time: at.Add(2 * time.Minute), Actor: "<i>helper</i>", Kind: "send", Chat: familyChat, MessageID: "GONE1", Outcome: sentlog.OutcomeUnknown},
+	} {
+		if err := log.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	code, page, _ := c.get("/ui/sent")
+	if code != 200 {
+		t.Fatalf("sent page: %d", code)
+	}
+	for _, want := range []string{"Family Group", "whatsapp-axi", "Sent: WhatsApp accepted it", "Not sent", "Not confirmed: check WhatsApp", "text not kept", "(reply)", "You", "&lt;b&gt;today&lt;/b&gt;"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("sent page lacks %q:\n%s", want, page)
+		}
+	}
+	if strings.Contains(page, "<b>today") || strings.Contains(page, "<i>helper") {
+		t.Fatalf("untrusted text was not escaped:\n%s", page)
+	}
+	if strings.Index(page, "&lt;i&gt;helper") > strings.Index(page, "rent is paid") {
+		t.Fatalf("not newest first:\n%s", page)
+	}
+	if code, page, _ = newPageClient(t, f).get("/ui/sent"); code != 401 || strings.Contains(page, "rent is paid") {
+		t.Fatalf("the sent page was served without a session: %d", code)
+	}
+}
+
+func TestSentPageIsEmptyBeforeAnythingIsSent(t *testing.T) {
+	_, c, _ := chatsFixture(t)
+	if _, page, _ := c.get("/ui/sent"); !strings.Contains(page, "Nothing has been sent from this computer yet.") {
+		t.Fatalf("empty state:\n%s", page)
 	}
 }

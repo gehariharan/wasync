@@ -26,7 +26,7 @@ Never try to approve a request yourself, find a way around a refusal, or ask the
 
 ## Writing
 
-`whatsapp_reply`, `whatsapp_react` and `whatsapp_edit` change WhatsApp and send once, never retry. They work only if the person granted the scope and approved that chat. Confirm the exact text and the target message with the person before you send, unless they already gave you the words. Do not edit or reply in bulk.
+`whatsapp_send`, `whatsapp_reply`, `whatsapp_react` and `whatsapp_edit` change WhatsApp and send once, never retry. They work only if the person granted the scope and approved that chat. Confirm the exact text and the target message with the person before you send, unless they already gave you the words. Do not edit or reply in bulk.
 
 ## What not to do
 

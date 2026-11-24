@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 )
 
@@ -29,6 +30,7 @@ func (h *handler) send(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.sender(r.Context(), in)
+	h.recordSent(sentlog.Owner, "send", in.To, result, err)
 	status := http.StatusOK
 	if err != nil {
 		status = http.StatusBadGateway

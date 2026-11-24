@@ -11,6 +11,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/humancheck"
+	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/storage"
 )
 
@@ -419,6 +420,79 @@ func (h *handler) pickSave(w http.ResponseWriter, r *http.Request, sess uiSessio
 	back("saved")
 }
 
+type sentRow struct {
+	Time, Who, To, Text, Outcome string
+	Agent, Problem               bool
+	Kind                         string
+}
+
+type sentData struct {
+	uiData
+	Paired bool
+	Rows   []sentRow
+}
+
+const sentLogLimit = 100
+
+// sentPage lists what was sent from this computer, by the owner or an agent,
+// newest first. The log keeps no message text, so the text shown here is read
+// back from the archive by its WhatsApp message ID, and is absent when the
+// message never got an ID or is no longer archived.
+func (h *handler) sentPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	d := &sentData{uiData: uiData{CSRF: sess.csrf, Title: "wasync sent messages", Wide: true}}
+	account, err := h.store.Account(r.Context())
+	if err != nil {
+		http.Error(w, "archive unavailable", http.StatusInternalServerError)
+		return
+	}
+	if account == nil {
+		h.webRender(w, sentTemplate, d)
+		return
+	}
+	d.Paired = true
+	entries, err := h.sent.Recent(sentLogLimit)
+	if err != nil {
+		http.Error(w, "sent log unavailable", http.StatusInternalServerError)
+		return
+	}
+	groups, err := h.store.GroupSummaries(r.Context(), account.ID)
+	if err != nil {
+		http.Error(w, "archive unavailable", http.StatusInternalServerError)
+		return
+	}
+	names := make(map[string]string, len(groups))
+	for _, g := range groups {
+		names[g.ID] = humancheck.Clean(g.Name, 80)
+	}
+	for _, e := range entries {
+		row := sentRow{Time: e.Time.Local().Format("2 Jan 15:04"), Kind: e.Kind, To: names[e.Chat], Agent: e.Actor != sentlog.Owner}
+		if row.To == "" {
+			row.To = humancheck.Clean(e.Chat, 80)
+		}
+		row.Who = "You"
+		if row.Agent {
+			row.Who = humancheck.Clean(e.Actor, 40)
+		}
+		switch e.Outcome {
+		case sentlog.OutcomeSent:
+			row.Outcome = "Sent: WhatsApp accepted it"
+		case sentlog.OutcomeUnknown:
+			row.Outcome, row.Problem = "Not confirmed: check WhatsApp before sending again", true
+		case sentlog.OutcomeBlocked:
+			row.Outcome, row.Problem = "Blocked", true
+		default:
+			row.Outcome, row.Problem = "Not sent", true
+		}
+		if e.MessageID != "" {
+			if m, err := h.store.MessageByWhatsAppID(r.Context(), account.ID, e.Chat, e.MessageID); err == nil && m.DeletedAt == nil {
+				row.Text = bodyText(m.Text)
+			}
+		}
+		d.Rows = append(d.Rows, row)
+	}
+	h.webRender(w, sentTemplate, d)
+}
+
 // uiWideCSS is the two-pane layout the chats pages share, added to the page
 // head when a page asks for the wide frame.
 const uiWideCSS = `{{define "widecss"}}<style>
@@ -445,6 +519,7 @@ main.wide{max-width:74rem}
 .tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0}
 .tabs a{padding:.2rem .7rem;border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--fg)}
 .tabs a[aria-current="true"]{background:var(--fg);color:var(--bg)}
+.sent{width:100%;border-collapse:collapse;background:var(--card)}.sent th,.sent td{border:1px solid var(--line);padding:.4rem .6rem;text-align:left;vertical-align:top;font-size:.9rem}.sent tr.problem td{background:rgba(164,38,44,.08)}
 .pickbox{border:1px solid var(--line);border-radius:10px;background:var(--card);max-height:60vh;overflow:auto}
 </style>{{end}}`
 
@@ -478,6 +553,21 @@ var chatsTemplate = template.Must(template.New("chats").Parse(uiHead + `{{templa
 {{else}}<p class="mut" style="padding:1rem">Choose a chat on the left.</p>{{end}}
 </div>
 </div>
+{{end}}
+</main></body></html>
+`))
+
+var sentTemplate = template.Must(template.New("sent").Parse(uiHead + `{{template "head" .}}
+<h1>Sent</h1>
+{{if not .Paired}}<p class="mut">No WhatsApp is linked yet. Link it on the <a href="/ui/setup">Set up</a> page first.</p>
+{{else}}
+<p class="mut">What was sent from this computer, by you or by an agent, newest first. WhatsApp's own tick is not tracked here: "Sent" means WhatsApp accepted the message, not that it was delivered or read. The text is read from your archive; the log itself keeps no message text.</p>
+<table class="sent">
+<thead><tr><th>Time</th><th>By</th><th>To</th><th>Message</th><th>Outcome</th></tr></thead>
+<tbody>
+{{range .Rows}}<tr{{if .Problem}} class="problem"{{end}}><td>{{.Time}}</td><td>{{if .Agent}}🤖 {{end}}{{.Who}}</td><td>{{.To}}</td><td>{{if .Text}}{{.Text}}{{else}}<span class="mut">text not kept</span>{{end}}{{if eq .Kind "reply"}} <span class="mut">(reply)</span>{{end}}</td><td>{{.Outcome}}</td></tr>
+{{else}}<tr><td colspan="5" class="mut">Nothing has been sent from this computer yet.</td></tr>{{end}}
+</tbody></table>
 {{end}}
 </main></body></html>
 `))

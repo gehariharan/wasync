@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/gehariharan/wasync/internal/msgref"
+	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 )
@@ -94,5 +95,6 @@ func (h *handler) reply(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := h.ops.Reply(r.Context(), in)
+	h.recordSent(sentlog.Owner, "reply", req.Chat, result, err)
 	writeOutcome(w, result, err)
 }

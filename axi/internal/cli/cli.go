@@ -132,6 +132,7 @@ func init() {
 		searchCommand,
 		threadCommand,
 		messageCommand,
+		sendCommand,
 		replyCommand,
 		reactCommand,
 		editCommand,

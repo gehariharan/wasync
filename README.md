@@ -1043,6 +1043,14 @@ reaction), `not_found` (not archived or another account), `owner_offline`
 (wasync is not connected) and `send_failed`, whose outcome is unknown and must
 not be retried automatically. `whatsapp-axi reply REF --text TEXT` calls it.
 
+To send a new message rather than a quoted reply, agents use
+`POST /api/v1/messages` with `{ "chat", "text" }` (`whatsapp-axi send --chat CHAT_JID
+--text TEXT`). It needs the same `send` scope and an approved chat, and refuses a chat or
+number the agent was not given. Every send, by you or by an agent, is noted in
+`sent-log.jsonl` in the data folder (who, which chat, when, the WhatsApp message ID and
+the outcome, never the text) and listed on the web app's Sent page (`wasync web`, then
+Sent).
+
 ### Reactions
 
 ```sh
