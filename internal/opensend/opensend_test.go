@@ -3,6 +3,7 @@ package opensend
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 
@@ -25,9 +26,8 @@ func TestSwitchLastsOneHourThenTurnsItselfOff(t *testing.T) {
 	if _, on := ActiveNow(dir, now.Add(time.Hour)); on {
 		t.Fatal("still on after the hour")
 	}
-	info, err := os.Stat(filepath.Join(dir, FileName))
-	if err != nil || info.Mode().Perm()&0o077 != 0 {
-		t.Fatalf("the switch file must be private: %v %v", info, err)
+	if err := localfs.CheckPrivateFile(filepath.Join(dir, FileName)); err != nil {
+		t.Fatalf("the switch file must be private: %v", err)
 	}
 }
 
@@ -49,6 +49,9 @@ func TestStopIsHarmlessTwiceAndDamageMeansOff(t *testing.T) {
 		if _, on := ActiveNow(dir, time.Now()); on {
 			t.Fatalf("%s: a damaged file switched open sending on", name)
 		}
+	}
+	if runtime.GOOS == "windows" {
+		return // permission bits mean nothing on Windows; access lists are checked by CheckPrivateFile
 	}
 	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"until":"2999-01-01T00:00:00Z"}`), 0o666); err != nil {
 		t.Fatal(err)
