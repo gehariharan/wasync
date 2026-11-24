@@ -172,7 +172,7 @@ func TestSetupShowsTheCodeAgainForAnArchiveWhoseDeviceWasUnlinked(t *testing.T) 
 		t.Fatalf("an old archive hid the code to scan:\n%.600s", page)
 	}
 	state.SetPaired()
-	if _, page, _ = c.get("/ui/setup"); !strings.Contains(page, "Linked.") || !strings.Contains(page, "Family Group") {
+	if _, page, _ = c.get("/ui/setup"); !strings.Contains(page, "Linked.") || !strings.Contains(page, "3 chats found") {
 		t.Fatalf("after linking again:\n%.600s", page)
 	}
 
@@ -184,27 +184,22 @@ func TestSetupShowsTheCodeAgainForAnArchiveWhoseDeviceWasUnlinked(t *testing.T) 
 	}
 }
 
-func TestSetupSavesTheChatsYouTick(t *testing.T) {
+func TestSetupPointsAtTheChatPickerAndOffersAFreshStart(t *testing.T) {
 	sf, c, csrf := newSetupFixture(t, false)
 	_, page, _ := c.get("/ui/setup")
-	if !strings.Contains(page, "Family Group") || strings.Contains(page, `value="`+familyChat+`" checked`) {
-		t.Fatalf("chat list:\n%s", page)
+	if !strings.Contains(page, `href="/ui/chats/pick"`) || strings.Contains(page, `name="chat"`) || strings.Contains(page, "Start fresh") {
+		t.Fatalf("first run should point at the picker with nothing ticked:\n%s", page)
 	}
-	if strings.Contains(page, "Keep all groups") || strings.Contains(page, `name="history"`) {
-		t.Fatalf("the chat picker offers more than a selection:\n%s", page)
+	// Chats still syncing from before a re-link are called out, with a way to start over.
+	if err := sf.store.SetEnabled(context.Background(), sf.account, []string{familyChat}, true); err != nil {
+		t.Fatal(err)
 	}
-	if code, _, _ := c.post("/ui/setup/chats", url.Values{"csrf": {"wrong"}, "chat": {familyChat}}); code != 403 {
-		t.Fatalf("forged form: %d", code)
+	if _, page, _ = c.get("/ui/setup"); !strings.Contains(page, "1 of 3 chats are syncing") || !strings.Contains(page, "Start fresh") {
+		t.Fatalf("re-link banner:\n%s", page)
 	}
-	code, _, hd := c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "chat": {familyChat}})
-	if code != 303 || !strings.Contains(hd.Get("Location"), "n=saved") || !sf.group(t, familyChat).Enabled {
-		t.Fatalf("save: %d %v", code, hd)
-	}
-	if sf.group(t, phoneChat).Enabled {
-		t.Fatal("an unticked chat was turned on")
-	}
-	if _, _, _ = c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "chat": {"not-a-listed-chat@g.us"}}); sf.group(t, familyChat).Enabled {
-		t.Fatal("saving a new list should turn the unticked chat off")
+	code, _, _ := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "action": {"clearall"}})
+	if code != 303 || sf.group(t, familyChat).Enabled {
+		t.Fatalf("start fresh: %d, family still syncing: %v", code, sf.group(t, familyChat).Enabled)
 	}
 }
 

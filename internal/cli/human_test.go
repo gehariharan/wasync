@@ -137,6 +137,25 @@ func TestApprovalsCommandGivesAOneTimeLinkAndOpensIt(t *testing.T) {
 	}
 }
 
+func TestWebCommandOpensTheChatsPageWithAOneTimeLink(t *testing.T) {
+	app, output, run, _, _, _, _ := ownerFixture(t)
+	var opened []string
+	app.OpenURL = func(u string) error { opened = append(opened, u); return nil }
+	app.Err = &bytes.Buffer{}
+	if err := run("web"); err != nil {
+		t.Fatal(err)
+	}
+	if len(opened) != 1 || !strings.Contains(opened[0], "/ui/enter?t=") || !strings.Contains(opened[0], "next=chats") {
+		t.Fatalf("opened %q", opened)
+	}
+	if output.Len() != 0 || strings.Contains(app.Err.(*bytes.Buffer).String(), "/ui/enter") {
+		t.Fatalf("the link was printed: %q %q", output.String(), app.Err)
+	}
+	if err := run("web", "extra"); err == nil {
+		t.Fatal("accepted a stray argument")
+	}
+}
+
 func TestStartupLineSaysWhatStandsBetweenAnAgentAndAnApproval(t *testing.T) {
 	with := &App{Human: humancheck.NewGate(&humanStub{})}
 	if got := with.approvalCheckLine(); !strings.Contains(got, "the test prompt") {

@@ -1230,8 +1230,9 @@ that walks through the first-time steps that used to need a terminal:
 1. **Link WhatsApp.** The page shows the QR code as an image; scan it from WhatsApp
    on your phone under *Linked devices → Link a device*. The code refreshes by itself;
    if it expires unscanned, the page offers **Get a new code**.
-2. **Choose chats.** Tick the chats wasync should keep on this computer. Agents see none
-   of them until you connect one.
+2. **Choose chats.** The page shows how many chats are syncing and links to the chat
+   picker (also reachable with `wasync web`), where you tick the chats wasync should keep
+   on this computer. Agents see none of them until you connect one.
 3. **Connect an agent.** Pick a name. The agent may read chats and messages, only those
    you approve, until you revoke it (`wasync agents grant` offers other access and
    expiry). The credential is created and saved straight to where whatsapp-axi reads
@@ -1258,6 +1259,7 @@ syncing all chats, without typing in a terminal:
 
 ```sh
 wasync approvals          # opens the approval page in your browser
+wasync web                # opens the web app: synced chats, their messages, and a picker
 ```
 
 With wasync running (the TUI or `wasync serve`), this opens a page listing the

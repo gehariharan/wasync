@@ -60,6 +60,7 @@ The owner now closes both on macOS and Windows. Every approval of an agent's req
 | Narrowing mostly does not need the check | Choosing ask-each-time and rejecting a request are safe for an agent to cause, so they do not prompt. Revoking a credential does prompt, because revoking one agent and granting another is how a credential is swapped |
 | A notification is only a nudge | It names the agent and says to look; it carries no code, no chat name and no button, and seeing or dismissing it approves nothing |
 | The approval page is not a boundary | Anything that can reach the loopback listener can open the page (its sign-in link is one-time and short-lived, which is hygiene). The page forwards an approval to the same owner path, so it still ends in the prompt. Where the computer has no system confirmation the page lists requests but cannot approve |
+| The chats pages show message text | `/ui/chats` lists the chats being synced and shows their recent messages, so it is served only to a browser that holds a session from a one-time sign-in link. Anything that can obtain such a link can read what the archive holds, which a program running as the same user could already do by opening the archive file (the same-OS-user line below), so this adds convenience, not capability. Choosing which chats sync is a capture choice and needs no prompt; agents still see only what they were given |
 
 Not covered, stated plainly:
 

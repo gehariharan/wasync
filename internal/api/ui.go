@@ -130,8 +130,8 @@ func (s *uiState) session(r *http.Request) (uiSession, bool) {
 // uiURL is the one-time address for a page; only the pages listed here can be named.
 func (h *handler) uiURL(link, page string) string {
 	next := ""
-	if page == "setup" {
-		next = "&next=setup"
+	if page == "setup" || page == "chats" {
+		next = "&next=" + page
 	}
 	return "http://" + h.authority + "/ui/enter?t=" + url.QueryEscape(link) + next
 }
@@ -142,8 +142,8 @@ func (h *handler) uiLink(w http.ResponseWriter, r *http.Request) {
 		Page string `json:"page"`
 	}
 	if body, _ := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<10)); len(body) > 0 {
-		if json.Unmarshal(body, &in) != nil || (in.Page != "" && in.Page != "setup") {
-			fail(w, 400, `page must be "" or "setup"`)
+		if json.Unmarshal(body, &in) != nil || (in.Page != "" && in.Page != "setup" && in.Page != "chats") {
+			fail(w, 400, `page must be "", "setup" or "chats"`)
 			return
 		}
 	}
@@ -198,10 +198,14 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		h.uiDecide(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/mode":
 		h.uiMode(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats":
+		h.chatsPage(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats/pick":
+		h.pickPage(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/chats/pick":
+		h.pickSave(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/setup":
 		h.setupHome(w, r, sess)
-	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/chats":
-		h.setupChats(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/link" && h.setup != nil:
 		h.setupLink(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/agent":
@@ -221,8 +225,11 @@ func (h *handler) uiEnter(w http.ResponseWriter, r *http.Request) {
 	}
 	http.SetCookie(w, &http.Cookie{Name: uiCookie, Value: cookie, Path: "/ui/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: int(uiSessionTTL / time.Second)})
 	to := "/ui/"
-	if r.URL.Query().Get("next") == "setup" {
+	switch r.URL.Query().Get("next") {
+	case "setup":
 		to = "/ui/setup"
+	case "chats":
+		to = "/ui/chats"
 	}
 	http.Redirect(w, r, to, http.StatusSeeOther)
 }
@@ -356,6 +363,7 @@ type uiData struct {
 	Signedout    bool
 	Title        string
 	Refresh      int
+	Wide         bool // use the wide two-pane frame
 }
 
 func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
@@ -412,8 +420,10 @@ func (h *handler) uiRender(w http.ResponseWriter, code int, data *uiData) {
 	_ = uiTemplate.Execute(w, data)
 }
 
-// uiHead is the page frame shared by the approval and setup pages.
-const uiHead = `{{define "head"}}<!doctype html>
+// uiHead is the page frame shared by the approval, setup and chats pages.
+const uiHead = uiHeadBase + uiWideCSS
+
+const uiHeadBase = `{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 {{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
 <title>{{.Title}}</title>
@@ -430,8 +440,8 @@ label{display:block;margin:.25rem 0}fieldset{border:0;padding:0;margin:.6rem 0}l
 button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;margin-right:.5rem}
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
-</style></head><body><main>
-<nav><a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
+</style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Wide}} class="wide"{{end}}>
+<nav><a href="/ui/chats">Chats</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
 
 var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}
 <h1>wasync approvals</h1>
