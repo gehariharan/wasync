@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -145,7 +146,7 @@ func (h *handler) v1RequestAccess(w http.ResponseWriter, r *http.Request, id str
 	auto := mode.AutoApproves() && !in.Edit && len(candidates) == 1 && h.approve != nil
 	req, err := h.approvals.AddAccess(a.ID, approval.Access{Agent: c.Name, AgentID: c.ID, Send: in.Send, Edit: in.Edit, Scopes: scopes, Query: query_, Candidates: candidates, Truncated: truncated, Auto: auto})
 	if err != nil {
-		v1Fail(w, id, 429, query.CodeRateLimited, err.Error(), "wait for the person to answer or for the requests to expire (five minutes)")
+		v1Fail(w, id, 429, query.CodeRateLimited, err.Error(), "wait for the person to answer or for the requests to expire ("+strconv.Itoa(int(approval.RequestTTL/time.Minute))+" minutes)")
 		return
 	}
 	_ = h.agents.Audit(agentauth.AuditEntry{Event: "access_request", ClientID: c.ID, ClientName: c.Name, Scope: strings.Join(scopes, ","), Chat: onlyChat(candidates), Ref: req.ID[:8], Outcome: agentauth.OutcomeAllowed, RequestID: id})
