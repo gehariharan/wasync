@@ -98,7 +98,7 @@ automatically. A ref that does not decode names no chat and is refused with
 
 A request grants nothing by itself. wasync resolves `chat`/`match` (JID, phone number, or name using the same
 tiers as `chats?match=`, which includes the saved contact name of direct chats) to at most ten candidate chats
-across the whole archive and queues a `grant-chat-access` request in the human approval queue (five-minute
+across the whole archive and queues a `grant-chat-access` request in the human approval queue (30-minute
 expiry, no replay, one request per agent and query, at most three unanswered per agent). It returns `202` with
 the request ID, the access asked for (`read`, `send`, `edit`; read is always included) and `approve_with`, the
 command the person runs. The agent never receives the candidates, and the reply is the same whether zero, one or

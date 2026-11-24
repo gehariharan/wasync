@@ -1342,7 +1342,7 @@ by name with `--match NAME` (a contact or group name, or a phone number). `--sen
 also asks to send, reply and react; `--edit` also asks to edit its own messages.
 wasync resolves the request to concrete candidate chats that only you see and
 queues a pending request with the same rules as the destructive actions above:
-five-minute expiry, no replay, a person's confirmation, no `--yes`.
+30-minute expiry, no replay, a person's confirmation, no `--yes`.
 The agent is always told "pending", whether or not anything matched, so it
 cannot use a request to find out which chats you have. A request that matched
 nothing shows as "no chat matched" in the TUI and `wasync actions list`; you can
