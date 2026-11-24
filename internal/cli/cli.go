@@ -274,7 +274,7 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 		return err
 	}
 	lock, err := processlock.Acquire(filepath.Join(cfg.DataDir, "device.lock"))
-	if errors.Is(err, processlock.ErrBusy) && (args[0] == "groups" || args[0] == "web") {
+	if errors.Is(err, processlock.ErrBusy) && (args[0] == "groups" || args[0] == "chats") {
 		return a.targetsThroughOwner(parent, cfg, args)
 	}
 	if errors.Is(err, processlock.ErrBusy) && args[0] == "setup" {

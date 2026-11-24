@@ -201,3 +201,22 @@ func TestStandaloneSyncJSONHasAnErrorKeyOnlyWhenSyncFailed(t *testing.T) {
 		t.Fatalf("a failed sync must keep its error and result: %v", m)
 	}
 }
+
+func TestChatsCommandsAreForwardedToTheOwnerHoldingTheDeviceLock(t *testing.T) {
+	app, output, store, _, dir := queryFixture(t)
+	server, err := api.StartControlled("127.0.0.1:0", dir, store, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	args := []string{"--data-dir", dir, "--api-addr", strings.TrimPrefix(server.URL, "http://")}
+	for _, kind := range []string{"groups", "chats"} {
+		output.Reset()
+		if err = app.Run(context.Background(), append(append([]string{}, args...), kind, "list", "--json")); err != nil {
+			t.Fatalf("%s list while the owner holds the lock: %v", kind, err)
+		}
+		if !strings.Contains(output.String(), "one@g.us") {
+			t.Fatalf("%s list was not served by the owner: %s", kind, output.String())
+		}
+	}
+}
