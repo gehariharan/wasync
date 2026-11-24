@@ -63,7 +63,7 @@ Settings, all optional:
   `whatsapp-axi access status REQUEST_ID` shows the answer. `--send` also asks to send, reply and react;
   `--edit` also asks to edit your own messages. Asking grants nothing by itself: wasync queues a human
   approval (the TUI dialog, the approval page or `wasync actions approve REQUEST_ID`, confirmed by the
-  person on their computer, five-minute expiry, no replay) in which the person picks the chat, the access and the history depth (from now on
+  person on their computer, 30-minute expiry, no replay) in which the person picks the chat, the access and the history depth (from now on
   only, or a full history sync). The grant covers that one chat and never exceeds the scopes of your
   credential. in ask-each-time mode wasync always answers `pending` and never says whether a name matched anything or which
   chats it found; if it expires, try the phone number or the exact chat JID. If the person set wasync to

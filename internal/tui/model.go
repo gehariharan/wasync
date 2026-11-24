@@ -914,6 +914,9 @@ func (m Model) View() tea.View {
 			state = "connecting"
 		}
 		header := accent.Render("  wasync") + dim.Render("  /  personal chat archive")
+		if w >= 100 {
+			header += dim.Render("  /  this screen is being retired: use `wasync web`")
+		}
 		status := fmt.Sprintf("  %s   ·   %d enabled   ·   %d archived   ·   +%d writes this session", state, enabled, total, m.snapshot.Status.Stored)
 		if note := historyArrivingNote(m.snapshot.Groups); note != "" {
 			status += "   ·   " + note

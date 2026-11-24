@@ -391,6 +391,10 @@ func TestAccessRequestRejectionAndLimits(t *testing.T) {
 		f.ask(t, f.jit, map[string]any{"match": n}, 202)
 	}
 	f.ask(t, f.jit, map[string]any{"match": otherChat}, 429)
+	// The hint says how long a request waits, which is the real request lifetime.
+	if _, out := f.do(t, "POST", "/api/v1/access-requests", f.jit, map[string]any{"match": otherChat}); !strings.Contains(string(out), "(30 minutes)") || strings.Contains(string(out), "five minutes") {
+		t.Fatalf("the hint must give the real wait: %s", out)
+	}
 	// Already-allowed chats and unrestricted or unscoped credentials get plain answers.
 	open, _, _ := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "everything"}, time.Now())
 	f.ask(t, open, map[string]any{"chat": familyChat}, 400)

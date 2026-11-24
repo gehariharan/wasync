@@ -175,6 +175,9 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 		}, OnRequest: func(approval.Request) {
 			a.announce("A request to delete data is waiting for you. Run wasync approvals to review.")
 		}}
+		if err := a.Approvals.Persist(cfg.DataDir); err != nil {
+			log.Warn("waiting requests were not restored", "error", err)
+		}
 		session := tui.NewSession(ctx, store, live)
 		session.Approvals = a.Approvals
 		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir

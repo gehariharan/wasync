@@ -57,6 +57,7 @@ type chatsData struct {
 	Messages       []chatMsg
 	OlderNotShown  bool
 	Syncing, Total int
+	CanSend        bool
 }
 
 type pickRow struct {
@@ -171,7 +172,7 @@ func (h *handler) webRender(w http.ResponseWriter, t *template.Template, data an
 }
 
 func (h *handler) chatsPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	d := &chatsData{uiData: uiData{CSRF: sess.csrf, Title: "wasync chats", Wide: true}}
+	d := &chatsData{uiData: uiData{CSRF: sess.csrf, Title: "wasync chats", Wide: true}, CanSend: h.sender != nil}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		d.Notice, d.NoticeOK = n.text, n.ok
 	}
@@ -440,6 +441,9 @@ const sentLogLimit = 100
 // message never got an ID or is no longer archived.
 func (h *handler) sentPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	d := &sentData{uiData: uiData{CSRF: sess.csrf, Title: "wasync sent messages", Wide: true}}
+	if n, ok := notices[r.URL.Query().Get("n")]; ok {
+		d.Notice, d.NoticeOK = n.text, n.ok
+	}
 	account, err := h.store.Account(r.Context())
 	if err != nil {
 		http.Error(w, "archive unavailable", http.StatusInternalServerError)
@@ -510,6 +514,7 @@ main.wide{max-width:74rem}
 .tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0}
 .tabs a{padding:.2rem .7rem;border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--fg)}
 .tabs a[aria-current="true"]{background:var(--fg);color:var(--bg)}
+.compose{display:flex;gap:.5rem;padding:.6rem .9rem;border-top:1px solid var(--line)}.compose textarea{flex:1;font:inherit}
 .sent{width:100%;border-collapse:collapse;background:var(--card)}.sent th,.sent td{border:1px solid var(--line);padding:.4rem .6rem;text-align:left;vertical-align:top;font-size:.9rem}.sent tr.problem td{background:rgba(164,38,44,.08)}
 .pickbox{border:1px solid var(--line);border-radius:10px;background:var(--card);max-height:60vh;overflow:auto}
 </style>{{end}}`
@@ -523,6 +528,7 @@ var chatsTemplate = template.Must(template.New("chats").Parse(uiHead + `{{templa
 <div class="tools">
 <a class="ic" href="/ui/chats{{if not .All}}?all=1{{end}}" title="{{if .All}}Show syncing chats only{{else}}Show all chats{{end}}" aria-label="{{if .All}}Show syncing chats only{{else}}Show all chats{{end}}" aria-pressed="{{.All}}">☰</a>
 <a class="ic" href="/ui/chats/pick" title="Choose chats to sync" aria-label="Choose chats to sync">☑</a>
+<a class="ic" href="/ui/chats/new" title="New message" aria-label="New message">✎</a>
 <span class="sub">{{.Syncing}} of {{.Total}} syncing</span>
 </div>
 {{range .Rows}}<a class="row" href="/ui/chats?c={{.ID}}{{if $.All}}&amp;all=1{{end}}"{{if .Selected}} aria-current="true"{{end}}>
@@ -541,6 +547,8 @@ var chatsTemplate = template.Must(template.New("chats").Parse(uiHead + `{{templa
 {{range .Messages}}<div class="b{{if .Me}} me{{end}}"><span class="by">{{.Who}}</span>{{.Text}}<span class="tm">{{.Time}}{{if .Edited}} · edited{{end}}</span></div>
 {{else}}<p class="mut">No messages kept for this chat yet.</p>{{end}}
 </div>
+{{if .CanSend}}<form class="compose" method="post" action="/ui/chats/send"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="chat" value="{{.Cur.ID}}">
+<textarea name="text" rows="2" maxlength="16000" required placeholder="Message {{.Cur.Name}}" aria-label="Message {{.Cur.Name}}"></textarea><button>Send</button></form>{{end}}
 {{else}}<p class="mut" style="padding:1rem">Choose a chat on the left.</p>{{end}}
 </div>
 </div>
@@ -550,6 +558,7 @@ var chatsTemplate = template.Must(template.New("chats").Parse(uiHead + `{{templa
 
 var sentTemplate = template.Must(template.New("sent").Parse(uiHead + `{{template "head" .}}
 <h1>Sent</h1>
+{{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
 {{if not .Paired}}<p class="mut">No WhatsApp is linked yet. Link it on the <a href="/ui/setup">Set up</a> page first.</p>
 {{else}}
 <p class="mut">What was sent from this computer, by you or by an agent, newest first. WhatsApp's own tick is not tracked here: "Sent" means WhatsApp accepted the message, not that it was delivered or read. The text is read from your archive; the log itself keeps no message text.</p>

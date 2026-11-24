@@ -389,7 +389,7 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_request_access", description: "Ask the person for access to a chat this credential cannot use yet. Unless the person set wasync to sync all chats, this grants nothing by itself: the person picks the chat and the level on their own computer and confirms, and the request expires after five minutes. Then call whatsapp_access_status.",
+		name: "whatsapp_request_access", description: "Ask the person for access to a chat this credential cannot use yet. Unless the person set wasync to sync all chats, this grants nothing by itself: the person picks the chat and the level on their own computer and confirms, and the request expires after 30 minutes. Then call whatsapp_access_status.",
 		props: map[string]any{"chat": str("The exact chat JID."), "match": str("A phone number or a contact or group name; wasync resolves it and only the person sees the candidates."), "send": flag("Also ask to send, reply and react, not only read.")},
 		ann:   hints("Ask for access to a WhatsApp chat", annotations{IdempotentHint: true}),
 		build: func(a map[string]any) ([]string, error) {

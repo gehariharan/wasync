@@ -452,3 +452,15 @@ func TestStatusLineReportsUndecryptableMessages(t *testing.T) {
 		t.Fatalf("undecryptable count not shown:\n%s", view)
 	}
 }
+
+func TestHeaderSaysTheScreenIsBeingRetiredWhereThereIsRoom(t *testing.T) {
+	m, _ := fixtureModel()
+	m.width, m.height = 120, 40
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "this screen is being retired: use `wasync web`") {
+		t.Fatalf("no retirement notice on a wide screen:\n%s", view)
+	}
+	m.width = 80
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, "being retired") || !strings.Contains(view, "personal chat archive") {
+		t.Fatalf("a narrow screen should keep its header unchanged:\n%s", view)
+	}
+}

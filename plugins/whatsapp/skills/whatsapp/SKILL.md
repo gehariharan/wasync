@@ -20,7 +20,7 @@ You work with the user's WhatsApp through the `whatsapp_*` tools. They read a pr
 
 ## Getting a chat you cannot read yet
 
-If a read is refused because the credential has no access to that chat, call `whatsapp_request_access` with the chat (or a name or number). Unless the person set wasync to sync all chats, it grants nothing by itself. Tell the person to look for the request on their computer (a notification, or the wasync approvals page) and approve it there, choosing the chat and how far back to go. Then call `whatsapp_access_status` with the `request_id`. Requests expire after five minutes; ask again if needed.
+If a read is refused because the credential has no access to that chat, call `whatsapp_request_access` with the chat (or a name or number). Unless the person set wasync to sync all chats, it grants nothing by itself. Tell the person to look for the request on their computer (a notification, or the wasync approvals page) and approve it there, choosing the chat and how far back to go. Then call `whatsapp_access_status` with the `request_id`. Requests expire after 30 minutes; ask again if needed.
 
 Never try to approve a request yourself, find a way around a refusal, or ask the person to paste a credential. There is no tool for that on purpose.
 

@@ -133,9 +133,10 @@ func (q *Queue) addAccessLocked(account int64, a Access) (Request, bool, error) 
 	if len(a.Candidates) == 1 {
 		in.Chat = a.Candidates[0].Chat
 	}
-	r := Request{ID: hex.EncodeToString(id), Account: account, Input: in, Access: &a, Expires: time.Now().Add(5 * time.Minute), Status: StatusPending}
+	r := Request{ID: hex.EncodeToString(id), Account: account, Input: in, Access: &a, Expires: time.Now().Add(RequestTTL), Status: StatusPending}
 	q.evictOld()
 	q.requests = append(q.requests, r)
+	q.save()
 	return r.clone(), true, nil
 }
 
@@ -152,6 +153,7 @@ func (q *Queue) Decide(account int64, id, chat, history string) error {
 		return err
 	}
 	q.requests[i].Access.Chosen, q.requests[i].Access.History = chat, history
+	q.save()
 	return nil
 }
 
@@ -200,6 +202,7 @@ func (q *Queue) MarkAuto(account int64, id string) {
 	for i, r := range q.requests {
 		if r.Account == account && r.ID == id && r.Status == StatusPending && r.Kind == KindChatAccess {
 			q.requests[i].Access.Auto = true
+			q.save()
 		}
 	}
 }
@@ -212,6 +215,7 @@ func (q *Queue) Reject(account int64, id string) error {
 	for i, r := range q.requests {
 		if r.Account == account && r.ID == id && r.Status == StatusPending {
 			q.requests[i].Status = "rejected"
+			q.save()
 			return nil
 		}
 	}
