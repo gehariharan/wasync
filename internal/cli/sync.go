@@ -20,26 +20,32 @@ import (
 	"time"
 )
 
-func (a *App) ownerCommand(ctx context.Context, cfg config.Config, method, path string, body []byte, credential string) error {
-	var token []byte
+// readCredential loads the secret a command signs with: the approval
+// credential from where it is kept (the Keychain where there is one), or a
+// private token file in the data directory.
+func (a *App) readCredential(cfg config.Config, credential string) ([]byte, error) {
 	if credential == approvecred.FileName {
 		secret, err := approvecred.Read(cfg.DataDir)
-		if err != nil {
-			return err
-		}
-		token = []byte(secret)
-	} else {
-		tokenPath := filepath.Join(cfg.DataDir, credential)
-		if err := localfs.CheckPrivateFile(tokenPath); err != nil {
-			return err
-		}
-		var err error
-		if token, err = os.ReadFile(tokenPath); err != nil {
-			return err
-		}
+		return []byte(secret), err
+	}
+	tokenPath := filepath.Join(cfg.DataDir, credential)
+	if err := localfs.CheckPrivateFile(tokenPath); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(tokenPath)
+}
+
+func (a *App) ownerCommand(ctx context.Context, cfg config.Config, method, path string, body []byte, credential string) error {
+	cfg = withOwnerAPI(cfg)
+	token, err := a.readCredential(cfg, credential)
+	if err != nil {
+		return err
 	}
 	response, err := commandRequest(ctx, cfg, method, path, body, token)
 	if err != nil {
+		if owner, ok := liveOwner(cfg); ok {
+			return fmt.Errorf("could not reach %s: %w\nIf it is stuck, stop it with: %s", describeOwner(owner), err, commandFor(cfg, "stop"))
+		}
 		return fmt.Errorf("command channel unavailable; start wasync serve or the TUI: %w", err)
 	}
 	defer response.Body.Close()

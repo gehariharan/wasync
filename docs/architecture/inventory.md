@@ -23,7 +23,7 @@ Source: Phase 0 inspection of WhatsappTuiCli `891ef40` and openclaw/wacli `8c61e
 
 ### Features
 
-- **Pairing and ownership:** QR pairing, saved session, logout; one owner per data dir via `device.lock`; TUI or `serve` is the owner, other commands delegate to it over the local API.
+- **Pairing and ownership:** QR pairing, saved session, logout; one owner per data dir via `device.lock`; TUI or `serve` is the owner, other commands (including `status`, `logout` and `stop`) delegate to it over the local API (`logout` and `stop` are signed with the approval credential, not `send.token`), and the owner names itself in `owner.json` so refusals can say who it is.
 - **Selective capture:** per-chat opt-in (`groups.sync_enabled`), rechecked inside each write transaction; direct chats discovered best-effort and named from whatsmeow's contact store (address-book, push, business name; refreshed on connect and on contact events).
 - **History:** anchor-based best-effort history jobs per chat (`history_jobs`, `history_anchors`), batch accounting, gap recording (`sync_gaps`, `capture_runs`).
 - **Mutations:** edits, revokes (tombstones), expiry of disappearing messages, local purge.

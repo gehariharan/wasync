@@ -11,7 +11,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-var ErrBusy = errors.New("another wasync command owns this data directory; manage groups in the running TUI or quit it first")
+var ErrBusy = errors.New("another wasync is using this data directory")
 
 type Lock struct{ file *os.File }
 

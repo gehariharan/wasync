@@ -783,11 +783,16 @@ encrypt data at rest.
 | `webhook-deadletter.jsonl` | Events webhooks gave up on: identifiers and outcomes only |
 | `wasync.log` | Structured lifecycle logs from TUI sessions, including warnings and errors from the WhatsApp encryption library, which never print to the terminal |
 | `device.lock` | Process ownership lock, retained after exit |
+| `owner.json` | Who holds the lock right now (command, PID, start time, how it was started, API address); removed when that wasync exits, and ignored when it names a process that no longer runs |
 | `*-wal`, `*-shm` | SQLite WAL sidecars when present |
 
-Only one wasync process owns a data directory. Manage groups in the running TUI
-or through its API. `query` commands can read the archive concurrently; quit the
-owner before using other CLI commands against that directory. The explicit
+Only one wasync process owns a data directory. Any other command, run from any
+folder, either works through that owner or says exactly which wasync it is (its
+kind, PID, how it was started, the data directory and its API address) and the
+command that stops it, `wasync stop`. `status`, `logout`, `groups`, `chats`,
+`sync`, `send` and the other owner commands go through the running owner; `login`,
+`serve`, `tui` and `run` cannot start a second one. `query` commands can read the
+archive concurrently. The explicit
 `send` command can reuse the running owner through its authenticated local API. The OS releases the
 lock after crashes. Never delete the lock file to bypass an active process or run
 copies of the same device credentials concurrently.
@@ -938,8 +943,8 @@ $env:PATH = 'C:/msys64/ucrt64/bin;' + $env:PATH
   explicit selection.
 - `wasync groups enable --all` and `wasync groups disable --all` provide the same
   operations from the CLI. Newly discovered groups remain disabled.
-- **L**, then **y**, unlinks the device and exits; `wasync logout` does the same
-  after quitting the TUI. **q** quits while keeping the pairing session.
+- **L**, then **y**, unlinks the device and exits; `wasync logout` from any
+  folder does the same through the running TUI, which then exits. **q** quits while keeping the pairing session.
 - Enabling queues history immediately. A background worker checks the local queue
   every two seconds, requesting pages of 50 from the primary phone when online.
   Live messages arrive through WhatsApp events; chat contents are not polled.
@@ -1408,10 +1413,25 @@ when WhatsApp supplies their metadata; they are disabled by default.
 
 While `serve` or the TUI is running, CLI selection, listing, sending and `sync`
 reuse its authenticated loopback command channel. Use the same `--data-dir` and
-`--api-addr` as the owning process. `--no-api` disables that cooperation; quit the
-owner before running a command that needs the device lock. Read-only `query`
+`--api-addr` as the owning process. `--no-api` disables that cooperation; stop the
+owner with `wasync stop` before running a command that needs the device lock. Read-only `query`
 commands read the archive directly and remain available without a server.
-To unlink from the CLI, stop the owner and run `wasync logout`.
+To unlink from the CLI, run `wasync logout` from any folder. While a `serve`, TUI
+or `run` owner is running, logout goes through it: it says which owner it used,
+unlinks the device, and that owner then stops, because it cannot capture without a
+linked phone. Run `wasync setup` or `wasync login` afterwards to pair a new phone;
+nothing needs to be killed. `wasync status` likewise reads from the running owner.
+Unlinking and stopping are signed with the approval credential (the one `approve`
+and `access` use, kept in the Keychain on macOS), not the sending credential, so
+something that can only send messages cannot unlink the phone or stop capture.
+
+`wasync stop` stops the owner (the `serve` started by hand or by the login item,
+the TUI or `run`) cleanly and waits until the data directory is free. It asks the
+owner through its local API, or, when the owner runs without the API, asks its
+process to shut down as Ctrl-C would (on Windows, end the process it names). It
+does not unlink the phone and does not remove the login item (`wasync service
+uninstall` does). The commands find the owner from `owner.json`, so they work even
+when the owner was started with a different `--api-addr`.
 
 Destructive CLI requests can be approved without opening the TUI:
 

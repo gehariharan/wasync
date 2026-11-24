@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
@@ -13,6 +15,7 @@ import (
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/config"
+	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/tui"
@@ -28,7 +31,22 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 	if cfg.NoAPI {
 		return run(ctx, "")
 	}
+	runCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var stoppedByRequest atomic.Bool
 	owner := api.Owner{Addr: cfg.APIAddr, Dir: cfg.DataDir, Store: store, Status: status, Approvals: a.Approvals, Approve: a.Approve, Reject: a.Reject, Sync: a.Sync, Media: a.MediaDownload, Ops: a.Operations, Human: a.Human, Setup: a.Setup}
+	owner.Info = api.OwnerInfo{Kind: a.ownerRec.Kind, PID: a.ownerRec.PID, DataDir: cfg.DataDir, StartedAt: a.ownerRec.StartedAt, StartedBy: a.ownerRec.StartedBy}
+	// Being asked to stop is a clean exit, not a cancellation by the person at the keyboard.
+	owner.Stop = func() { stoppedByRequest.Store(true); cancel() }
+	if client := a.ownerClient; client != nil {
+		owner.Paired = client.Paired
+		owner.Unlink = func(ctx context.Context) error {
+			if !client.Paired() {
+				return api.ErrNotLinked
+			}
+			return client.Logout(ctx)
+		}
+	}
 	if a.Service != nil {
 		if spec, err := a.serviceSpec(cfg); err == nil {
 			owner.Service, owner.ServiceSpec = a.Service, spec
@@ -41,10 +59,15 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 	if err != nil {
 		return err
 	}
+	// Tell other commands where this owner's API really listens (the port may have been chosen for us).
+	if a.ownerRec.PID != 0 {
+		a.ownerRec.APIAddr = strings.TrimPrefix(server.URL, "http://")
+		if err = processlock.WriteOwner(cfg.DataDir, a.ownerRec); err != nil {
+			return errors.Join(err, server.Close())
+		}
+	}
 	defer func() { result = errors.Join(result, server.Close()) }()
 	a.NewLink = server.NewLink
-	runCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	failed := make(chan error, 1)
 	go func() {
 		select {
@@ -57,6 +80,9 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 		}
 	}()
 	result = run(runCtx, server.URL)
+	if stoppedByRequest.Load() && errors.Is(result, context.Canceled) {
+		result = nil
+	}
 	select {
 	case err := <-failed:
 		result = errors.Join(result, err)
@@ -135,6 +161,7 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 		}
 		a.MediaDownload = nil
 		a.Setup = nil
+		a.ownerClient = client
 		if setupMode {
 			a.Setup = &setup.State{}
 		}
