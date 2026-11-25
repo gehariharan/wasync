@@ -1123,8 +1123,8 @@ a plaintext bearer token is rejected there. Keep the token private.
 The global flag below enables automatic downloads for chats whose saved policy is
 `inherit`; per-chat policies and one-time downloads are covered in
 [Per-chat media policies](#per-chat-media-policies-and-one-time-downloads).
-In the web app (`wasync web`), each attachment in a chat has a Download button,
-and the chat header's Downloads setting sets that chat's policy. Downloaded photos,
+In the web app (`wasync web`), an attachment that is not downloaded yet has a Download
+button in a syncing chat, and the chat header's Downloads setting sets that chat's policy. Downloaded photos,
 videos and voice notes show in the chat; documents open on request.
 
 ```sh
