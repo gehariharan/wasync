@@ -389,6 +389,7 @@ type uiData struct {
 	Title        string
 	Refresh      int
 	Wide         bool // use the wide two-pane frame
+	Full         bool // with Wide, fill the whole browser window
 }
 
 func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
@@ -465,7 +466,7 @@ label{display:block;margin:.25rem 0}fieldset{border:0;padding:0;margin:.6rem 0}l
 button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;margin-right:.5rem}
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
-</style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Wide}} class="wide"{{end}}>
+</style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
 <nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
 
 var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}

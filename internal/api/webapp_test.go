@@ -74,6 +74,21 @@ func TestChatsPageShowsSyncedChatsAndTheirMessagesSafely(t *testing.T) {
 	}
 }
 
+func TestChatsPageFillsTheWindowAndShowsOnePaneOnAPhone(t *testing.T) {
+	_, c, _ := chatsFixture(t)
+	_, page, _ := c.get("/ui/chats")
+	if !strings.Contains(page, `<main class="full">`) || !strings.Contains(page, `<div class="app">`) {
+		t.Fatalf("the chats page is not in the full-window frame, or opened a chat nobody asked for on a phone:\n%s", page)
+	}
+	_, page, _ = c.get("/ui/chats?c=" + url.QueryEscape(familyChat))
+	if !strings.Contains(page, `<div class="app picked">`) || !strings.Contains(page, `class="back"`) {
+		t.Fatalf("a chosen chat does not replace the list on a phone:\n%s", page)
+	}
+	if _, sent, _ := c.get("/ui/sent"); strings.Contains(sent, `class="full"`) || !strings.Contains(sent, `<main class="wide">`) {
+		t.Fatalf("the sent page changed frame:\n%s", sent)
+	}
+}
+
 func TestChatsPageMarksChatsAnAgentCanRead(t *testing.T) {
 	f, c, _ := chatsFixture(t)
 	// The on-demand test agents have no chats yet, so no chat carries the icon.
