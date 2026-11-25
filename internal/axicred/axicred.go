@@ -25,6 +25,7 @@ const (
 	// Names from before the rename to wasync-axi, still read by it.
 	LegacyEnvConfigDir = "WHATSAPP_AXI_CONFIG_DIR"
 	LegacyEnvToken     = "WHATSAPP_AXI_TOKEN"
+	LegacyDirName      = "whatsapp-axi"
 )
 
 // Path returns where wasync-axi reads its credential file: under
@@ -46,9 +47,15 @@ func Path(getenv func(string) string) (string, error) {
 }
 
 // Existing returns the credential currently saved at path, or "" when there
-// is none.
+// is none. Like wasync-axi, when path is the default file and it is absent,
+// the credential saved under the old whatsapp-axi folder counts as saved.
 func Existing(path string) (string, error) {
 	b, err := os.ReadFile(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		if base, berr := os.UserConfigDir(); berr == nil && path == filepath.Join(base, DirName, FileName) {
+			b, err = os.ReadFile(filepath.Join(base, LegacyDirName, FileName))
+		}
+	}
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", nil
 	}

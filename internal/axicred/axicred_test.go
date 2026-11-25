@@ -38,6 +38,42 @@ func TestLegacyNamesAreHonoured(t *testing.T) {
 	}
 }
 
+// wasync-axi still reads <user config dir>/whatsapp-axi/credential when the
+// default file is absent, so saving must treat it as an existing credential.
+func TestExistingSeesCredentialSavedUnderOldName(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AppData", filepath.Join(home, "AppData"))
+	base, err := os.UserConfigDir()
+	if err != nil {
+		t.Skip("no user config dir")
+	}
+	path, err := Path(func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Existing(path); err != nil || got != "" {
+		t.Fatalf("nothing saved yet: %q %v", got, err)
+	}
+	if err := Save(filepath.Join(base, "whatsapp-axi", "credential"), "wsa_old"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Existing(path); err != nil || got != "wsa_old" {
+		t.Fatalf("credential under the old folder not seen: %q %v", got, err)
+	}
+	other := filepath.Join(t.TempDir(), "credential")
+	if got, _ := Existing(other); got != "" {
+		t.Fatalf("an overridden config dir must not fall back: %q", got)
+	}
+	if err := Save(path, "wsa_new"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := Existing(path); got != "wsa_new" {
+		t.Fatalf("the new file must win: %q", got)
+	}
+}
+
 func TestPathDefaultsToUserConfigDir(t *testing.T) {
 	base, err := os.UserConfigDir()
 	if err != nil {
