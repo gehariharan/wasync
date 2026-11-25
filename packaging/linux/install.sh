@@ -79,7 +79,14 @@ if [ "$axi" = yes ]; then
   echo "Installed wasync-axi to $bin_dir/wasync-axi"
   # Keep the old name, whatsapp-axi, as a link unless another program owns it.
   old="$bin_dir/whatsapp-axi"
-  if [ ! -e "$old" ] || LC_ALL=C grep -aq 'gehariharan/wasync/axi' "$old" 2>/dev/null; then
+  if [ -L "$old" ]; then
+    [ "$(readlink "$old")" = wasync-axi ] && own=yes || own=no
+  elif [ ! -e "$old" ] || LC_ALL=C grep -aq 'gehariharan/wasync/axi' "$old" 2>/dev/null; then
+    own=yes
+  else
+    own=no
+  fi
+  if [ "$own" = yes ]; then
     ln -sf wasync-axi "$old"
   else
     echo "Left $old alone: it is another program."

@@ -65,6 +65,16 @@ HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > 
 grep -q 'Left .*whatsapp-axi alone' "$work/foreign.out" || fail "install.sh did not say it left another whatsapp-axi alone"
 pass "an old wasync whatsapp-axi becomes the link; another program of that name is kept"
 
+home="$work/brewlink-home"; mkdir -p "$home/bin" "$home/Cellar"
+printf 'brew build of github.com/gehariharan/wasync/axi\n' > "$home/Cellar/whatsapp-axi"
+ln -s ../Cellar/whatsapp-axi "$home/bin/whatsapp-axi"
+HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > "$work/brewlink.out" 2>&1
+[[ "$(readlink "$home/bin/whatsapp-axi")" == ../Cellar/whatsapp-axi ]] || fail "a package manager's whatsapp-axi link was replaced"
+grep -q 'Left .*whatsapp-axi alone' "$work/brewlink.out" || fail "install.sh did not say it left a foreign whatsapp-axi link alone"
+HOME="$work/with-home" "$stage/install.sh" --bin-dir "$work/with-home/bin" --with-axi < /dev/null > /dev/null 2>&1
+[[ "$(readlink "$work/with-home/bin/whatsapp-axi")" == wasync-axi ]] || fail "re-installing lost the whatsapp-axi link"
+pass "a whatsapp-axi link owned by another installer is kept; our own link survives a re-install"
+
 run consent --with-axi --axi-skill --axi-hooks
 [[ "$(sort "$log" | tr '\n' ';')" == 'setup hooks;setup skill;' ]] || fail "unexpected setup calls: $(cat "$log")"
 pass "--axi-skill and --axi-hooks run only those two setup commands"
