@@ -8,10 +8,10 @@ import sys
 
 output = Path(sys.argv[1])
 output.mkdir(parents=True, exist_ok=True)
-# The release ships whatsapp-axi next to wasync, so both binaries' modules are listed.
+# The release ships wasync-axi next to wasync, so both binaries' modules are listed.
 root = Path(__file__).resolve().parent.parent
 modules = {}
-for directory, package, tags in ((root, "./cmd/wasync", ["-tags", "sqlite_fts5"]), (root / "axi", "./cmd/whatsapp-axi", [])):
+for directory, package, tags in ((root, "./cmd/wasync", ["-tags", "sqlite_fts5"]), (root / "axi", "./cmd/wasync-axi", [])):
     raw = subprocess.check_output(["go", "list", *tags, "-deps", "-json", package], text=True, encoding="utf-8", cwd=directory)
     decoder = json.JSONDecoder()
     while raw.strip():
@@ -20,7 +20,7 @@ for directory, package, tags in ((root, "./cmd/wasync", ["-tags", "sqlite_fts5"]
         module = entry.get("Module", {})
         if module.get("Dir") and not module.get("Main"):
             modules[module["Path"]] = module
-index = ["Dependencies bundled in wasync and whatsapp-axi; versions and upstream source locations:"]
+index = ["Dependencies bundled in wasync and wasync-axi; versions and upstream source locations:"]
 for name, module in sorted(modules.items()):
     version = module.get("Version", "unknown")
     index.append(f"{name} {version} — https://pkg.go.dev/{name}@{version}")

@@ -1,4 +1,4 @@
-# Releasing whatsapp-axi
+# Releasing wasync-axi
 
 AXI now ships with wasync from the monorepo. See the
 [common release guide](../../docs/releasing.md).

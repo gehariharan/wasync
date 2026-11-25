@@ -118,11 +118,11 @@ func TestTable(t *testing.T) {
 	o.Table(0, "chats", []string{"jid", "name", "unread"}, [][]string{{"1@g.us", "Family, close", "3"}, {"2@s.whatsapp.net", "Bob", "0"}})
 	o.Table(0, "empty", []string{"a"}, nil)
 	o.List(0, "features", []string{"chats", "search.context"})
-	o.Help("Run `whatsapp-axi help`")
+	o.Help("Run `wasync-axi help`")
 	want := "chats[2]{jid,name,unread}:\n  1@g.us,\"Family, close\",\"3\"\n  2@s.whatsapp.net,Bob,\"0\"\n" +
 		"empty[0]{a}:\n" +
 		"features[2]: chats,search.context\n" +
-		"help[1]:\n  Run `whatsapp-axi help`\n"
+		"help[1]:\n  Run `wasync-axi help`\n"
 	if b.String() != want {
 		t.Fatalf("got\n%s\nwant\n%s", b.String(), want)
 	}

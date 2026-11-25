@@ -19,7 +19,7 @@ func TestSetupOpenCodeConfigResolutionAndDoctor(t *testing.T) {
 			fixture := t.TempDir()
 			h.homeDir = filepath.Join(fixture, "home")
 			synthetic := agentHome(h)
-			delete(h.env, "WHATSAPP_AXI_AGENT_HOME")
+			delete(h.env, "WASYNC_AXI_AGENT_HOME")
 			xdg := filepath.Join(fixture, "config")
 			h.env["XDG_CONFIG_HOME"] = xdg
 			project := filepath.Join(fixture, "project")
@@ -33,10 +33,10 @@ func TestSetupOpenCodeConfigResolutionAndDoctor(t *testing.T) {
 				h.env["XDG_CONFIG_HOME"] = "relative-config"
 				configDir = filepath.Join(h.homeDir, ".config", "opencode")
 			case "synthetic":
-				h.env["WHATSAPP_AXI_AGENT_HOME"] = synthetic
+				h.env["WASYNC_AXI_AGENT_HOME"] = synthetic
 				configDir = filepath.Join(synthetic, ".config", "opencode")
 			case "project":
-				h.env["WHATSAPP_AXI_AGENT_HOME"] = synthetic
+				h.env["WASYNC_AXI_AGENT_HOME"] = synthetic
 				flags = []string{"--dir", project}
 				configDir = filepath.Join(project, ".opencode")
 			}
@@ -45,7 +45,7 @@ func TestSetupOpenCodeConfigResolutionAndDoctor(t *testing.T) {
 				filepath.Join(synthetic, ".config", "opencode", "plugins", "other.js"),
 				filepath.Join(xdg, "opencode", "plugins", "other.js"),
 				filepath.Join(project, ".opencode", "skills", "other", "SKILL.md"),
-				filepath.Join(configDir, "skills", "whatsapp-axi", "notes.md"),
+				filepath.Join(configDir, "skills", "wasync-axi", "notes.md"),
 			}
 			for _, path := range neighbors {
 				writeFile(t, path, "unrelated file\n")
@@ -69,11 +69,11 @@ func TestSetupOpenCodeConfigResolutionAndDoctor(t *testing.T) {
 			}
 			before := snapshot()
 			for _, what := range []string{"hooks", "skill"} {
-				path := filepath.Join(configDir, "plugins", "whatsapp-axi.js")
+				path := filepath.Join(configDir, "plugins", "wasync-axi.js")
 				content := agentsetup.OpenCodePlugin(harnessBin)
 				if what == "skill" {
-					path = filepath.Join(configDir, "skills", "whatsapp-axi", "SKILL.md")
-					content = skills.WhatsappAXI
+					path = filepath.Join(configDir, "skills", "wasync-axi", "SKILL.md")
+					content = skills.WasyncAXI
 				}
 				args := append([]string{what}, flags...)
 				for _, selection := range [][]string{nil, {"--agent", "opencode"}, {"--agent", "all"}} {
@@ -149,7 +149,7 @@ func TestSetupOpenCodeUsesNativeGlobalAndProjectPaths(t *testing.T) {
 			relative = ".opencode"
 			args = append(args, "--dir", root)
 		}
-		plugin := filepath.Join(root, relative, "plugins", "whatsapp-axi.js")
+		plugin := filepath.Join(root, relative, "plugins", "wasync-axi.js")
 		r, code := setupJSONRun(t, h, append(args, "--dry-run")...)
 		if code != ExitOK || r.Written != 0 || len(r.Changes) != 1 {
 			t.Fatalf("dry run: %d %+v", code, r)
@@ -187,7 +187,7 @@ func TestSetupPlansOpenCodeBeforeWritingAnyAgent(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("%d %s", code, out)
 	}
-	plugin := filepath.Join(root, ".config", "opencode", "plugins", "whatsapp-axi.js")
+	plugin := filepath.Join(root, ".config", "opencode", "plugins", "wasync-axi.js")
 	if _, err := os.Stat(plugin); !os.IsNotExist(err) {
 		t.Fatal("partial plugin install", err)
 	}

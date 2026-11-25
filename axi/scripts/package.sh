@@ -3,12 +3,13 @@
 #
 #   scripts/package.sh [--dry-run] VERSION
 #
-# Builds whatsapp-axi with CGO_ENABLED=0 for darwin, linux and windows on amd64
+# Builds wasync-axi with CGO_ENABLED=0 for darwin, linux and windows on amd64
 # and arm64 into dist/VERSION/:
-#   whatsapp-axi_VERSION_{darwin,linux}_{amd64,arm64}.tar.gz
-#   whatsapp-axi_VERSION_windows_{amd64,arm64}.zip
+#   wasync-axi_VERSION_{darwin,linux}_{amd64,arm64}.tar.gz
+#   wasync-axi_VERSION_windows_{amd64,arm64}.zip
 #   SHA256SUMS
-# Each archive holds the binary, README.md and LICENSE at its top level.
+# Each archive holds the binary, its old name whatsapp-axi (a symlink, or a
+# copy on Windows), README.md and LICENSE at its top level.
 #
 # The script never publishes, tags or uploads anything. Without --dry-run it
 # refuses a dirty work tree or a HEAD that is not tagged vVERSION, so a release
@@ -82,14 +83,17 @@ targets=(darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows
 for target in "${targets[@]}"; do
   goos="${target%/*}"
   goarch="${target#*/}"
-  name="whatsapp-axi_${version}_${goos}_${goarch}"
-  exe=whatsapp-axi
-  if [[ "$goos" == windows ]]; then exe=whatsapp-axi.exe; fi
+  name="wasync-axi_${version}_${goos}_${goarch}"
+  exe=wasync-axi
+  alias=whatsapp-axi
+  if [[ "$goos" == windows ]]; then exe=wasync-axi.exe; alias=whatsapp-axi.exe; fi
   dir="$stage/$name"
   mkdir -p "$dir"
-  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$ldflags" -o "$dir/$exe" ./cmd/whatsapp-axi
+  CGO_ENABLED=0 GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "$ldflags" -o "$dir/$exe" ./cmd/wasync-axi
   cp README.md LICENSE "$dir/"
   chmod 755 "$dir/$exe"
+  # The old command name keeps working: a symlink, or a copy on Windows.
+  if [[ "$goos" == windows ]]; then cp "$dir/$exe" "$dir/$alias"; else ln -s "$exe" "$dir/$alias"; fi
   chmod 644 "$dir/README.md" "$dir/LICENSE"
 
   if [[ "$target" == "$host" ]]; then
@@ -101,14 +105,14 @@ for target in "${targets[@]}"; do
     echo "package.sh: $target binary runs: --version = $reported"
   fi
 
-  (cd "$dir" && TZ=UTC touch -t "$touch_stamp" "$exe" README.md LICENSE)
+  (cd "$dir" && TZ=UTC touch -h -t "$touch_stamp" "$exe" "$alias" README.md LICENSE)
   if [[ "$goos" == windows ]]; then
     # -X drops extra attributes (uid/gid, extended timestamps); -D adds no
     # directory entries; files are listed in a fixed order.
-    (cd "$dir" && TZ=UTC zip -q -X -D -9 "$out/$name.zip" "$exe" README.md LICENSE)
+    (cd "$dir" && TZ=UTC zip -q -X -D -9 "$out/$name.zip" "$exe" "$alias" README.md LICENSE)
   else
     "$gnutar" --format=ustar --owner=0 --group=0 --numeric-owner --mtime="@$epoch" \
-      -C "$dir" -cf - "$exe" README.md LICENSE | gzip -n -9 > "$out/$name.tar.gz"
+      -C "$dir" -cf - "$exe" "$alias" README.md LICENSE | gzip -n -9 > "$out/$name.tar.gz"
   fi
 done
 
@@ -116,6 +120,6 @@ done
   cd "$out"
   sha256 -- *.tar.gz *.zip | LC_ALL=C sort -k2 > SHA256SUMS
 )
-printf 'package.sh: whatsapp-axi %s (commit %s, date %s)\n' "$version" "$commit" "$build_date"
+printf 'package.sh: wasync-axi %s (commit %s, date %s)\n' "$version" "$commit" "$build_date"
 printf 'package.sh: release files in %s\n' "$out"
 (cd "$out" && ls -l)

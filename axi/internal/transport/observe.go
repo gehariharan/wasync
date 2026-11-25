@@ -9,7 +9,7 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/contract"
 )
 
-// The change journal reads (`whatsapp-axi observe`). Checkpoints are read
+// The change journal reads (`wasync-axi observe`). Checkpoints are read
 // on both transports; committing one is a write and exists only on the API.
 func init() {
 	queryRoutes["/changes"] = QueryRoute{Command: []string{"changes"}, Params: map[string]string{"after": "after", "limit": "limit"}}
@@ -23,7 +23,7 @@ func (a *API) Put(ctx context.Context, path string, body any, out any) error {
 		return err
 	}
 	if a.cred == nil {
-		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no whatsapp-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
+		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no wasync-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
 	}
 	b, err := json.Marshal(body)
 	if err != nil {

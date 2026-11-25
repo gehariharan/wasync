@@ -1,4 +1,4 @@
-# wasync ↔ whatsapp-axi interface contract
+# wasync ↔ wasync-axi interface contract
 
 
 Locked by ADR-001 ([ADR-001](ADR-001-repository-boundaries.md)). Summary of what each side must provide:
@@ -130,6 +130,6 @@ Message text is data in a typed field. AXI marks it as untrusted content in outp
 
 ### Agent session hooks (AXI principle 7)
 
-`whatsapp-axi setup hooks` is the only command that writes agent settings. It installs a session-start hook (`whatsapp-axi --brief`, a few lines of wasync state with no chat names or message text) and a session-end hook (`whatsapp-axi session-end`) for Claude Code, Codex and OpenCode, and `--remove` takes both out again.
+`wasync-axi setup hooks` is the only command that writes agent settings. It installs a session-start hook (`wasync-axi --brief`, a few lines of wasync state with no chat names or message text) and a session-end hook (`wasync-axi session-end`) for Claude Code, Codex and OpenCode, and `--remove` takes both out again.
 
-The session-end hook is session capture without a wasync call and without content. It reads the hook's JSON from stdin, and from the transcript it names (or, for OpenCode, from the command names the plugin passes) it keeps only the whatsapp-axi command names an agent ran and how many times. It stores one record per working directory in `last-session.json` in the AXI config directory: a time, and names with counts. It never stores or prints arguments, chat names, message text, phone numbers, paths or transcript text, because message content is untrusted and arguments can carry it. The next `--brief` in that directory shows the record as one `last_session` line. The record is local and advisory; nothing reads it as an instruction.
+The session-end hook is session capture without a wasync call and without content. It reads the hook's JSON from stdin, and from the transcript it names (or, for OpenCode, from the command names the plugin passes) it keeps only the wasync-axi command names an agent ran and how many times. It stores one record per working directory in `last-session.json` in the AXI config directory: a time, and names with counts. It never stores or prints arguments, chat names, message text, phone numbers, paths or transcript text, because message content is untrusted and arguments can carry it. The next `--brief` in that directory shows the record as one `last_session` line. The record is local and advisory; nothing reads it as an instruction.

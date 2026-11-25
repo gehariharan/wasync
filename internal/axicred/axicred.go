@@ -1,6 +1,6 @@
-// Package axicred saves an agent credential where whatsapp-axi looks for it.
+// Package axicred saves an agent credential where wasync-axi looks for it.
 // It mirrors the path rules in axi/internal/config (the two modules cannot
-// import each other); the tests run whatsapp-axi to check it reads what Save
+// import each other); the tests run wasync-axi to check it reads what Save
 // writes.
 package axicred
 
@@ -14,21 +14,27 @@ import (
 )
 
 const (
-	// EnvConfigDir overrides the whatsapp-axi config directory.
-	EnvConfigDir = "WHATSAPP_AXI_CONFIG_DIR"
-	// EnvToken is read by whatsapp-axi before the credential file.
-	EnvToken = "WHATSAPP_AXI_TOKEN"
+	// EnvConfigDir overrides the wasync-axi config directory.
+	EnvConfigDir = "WASYNC_AXI_CONFIG_DIR"
+	// EnvToken is read by wasync-axi before the credential file.
+	EnvToken = "WASYNC_AXI_TOKEN"
 	// DirName is the folder inside the user config directory.
-	DirName = "whatsapp-axi"
+	DirName = "wasync-axi"
 	// FileName is the credential file inside that folder.
 	FileName = "credential"
+	// Names from before the rename to wasync-axi, still read by it.
+	LegacyEnvConfigDir = "WHATSAPP_AXI_CONFIG_DIR"
+	LegacyEnvToken     = "WHATSAPP_AXI_TOKEN"
 )
 
-// Path returns where whatsapp-axi reads its credential file: under
-// WHATSAPP_AXI_CONFIG_DIR, else the OS user config directory (macOS
-// Application Support, Linux XDG config, Windows AppData).
+// Path returns where wasync-axi reads its credential file: under
+// WASYNC_AXI_CONFIG_DIR (or its legacy name), else the OS user config
+// directory (macOS Application Support, Linux XDG config, Windows AppData).
 func Path(getenv func(string) string) (string, error) {
 	dir := strings.TrimSpace(getenv(EnvConfigDir))
+	if dir == "" {
+		dir = strings.TrimSpace(getenv(LegacyEnvConfigDir))
+	}
 	if dir == "" {
 		base, err := os.UserConfigDir()
 		if err != nil {
@@ -93,4 +99,15 @@ func Save(path, credential string) error {
 	}
 	done = true
 	return nil
+}
+
+// TokenEnv returns the agent token variable set in this environment, which
+// wasync-axi reads before the saved file, or "" when neither name is set.
+func TokenEnv(getenv func(string) string) string {
+	for _, name := range []string{EnvToken, LegacyEnvToken} {
+		if getenv(name) != "" {
+			return name
+		}
+	}
+	return ""
 }

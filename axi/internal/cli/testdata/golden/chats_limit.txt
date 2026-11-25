@@ -8,5 +8,5 @@ chats[2]{id,kind,messages,untrusted_name}:
   family@g.us,group,4,"Family red"
   team-a@g.us,group,2,"Team A"
 help[2]:
-  Showing 2 of 4 chats; run `whatsapp-axi chats --limit 0` for all, or `whatsapp-axi chats --match <name>` to narrow
-  Run `whatsapp-axi messages <id>` to read a chat, `whatsapp-axi search <text>` to search
+  Showing 2 of 4 chats; run `wasync-axi chats --limit 0` for all, or `wasync-axi chats --match <name>` to narrow
+  Run `wasync-axi messages <id>` to read a chat, `wasync-axi search <text>` to search

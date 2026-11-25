@@ -538,7 +538,7 @@ func TestOnDemandClientStartsWithNoChatsAndGainsOnlyApprovedAccess(t *testing.T)
 	for _, scope := range []string{ScopeReadMessages, ScopeSend} {
 		err = a.Authorize(client, scope, chatA)
 		var e *Error
-		if !errors.As(err, &e) || e.Status != 403 || !strings.Contains(e.Help, "whatsapp-axi access request --chat "+chatA) {
+		if !errors.As(err, &e) || e.Status != 403 || !strings.Contains(e.Help, "wasync-axi access request --chat "+chatA) {
 			t.Fatalf("%s: %v", scope, err)
 		}
 	}

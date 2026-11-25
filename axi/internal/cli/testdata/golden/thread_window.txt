@@ -5,4 +5,4 @@ thread[2]{role,ref,sender,untrusted_text}:
   anchor,m1_bWVAbGlkAGZhbWlseUBnLnVzAGYy,me,"me, dinner at 8"
   after,m1_bWVAbGlkAGZhbWlseUBnLnVzAGYz,alice@lid,""
 help[1]:
-  For a wider window run `whatsapp-axi thread m1_bWVAbGlkAGZhbWlseUBnLnVzAGYy --before 10 --after 10`
+  For a wider window run `wasync-axi thread m1_bWVAbGlkAGZhbWlseUBnLnVzAGYy --before 10 --after 10`

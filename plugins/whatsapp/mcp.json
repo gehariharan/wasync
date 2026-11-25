@@ -3,7 +3,7 @@
   "mcpServers": {
     "whatsapp": {
       "type": "stdio",
-      "command": "whatsapp-axi",
+      "command": "wasync-axi",
       "args": ["mcp"]
     }
   }

@@ -10,4 +10,4 @@ message:
   deleted_at: "2026-10-01T08:11:00Z"
   untrusted_text: ""
 help[1]:
-  Run `whatsapp-axi thread m1_bWVAbGlkAGZhbWlseUBnLnVzAGYz` for the messages around it
+  Run `wasync-axi thread m1_bWVAbGlkAGZhbWlseUBnLnVzAGYz` for the messages around it

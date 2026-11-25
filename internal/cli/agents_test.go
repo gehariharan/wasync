@@ -14,7 +14,7 @@ import (
 )
 
 // agentsApp returns an App whose input is served one byte at a time (so each
-// prompt consumes only its own line) and whose whatsapp-axi config directory
+// prompt consumes only its own line) and whose wasync-axi config directory
 // is an empty temporary one, so a grant never saves into the real one.
 func agentsApp(t *testing.T, in string, interactive bool) (*App, *bytes.Buffer, *bytes.Buffer) {
 	t.Helper()
@@ -22,7 +22,7 @@ func agentsApp(t *testing.T, in string, interactive bool) (*App, *bytes.Buffer, 
 	var out, errs bytes.Buffer
 	return &App{In: iotest.OneByteReader(strings.NewReader(in)), Out: &out, Err: &errs, Interactive: interactive,
 		Getenv: func(k string) string {
-			if k == "WHATSAPP_AXI_CONFIG_DIR" {
+			if k == "WASYNC_AXI_CONFIG_DIR" {
 				return axiDir
 			}
 			return ""

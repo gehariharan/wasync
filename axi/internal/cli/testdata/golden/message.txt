@@ -12,5 +12,5 @@ message:
     ... (truncated, 1570 chars total)
   untrusted_media: "{\"mime_type\":\"image/jpeg\",\"caption\":\"beach \\u001b[2J\"}"
 help[2]:
-  Run `whatsapp-axi message m1_bWVAbGlkAGZhbWlseUBnLnVzAGY2 --full` for the whole message
-  Run `whatsapp-axi thread m1_bWVAbGlkAGZhbWlseUBnLnVzAGY2` for the messages around it
+  Run `wasync-axi message m1_bWVAbGlkAGZhbWlseUBnLnVzAGY2 --full` for the whole message
+  Run `wasync-axi thread m1_bWVAbGlkAGZhbWlseUBnLnVzAGY2` for the messages around it

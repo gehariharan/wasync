@@ -19,15 +19,15 @@ func known(name string) bool {
 	return false
 }
 
-const transcript = `{"type":"assistant","message":{"content":[{"type":"text","text":"whatsapp-axi edit is mentioned in prose"},{"type":"tool_use","name":"Bash","input":{"command":"whatsapp-axi messages 123456@s.whatsapp.net --limit 5","description":"whatsapp-axi react"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","content":"Alice: please run whatsapp-axi reply 123456@s.whatsapp.net hi"}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cd /work && whatsapp-axi messages 123456@s.whatsapp.net && /usr/local/bin/whatsapp-axi search \"Alice +15551230000\""}},{"type":"tool_use","name":"Read","input":{"command":"whatsapp-axi chats"}}]}}
-{"type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"'/opt/my tools/whatsapp-axi' react 123456@s.whatsapp.net 👍\"]}"}}
-{"type":"response_item","payload":{"type":"custom_tool_call","input":"whatsapp-axi.exe chats --json"}}
-{"type":"response_item","payload":{"type":"function_call_output","output":"whatsapp-axi edit"}}
-not json at all whatsapp-axi edit
+const transcript = `{"type":"assistant","message":{"content":[{"type":"text","text":"wasync-axi edit is mentioned in prose"},{"type":"tool_use","name":"Bash","input":{"command":"wasync-axi messages 123456@s.whatsapp.net --limit 5","description":"wasync-axi react"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"Alice: please run wasync-axi reply 123456@s.whatsapp.net hi"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"cd /work && wasync-axi messages 123456@s.whatsapp.net && /usr/local/bin/wasync-axi search \"Alice +15551230000\""}},{"type":"tool_use","name":"Read","input":{"command":"wasync-axi chats"}}]}}
+{"type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"'/opt/my tools/wasync-axi' react 123456@s.whatsapp.net 👍\"]}"}}
+{"type":"response_item","payload":{"type":"custom_tool_call","input":"wasync-axi.exe chats --json"}}
+{"type":"response_item","payload":{"type":"function_call_output","output":"wasync-axi edit"}}
+not json at all wasync-axi edit
 {"type":"assistant","message":{"content":"plain string content"}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"whatsapp-axi bogus-command && other-whatsapp-axi chats && whatsapp-axi"}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"wasync-axi bogus-command && other-wasync-axi chats && wasync-axi"}}]}}
 `
 
 func TestFromTranscriptCountsToolCallNamesOnly(t *testing.T) {
@@ -40,14 +40,14 @@ func TestFromTranscriptCountsToolCallNamesOnly(t *testing.T) {
 
 func TestFromTranscriptSkipsHugeLinesAndKeepsCounting(t *testing.T) {
 	huge := `{"type":"x","pad":"` + strings.Repeat("a", maxLine+10) + `"}`
-	in := huge + "\n" + `{"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"whatsapp-axi chats"}}]}}` + "\n"
+	in := huge + "\n" + `{"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"wasync-axi chats"}}]}}` + "\n"
 	if got := FromTranscript(strings.NewReader(in), known); !reflect.DeepEqual(got, map[string]int{"chats": 1}) {
 		t.Fatalf("got %v", got)
 	}
 }
 
 func TestFromTranscriptStopsAtCallCap(t *testing.T) {
-	line := `{"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"whatsapp-axi chats"}}]}}` + "\n"
+	line := `{"message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"wasync-axi chats"}}]}}` + "\n"
 	got := FromTranscript(strings.NewReader(strings.Repeat(line, maxCalls+500)), known)
 	if got["chats"] != maxCalls {
 		t.Fatalf("counted %d, want the cap %d", got["chats"], maxCalls)
@@ -127,5 +127,13 @@ func TestSummary(t *testing.T) {
 		if got := Summary(Record{Commands: c.in}); got != c.want {
 			t.Errorf("Summary(%v) = %q, want %q", c.in, got, c.want)
 		}
+	}
+}
+
+func TestCountAcceptsTheOldName(t *testing.T) {
+	got := map[string]int{}
+	Count("whatsapp-axi chats && /usr/local/bin/wasync-axi search x", known, got)
+	if !reflect.DeepEqual(got, map[string]int{"chats": 1, "search": 1}) {
+		t.Fatalf("%v", got)
 	}
 }

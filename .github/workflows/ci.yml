@@ -28,10 +28,10 @@ jobs:
         run: |
           # Stamp both tools with one version, as a release does.
           go build -tags sqlite_fts5 -ldflags "-X github.com/gehariharan/wasync/internal/buildinfo.Version=0.0.0-ci" -o "$RUNNER_TEMP/wasync" ./cmd/wasync
-          (cd axi && CGO_ENABLED=0 go build -ldflags "-X github.com/gehariharan/wasync/axi/internal/buildinfo.Version=0.0.0-ci" -o "$RUNNER_TEMP/whatsapp-axi" ./cmd/whatsapp-axi)
-          python3 scripts/smoke-pair.py "$RUNNER_TEMP/wasync" "$RUNNER_TEMP/whatsapp-axi"
+          (cd axi && CGO_ENABLED=0 go build -ldflags "-X github.com/gehariharan/wasync/axi/internal/buildinfo.Version=0.0.0-ci" -o "$RUNNER_TEMP/wasync-axi" ./cmd/wasync-axi)
+          python3 scripts/smoke-pair.py "$RUNNER_TEMP/wasync" "$RUNNER_TEMP/wasync-axi"
       - name: Exercise the offline terminal UI in a real terminal, as the release check does
-        run: python3 scripts/smoke-installed.py "$RUNNER_TEMP/wasync" 0.0.0-ci "$(go env GOARCH)" "$RUNNER_TEMP/whatsapp-axi"
+        run: python3 scripts/smoke-installed.py "$RUNNER_TEMP/wasync" 0.0.0-ci "$(go env GOARCH)" "$RUNNER_TEMP/wasync-axi"
       - name: Check the Linux install script and its prompts
         if: runner.os == 'Linux'
         run: bash scripts/test-install-linux.sh

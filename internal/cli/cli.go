@@ -62,7 +62,7 @@ type App struct {
 	// continues into, for tests.
 	OpenTUI action
 	// Getenv replaces os.Getenv where a command reads the environment the
-	// user's agents will see (the whatsapp-axi credential location), for tests.
+	// user's agents will see (the wasync-axi credential location), for tests.
 	Getenv func(string) string
 	// Human makes approvals wait for the operating system's own confirmation
 	// (Touch ID or password, Windows Hello). Nil, or a gate with no prompt on

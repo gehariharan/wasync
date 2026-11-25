@@ -7,7 +7,7 @@ import (
 )
 
 // Sanitize removes terminal control sequences from text that did not come
-// from whatsapp-axi (WhatsApp messages, names, wasync strings): ANSI/VT
+// from wasync-axi (WhatsApp messages, names, wasync strings): ANSI/VT
 // escape sequences (CSI, OSC, DCS, ...), C0 controls other than newline and
 // tab, DEL, C1 controls and bidirectional override/isolate characters.
 // Invalid UTF-8 becomes U+FFFD.

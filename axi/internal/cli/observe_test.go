@@ -24,7 +24,7 @@ func obsOnline(t *testing.T, j *testutil.Journal) (*harness, *testutil.JournalAP
 	srv := testutil.NewJournalAPI(t, j)
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
-	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_observer"
+	h.env["WASYNC_AXI_TOKEN"] = "wsa_observer"
 	return h, srv
 }
 
@@ -34,7 +34,7 @@ func obsOffline(t *testing.T, j *testutil.Journal) (*harness, string) {
 	h := newHarness(t)
 	bin, log := testutil.FakeJournalWasync(t, j)
 	h.env["WASYNC_BIN"] = bin
-	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_observer"
+	h.env["WASYNC_AXI_TOKEN"] = "wsa_observer"
 	return h, log
 }
 
@@ -62,7 +62,7 @@ func obsStart(h *harness, ctx context.Context, out *obsBuffer, args ...string) <
 	go func() {
 		a := New(out)
 		a.Getenv = func(k string) string { return h.env[k] }
-		a.Executable = func() (string, error) { return filepath.Join(home, "bin", "whatsapp-axi"), nil }
+		a.Executable = func() (string, error) { return filepath.Join(home, "bin", "wasync-axi"), nil }
 		a.HomeDir = func() (string, error) { return home, nil }
 		a.ProbeTimeout = 2 * time.Second
 		done <- a.Run(ctx, args)
@@ -210,7 +210,7 @@ func TestObservePagesByCursor(t *testing.T) {
 		t.Fatal(out)
 	}
 	mustContain(t, out, "transport: api", "start: oldest", "changes[2]{sequence,op,chat_id,message_id,ref,committed_at}:",
-		"  \"1\",message.created,one@g.us,\"0\",m1_", `has_more: "true"`, "More changes are waiting: run `whatsapp-axi observe --after c1_",
+		"  \"1\",message.created,one@g.us,\"0\",m1_", `has_more: "true"`, "More changes are waiting: run `wasync-axi observe --after c1_",
 		"Changes carry no message content")
 	var seqs []int
 	after := ""
@@ -275,7 +275,7 @@ func TestObserveResumesFromCheckpointAfterRestart(t *testing.T) {
 	}
 	out, _ := h.run(t, "observe", "--consumer", "replica")
 	mustContain(t, out, "consumer: replica", "checkpoint: "+j.Cursor(3), "start: checkpoint",
-		"After processing, save progress with `whatsapp-axi observe ack "+j.Cursor(5)+" --consumer replica`")
+		"After processing, save progress with `wasync-axi observe ack "+j.Cursor(5)+" --consumer replica`")
 
 	out, code := h.run(t, "observe", "ack", r.NextCursor, "--consumer", "replica")
 	if code != ExitOK {
@@ -304,7 +304,7 @@ func TestObserveAckRefusesBackwards(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "error: checkpoint cannot move backwards", "code: invalid_argument", "help: checkpoints only move forward; run `whatsapp-axi observe --consumer replica`")
+	mustContain(t, out, "error: checkpoint cannot move backwards", "code: invalid_argument", "help: checkpoints only move forward; run `wasync-axi observe --consumer replica`")
 	if obsCheckpoint(srv, "replica") != 4 {
 		t.Fatal("checkpoint moved backwards")
 	}
@@ -340,7 +340,7 @@ func TestObserveCursorExpired(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "code: cursor_expired", "help: Resnapshot: re-read the chats and messages you replicate, then run `whatsapp-axi observe --consumer replica --from-oldest`")
+	mustContain(t, out, "code: cursor_expired", "help: Resnapshot: re-read the chats and messages you replicate, then run `wasync-axi observe --consumer replica --from-oldest`")
 	out, _ = h.run(t, "observe", "--after", j.Cursor(2), "--json")
 	var e map[string]string
 	if json.Unmarshal([]byte(out), &e) != nil || e["error_code"] != "cursor_expired" || !strings.Contains(e["help"], "without --after") || e["transport"] != "api" {
@@ -395,7 +395,7 @@ func TestObserveOfflineReadsWithoutCommitting(t *testing.T) {
 		if code != ExitError {
 			t.Fatalf("%v: exit %d\n%s", args, code, out)
 		}
-		mustContain(t, out, "error: committing a checkpoint needs the running wasync API; offline reads never commit", "code: owner_offline", "whatsapp-axi never starts it")
+		mustContain(t, out, "error: committing a checkpoint needs the running wasync API; offline reads never commit", "code: owner_offline", "wasync-axi never starts it")
 	}
 	// Refused before reading anything: only version probes ran.
 	for _, c := range testutil.ReadJournalCalls(t, log)[len(calls):] {
@@ -514,7 +514,7 @@ func TestObserveFollowTextStopsCleanlyWithoutCommitting(t *testing.T) {
 	text := out.String()
 	mustContain(t, text, "transport: api", "start: checkpoint", "follow: polling every 10ms until interrupted",
 		"changes[1]{", `  "2",message.created`, "stopped: interrupted", "next_cursor: "+j.Cursor(2),
-		"Ack processed changes with `whatsapp-axi observe ack CURSOR --consumer replica`")
+		"Ack processed changes with `wasync-axi observe ack CURSOR --consumer replica`")
 	if obsPuts(srv) != 0 || obsCheckpoint(srv, "replica") != 1 {
 		t.Fatal("--follow without --commit committed")
 	}
@@ -576,7 +576,7 @@ func TestObserveNeedsFeaturesAndCredential(t *testing.T) {
 	srv.Version = v
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
-	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_x"
+	h.env["WASYNC_AXI_TOKEN"] = "wsa_x"
 	out, code := h.run(t, "observe")
 	if code != ExitError {
 		t.Fatal(out)
@@ -584,7 +584,7 @@ func TestObserveNeedsFeaturesAndCredential(t *testing.T) {
 	mustContain(t, out, "code: wasync_too_old", "changes,checkpoints", installhint.UpgradeCore())
 
 	h2, srv2 := obsOnline(t, testutil.NewJournal(1))
-	delete(h2.env, "WHATSAPP_AXI_TOKEN")
+	delete(h2.env, "WASYNC_AXI_TOKEN")
 	out, code = h2.run(t, "observe")
 	if code != ExitError {
 		t.Fatal(out)

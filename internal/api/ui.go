@@ -182,9 +182,9 @@ var notices = map[string]struct {
 	"unpaired":  {"Link WhatsApp first (step 1).", false},
 	"newcode":   {"Asking WhatsApp for a new code…", true},
 	"exists":    {"An agent with that name already exists. Choose another name, or revoke it first.", false},
-	"replace":   {"whatsapp-axi already has a different saved credential. Tick the box to replace it, or choose another place.", false},
+	"replace":   {"wasync-axi already has a different saved credential. Tick the box to replace it, or choose another place.", false},
 	"badname":   {"The name must be 1 to 32 characters: a to z, 0 to 9 and dashes.", false},
-	"connected": {"Connected. The credential was saved where whatsapp-axi reads it and is not shown anywhere.", true},
+	"connected": {"Connected. The credential was saved where wasync-axi reads it and is not shown anywhere.", true},
 	"loginon":   {"wasync will start by itself the next time you log in.", true},
 	"loginoff":  {"wasync will no longer start by itself when you log in.", true},
 }

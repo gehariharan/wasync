@@ -37,10 +37,10 @@ type harness struct {
 
 func newHarness(t *testing.T) *harness {
 	return &harness{homeDir: home, env: map[string]string{
-		"WASYNC_API_ADDR":         testutil.ClosedAddr(t),
-		"WASYNC_BIN":              filepath.Join(t.TempDir(), "no-wasync"),
-		"WHATSAPP_AXI_CONFIG_DIR": t.TempDir(),
-		"WHATSAPP_AXI_AGENT_HOME": t.TempDir(),
+		"WASYNC_API_ADDR":       testutil.ClosedAddr(t),
+		"WASYNC_BIN":            filepath.Join(t.TempDir(), "no-wasync"),
+		"WASYNC_AXI_CONFIG_DIR": t.TempDir(),
+		"WASYNC_AXI_AGENT_HOME": t.TempDir(),
 	}}
 }
 
@@ -49,7 +49,7 @@ func (h *harness) run(t *testing.T, args ...string) (string, int) {
 	var out bytes.Buffer
 	a := New(&out)
 	a.Getenv = func(k string) string { return h.env[k] }
-	a.Executable = func() (string, error) { return filepath.Join(home, "bin", "whatsapp-axi"), nil }
+	a.Executable = func() (string, error) { return filepath.Join(home, "bin", "wasync-axi"), nil }
 	a.HomeDir = func() (string, error) { return h.homeDir, nil }
 	a.LookPath = func(string) (string, error) { return "", os.ErrNotExist }
 	a.Stdin = h.stdin
@@ -94,10 +94,10 @@ func TestUsageErrorsExit2(t *testing.T) {
 		want []string
 	}{
 		{[]string{"version", "--bogus"}, []string{"error: unknown flag --bogus for `version`", "help: valid flags for `version`: --json (--help always allowed)"}},
-		{[]string{"--limit=5"}, []string{"error: unknown flag --limit for `whatsapp-axi`", "valid flags for `whatsapp-axi`: --brief, --fields, --json"}},
+		{[]string{"--limit=5"}, []string{"error: unknown flag --limit for `wasync-axi`", "valid flags for `wasync-axi`: --brief, --fields, --json"}},
 		{[]string{"help", "-x"}, []string{"unknown flag -x for `help`"}},
 		{[]string{"chat"}, []string{`error: unknown command "chat"`, "valid commands: chats, messages, search, thread, message, send, reply, react, edit, access, version, doctor, help"}},
-		{[]string{"messages"}, []string{"`messages` needs CHAT", "usage: whatsapp-axi messages CHAT"}},
+		{[]string{"messages"}, []string{"`messages` needs CHAT", "usage: wasync-axi messages CHAT"}},
 		{[]string{"search", "--chat"}, []string{"--chat needs a value (--chat CHAT)"}},
 		{[]string{"search", "a", "b"}, []string{`unexpected argument "b" for ` + "`search`"}},
 		{[]string{"messages", "x", "--limit", "ten"}, []string{`--limit must be a whole number >= 0, got "ten"`}},
@@ -147,7 +147,7 @@ func TestHelpCatalogListsOnlyImplementedCommands(t *testing.T) {
 			t.Errorf("%s advertises unimplemented work", c.Name)
 		}
 	}
-	if !reflect.DeepEqual(names, []string{"whatsapp-axi", "chats", "messages", "search", "thread", "message", "send", "reply", "react", "edit", "access", "version", "doctor", "help", "observe", "mcp", "setup", "session-end"}) {
+	if !reflect.DeepEqual(names, []string{"wasync-axi", "chats", "messages", "search", "thread", "message", "send", "reply", "react", "edit", "access", "version", "doctor", "help", "observe", "mcp", "setup", "session-end"}) {
 		t.Fatalf("catalog %v", names)
 	}
 	text, _ := h.run(t, "help")
@@ -172,7 +172,7 @@ func TestHomeWithoutWasync(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	mustContain(t, out,
-		"bin: "+output.Quote(filepath.Join("~", "bin", "whatsapp-axi")),
+		"bin: "+output.Quote(filepath.Join("~", "bin", "wasync-axi")),
 		"description: ",
 		"state: not_installed",
 		"transport: none",
@@ -189,12 +189,12 @@ func TestHomeOnline(t *testing.T) {
 	srv := testutil.NewAPI(t)
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
-	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_test"
+	h.env["WASYNC_AXI_TOKEN"] = "wsa_test"
 	out, code := h.run(t)
 	if code != ExitOK {
 		t.Fatal(out)
 	}
-	mustContain(t, out, "state: online", "transport: api", "version: 0.2.0-test", `api_version: "1.0"`, "credential: env WHATSAPP_AXI_TOKEN", "status: ok")
+	mustContain(t, out, "state: online", "transport: api", "version: 0.2.0-test", `api_version: "1.0"`, "credential: env WASYNC_AXI_TOKEN", "status: ok")
 	if strings.Contains(out, "agents grant") || strings.Contains(out, "features[") {
 		t.Fatalf("unexpected content:\n%s", out)
 	}
@@ -210,7 +210,7 @@ func TestHomeOnlineWithoutCredentialHintsGrant(t *testing.T) {
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
 	out, _ := h.run(t)
-	mustContain(t, out, "credential: missing", "wasync agents grant <name> --scope read.chats,read.messages", "wasync offers to save the credential where whatsapp-axi reads it", "WHATSAPP_AXI_TOKEN")
+	mustContain(t, out, "credential: missing", "wasync agents grant <name> --scope read.chats,read.messages", "wasync offers to save the credential where wasync-axi reads it", "WASYNC_AXI_TOKEN")
 	if strings.Contains(out, "mode 600") {
 		t.Fatalf("home hint still asks for a manual credential save:\n%s", out)
 	}
@@ -225,7 +225,7 @@ func TestHomeOfflineUsesQuery(t *testing.T) {
 	if code != ExitOK {
 		t.Fatal(out)
 	}
-	mustContain(t, out, "state: offline", "transport: query", "version: 0.2.0-test", "status: ok", "not scoped", "whatsapp-axi never starts it")
+	mustContain(t, out, "state: offline", "transport: query", "version: 0.2.0-test", "status: ok", "not scoped", "wasync-axi never starts it")
 	call := testutil.ReadFakeCalls(t, log)[0]
 	if strings.Join(call.Args, " ") != "--data-dir "+filepath.Join(home, "wasync-data")+" query version --v1 --json" {
 		t.Fatalf("args %v", call.Args)
@@ -238,9 +238,9 @@ func TestVersionJSON(t *testing.T) {
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
 	out, code := h.run(t, "version", "--json")
 	var got struct {
-		Version string `json:"whatsapp_axi_version"`
-		Commit  string `json:"whatsapp_axi_commit"`
-		Date    string `json:"whatsapp_axi_date"`
+		Version string `json:"wasync_axi_version"`
+		Commit  string `json:"wasync_axi_commit"`
+		Date    string `json:"wasync_axi_date"`
 		Wasync  struct {
 			State     string                `json:"state"`
 			Transport string                `json:"transport"`
@@ -255,7 +255,7 @@ func TestVersionJSON(t *testing.T) {
 		t.Fatalf("%+v", got)
 	}
 	text, _ := h.run(t, "version")
-	mustContain(t, text, "whatsapp-axi: "+buildinfo.Version, "commit: "+buildinfo.Commit, "date: "+buildinfo.Date, `min_api: "1.0"`, "features[18]: chats,chats.match,messages", "archive_schema: \"6\"")
+	mustContain(t, text, "wasync-axi: "+buildinfo.Version, "commit: "+buildinfo.Commit, "date: "+buildinfo.Date, `min_api: "1.0"`, "features[18]: chats,chats.match,messages", "archive_schema: \"6\"")
 }
 
 func TestIncompatibleWasync(t *testing.T) {
@@ -269,7 +269,7 @@ func TestIncompatibleWasync(t *testing.T) {
 	if code != ExitOK {
 		t.Fatal(out)
 	}
-	mustContain(t, out, "state: incompatible", "status: whatsapp_axi_too_old")
+	mustContain(t, out, "state: incompatible", "status: wasync_axi_too_old")
 
 	bin, _ := testutil.FakeWasync(t, testutil.ModeOld)
 	h = newHarness(t)
@@ -322,7 +322,7 @@ func TestBadCredentialIsReported(t *testing.T) {
 	srv := testutil.NewAPI(t)
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
-	h.env["WHATSAPP_AXI_TOKEN"] = "0123456789abcdef" // looks like wasync's api.token
+	h.env["WASYNC_AXI_TOKEN"] = "0123456789abcdef" // looks like wasync's api.token
 	out, _ := h.run(t)
 	mustContain(t, out, "credential: invalid", "Credential problem:")
 	if strings.Contains(out, "0123456789abcdef") {

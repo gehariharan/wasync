@@ -17,20 +17,20 @@ import (
 
 // `session-end` is the session-end capture of AXI principle 7. The hook that
 // `setup hooks` installs runs it when an agent session ends. It records which
-// whatsapp-axi commands the session ran and how often (names and counts,
+// wasync-axi commands the session ran and how often (names and counts,
 // never arguments, chat names or message text), so the next session's
 // `--brief` can show it. It never talks to wasync.
 
 const sessionEndName = "session-end"
 
-const sessionEndUsage = "whatsapp-axi session-end [--json]"
+const sessionEndUsage = "wasync-axi session-end [--json]"
 
 var sessionEndCommand = &command{
 	name:        sessionEndName,
 	usage:       sessionEndUsage,
-	description: "Run by the session-end hook (see `setup hooks`): records the names and counts of whatsapp-axi commands the ended session ran, never arguments or chat content; reads the hook's JSON from stdin",
+	description: "Run by the session-end hook (see `setup hooks`): records the names and counts of wasync-axi commands the ended session ran, never arguments or chat content; reads the hook's JSON from stdin",
 	flags:       []flagSpec{jsonFlag},
-	examples:    []string{"echo '{\"cwd\":\"/work/project\",\"transcript_path\":\"/path/transcript.jsonl\"}' | whatsapp-axi session-end"},
+	examples:    []string{"echo '{\"cwd\":\"/work/project\",\"transcript_path\":\"/path/transcript.jsonl\"}' | wasync-axi session-end"},
 	run:         (*App).runSessionEnd,
 }
 
@@ -96,7 +96,7 @@ func (a *App) runSessionEnd(_ context.Context, inv invocation) error {
 	recorded := len(counts) > 0 && dir != "" && path != ""
 	if recorded {
 		if err := sessionlog.Save(path, dir, sessionlog.Record{At: time.Now().UTC().Truncate(time.Second), Commands: counts}); err != nil {
-			return contract.Errorf(agentsetup.CodeWriteFailed, "check that the whatsapp-axi config directory is writable", "cannot record the session: %v", err)
+			return contract.Errorf(agentsetup.CodeWriteFailed, "check that the wasync-axi config directory is writable", "cannot record the session: %v", err)
 		}
 	}
 	if inv.json {
@@ -106,7 +106,7 @@ func (a *App) runSessionEnd(_ context.Context, inv invocation) error {
 	if recorded {
 		o.Field(0, "session", "recorded "+sessionlog.Summary(sessionlog.Record{Commands: counts}))
 	} else {
-		o.Field(0, "session", "no whatsapp-axi commands to record")
+		o.Field(0, "session", "no wasync-axi commands to record")
 	}
 	return o.Err()
 }

@@ -13,22 +13,24 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/contract"
 )
 
-// The managed session-start hook runs `whatsapp-axi --brief`, the compact
-// home view, and the managed session-end hook runs `whatsapp-axi
+// The managed session-start hook runs `wasync-axi --brief`, the compact
+// home view, and the managed session-end hook runs `wasync-axi
 // session-end`, which records command names and counts; both have a timeout.
-// A hook entry is whatsapp-axi's when its command runs a binary named
-// whatsapp-axi with HookFlag (start) or EndWord (end), wherever that binary
-// lives, so setup can repair the path after a reinstall.
+// A hook entry is wasync-axi's when its command runs a binary named
+// wasync-axi (or its old name, LegacyName) with HookFlag (start) or EndWord
+// (end), wherever that binary lives, so setup can repair the path after a
+// reinstall and moves old-name hooks to the new name.
 const (
-	BinaryName  = "whatsapp-axi"
+	BinaryName  = "wasync-axi"
+	LegacyName  = "whatsapp-axi"
 	HookFlag    = "--brief"
 	EndWord     = "session-end"
 	HookTimeout = 10 // seconds
-	SkillName   = "whatsapp-axi"
+	SkillName   = "wasync-axi"
 )
 
 // hookKind is one managed hook event: its key in the agent's settings and
-// the argument that marks a command as whatsapp-axi's.
+// the argument that marks a command as wasync-axi's.
 type hookKind struct{ event, arg string }
 
 var (
@@ -50,7 +52,7 @@ type Agent struct {
 var Agents = []Agent{
 	{Name: "claude", Label: "Claude Code", Dir: ".claude", HookFile: "settings.json"},
 	{Name: "codex", Label: "Codex", Dir: ".codex", HookFile: "hooks.json"},
-	{Name: "opencode", Label: "OpenCode", Dir: ".config/opencode", HookFile: "plugins/whatsapp-axi.js"},
+	{Name: "opencode", Label: "OpenCode", Dir: ".config/opencode", HookFile: "plugins/wasync-axi.js"},
 }
 
 // AgentsAt distinguishes OpenCode's global config from project-local config.
@@ -157,7 +159,7 @@ func (c Change) Apply() error {
 }
 
 // HookCommand is the managed hook's command line. onPath means the
-// whatsapp-axi found on PATH is exe itself, so the portable bare name is
+// wasync-axi found on PATH is exe itself, so the portable bare name is
 // used; otherwise the absolute path is quoted for the agent's shell.
 func HookCommand(exe string, onPath bool, goos string) string {
 	return hookCommandFor(startKind, exe, onPath, goos)
@@ -193,9 +195,9 @@ func shellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// IsManagedCommand reports whether a hook command runs whatsapp-axi's
-// session-start view: its program is named whatsapp-axi (any directory,
-// optional .exe) and its arguments include HookFlag. The session-end hook is
+// IsManagedCommand reports whether a hook command runs wasync-axi's
+// session-start view: its program is named wasync-axi or whatsapp-axi (any
+// directory, optional .exe) and its arguments include HookFlag. The session-end hook is
 // recognized the same way by EndWord.
 func IsManagedCommand(cmd string) bool { return isManagedCommand(startKind, cmd) }
 
@@ -208,7 +210,7 @@ func isManagedCommand(kind hookKind, cmd string) bool {
 	if strings.EqualFold(filepath.Ext(base), ".exe") {
 		base = base[:len(base)-4]
 	}
-	if base != BinaryName {
+	if base != BinaryName && base != LegacyName {
 		return false
 	}
 	for _, f := range strings.Fields(rest) {
@@ -386,7 +388,7 @@ func installHook(path string, src []byte, command string, kind hookKind) ([]byte
 			return e.replace(t.managed[0].entry, desiredEntry(command))
 		}
 	}
-	return nil, shapeErr(path, "it holds too many whatsapp-axi hooks")
+	return nil, shapeErr(path, "it holds too many wasync-axi hooks")
 }
 
 // uninstallHook returns src without any managed hook.
@@ -401,7 +403,7 @@ func uninstallHook(path string, src []byte, kind hookKind) ([]byte, error) {
 		}
 		src = removeHook(src, t, t.managed[0], kind)
 	}
-	return nil, shapeErr(path, "it holds too many whatsapp-axi hooks")
+	return nil, shapeErr(path, "it holds too many wasync-axi hooks")
 }
 
 // PlanHook plans installing (or, with remove, removing) the managed
@@ -519,12 +521,12 @@ func invalidJSON(path string, src []byte) error {
 		where = " (line " + strconv.Itoa(line) + ", column " + strconv.Itoa(col) + ": " + se.Error() + ")"
 	}
 	return &contract.Error{Code: CodeConfigInvalid, Message: path + " is not valid JSON" + where,
-		Help: "fix the JSON by hand (comments and trailing commas are not allowed) or move the file away, then rerun; whatsapp-axi never rewrites a file it cannot parse"}
+		Help: "fix the JSON by hand (comments and trailing commas are not allowed) or move the file away, then rerun; wasync-axi never rewrites a file it cannot parse"}
 }
 
 func shapeErr(path, why string) error {
 	return &contract.Error{Code: CodeConfigInvalid, Message: path + " cannot be edited safely: " + why,
-		Help: "fix the file by hand or move it away, then rerun; whatsapp-axi never rewrites settings it does not understand"}
+		Help: "fix the file by hand or move it away, then rerun; wasync-axi never rewrites settings it does not understand"}
 }
 
 func lineCol(src []byte, offset int) (int, int) {

@@ -1,4 +1,4 @@
-// Package config resolves whatsapp-axi's own settings: where wasync is,
+// Package config resolves wasync-axi's own settings: where wasync is,
 // which loopback address its API listens on, and the agent credential. It
 // never reads wasync's data directory or its tokens.
 package config
@@ -15,17 +15,44 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/contract"
 )
 
-// Environment variables read by whatsapp-axi.
+// Environment variables read by wasync-axi.
 const (
-	EnvToken     = "WHATSAPP_AXI_TOKEN"
-	EnvConfigDir = "WHATSAPP_AXI_CONFIG_DIR"
+	EnvToken     = "WASYNC_AXI_TOKEN"
+	EnvConfigDir = "WASYNC_AXI_CONFIG_DIR"
 	EnvAPIAddr   = "WASYNC_API_ADDR"
 	EnvBin       = "WASYNC_BIN"
 	EnvDataDir   = "WASYNC_DATA_DIR"
 	// EnvAgentHome replaces the home directory as the place where `setup`
 	// and `doctor` find agent settings (.claude, .codex).
-	EnvAgentHome = "WHATSAPP_AXI_AGENT_HOME"
+	EnvAgentHome = "WASYNC_AXI_AGENT_HOME"
 )
+
+// Legacy names from before the rename to wasync-axi. They are still read
+// when the new variable or directory is absent; nothing writes them.
+const (
+	LegacyName         = "whatsapp-axi"
+	LegacyEnvToken     = "WHATSAPP_AXI_TOKEN"
+	LegacyEnvConfigDir = "WHATSAPP_AXI_CONFIG_DIR"
+	LegacyEnvAgentHome = "WHATSAPP_AXI_AGENT_HOME"
+)
+
+// Lookup returns the trimmed value of name, else of legacy, and the
+// variable it came from ("" when neither is set).
+func Lookup(getenv Getenv, name, legacy string) (value, from string) {
+	if v := strings.TrimSpace(getenv(name)); v != "" {
+		return v, name
+	}
+	if v := strings.TrimSpace(getenv(legacy)); v != "" {
+		return v, legacy
+	}
+	return "", ""
+}
+
+// AgentHome returns WASYNC_AXI_AGENT_HOME (or its legacy name), or "".
+func AgentHome(getenv Getenv) string {
+	v, _ := Lookup(getenv, EnvAgentHome, LegacyEnvAgentHome)
+	return v
+}
 
 // DefaultAPIAddr matches wasync's default API address.
 const DefaultAPIAddr = "127.0.0.1:8787"
@@ -37,7 +64,7 @@ const CredentialPrefix = "wsa_"
 const CredentialFile = "credential"
 
 // SaveHelp says where a new credential goes; grant offers to save it.
-const SaveHelp = "; wasync offers to save the credential where whatsapp-axi reads it (or set " + EnvToken + ")"
+const SaveHelp = "; wasync offers to save the credential where wasync-axi reads it (or set " + EnvToken + ")"
 
 // GrantHelp is the human action that produces a credential.
 const GrantHelp = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages`" + SaveHelp
@@ -67,39 +94,50 @@ func Load(getenv Getenv) Settings {
 	return s
 }
 
-// ConfigDir returns WHATSAPP_AXI_CONFIG_DIR or <user config dir>/whatsapp-axi.
+// ConfigDir returns WASYNC_AXI_CONFIG_DIR (or its legacy name) or
+// <user config dir>/wasync-axi.
 func ConfigDir(getenv Getenv) string {
-	if dir := strings.TrimSpace(getenv(EnvConfigDir)); dir != "" {
+	if dir, _ := Lookup(getenv, EnvConfigDir, LegacyEnvConfigDir); dir != "" {
 		return dir
 	}
+	return defaultDir("wasync-axi")
+}
+
+func defaultDir(name string) string {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return ""
 	}
-	return filepath.Join(base, "whatsapp-axi")
+	return filepath.Join(base, name)
 }
 
 // Credential is a loaded agent credential. Secret is never printed.
 type Credential struct {
 	Secret string
 	Source string // "env" or the file path
+	Env    string // the variable it came from when Source is "env"
 }
 
-// LoadCredential reads the agent credential from WHATSAPP_AXI_TOKEN or the
+// LoadCredential reads the agent credential from WASYNC_AXI_TOKEN or the
 // private credential file. It returns (nil, nil) when none is configured,
-// and a *contract.Error when one is configured but unusable.
+// and a *contract.Error when one is configured but unusable. The legacy
+// variable and, for the default directory, the legacy file are read too.
 func LoadCredential(getenv Getenv, configDir string) (*Credential, error) {
-	if v := strings.TrimSpace(getenv(EnvToken)); v != "" {
-		if err := validateSecret(v, EnvToken); err != nil {
+	if v, from := Lookup(getenv, EnvToken, LegacyEnvToken); v != "" {
+		if err := validateSecret(v, from); err != nil {
 			return nil, err
 		}
-		return &Credential{Secret: v, Source: "env"}, nil
+		return &Credential{Secret: v, Source: "env", Env: from}, nil
 	}
 	if configDir == "" {
 		return nil, nil
 	}
 	path := filepath.Join(configDir, CredentialFile)
 	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) && configDir == defaultDir("wasync-axi") {
+		path = filepath.Join(defaultDir(LegacyName), CredentialFile)
+		info, err = os.Lstat(path)
+	}
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil
 	}

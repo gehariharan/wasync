@@ -1,5 +1,7 @@
 /bin/
 /dist/
+/wasync-axi
+/wasync-axi.exe
 /whatsapp-axi
 /whatsapp-axi.exe
 *.test

@@ -201,7 +201,7 @@ func TestAccessRequestGrantsOneChatOnlyAfterHumanApproval(t *testing.T) {
 	code, body := f.do(t, "GET", "/api/v1/chats/"+familyChat+"/messages", f.jit, nil)
 	var denied query.V1Error
 	_ = json.Unmarshal(body, &denied)
-	if code != 403 || !strings.Contains(denied.Help, "whatsapp-axi access request --chat "+familyChat) {
+	if code != 403 || !strings.Contains(denied.Help, "wasync-axi access request --chat "+familyChat) {
 		t.Fatalf("denial %d %s", code, body)
 	}
 	// Asking by name queues a request and tells the agent nothing about the match.

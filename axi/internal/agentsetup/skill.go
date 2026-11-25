@@ -3,6 +3,7 @@ package agentsetup
 import (
 	"bufio"
 	"bytes"
+	"path/filepath"
 	"strings"
 
 	"github.com/gehariharan/wasync/axi/internal/contract"
@@ -27,8 +28,8 @@ func SkillFrontmatterName(data []byte) string {
 	return ""
 }
 
-// PlanSkill plans installing content as agent's whatsapp-axi skill under
-// root, or removing it. A file at that path that is not the whatsapp-axi
+// PlanSkill plans installing content as agent's wasync-axi skill under
+// root, or removing it. A file at that path that is not the wasync-axi
 // skill is never replaced or removed.
 func PlanSkill(agent Agent, root string, content []byte, remove bool) (Change, error) {
 	path := agent.SkillPath(root)
@@ -39,8 +40,8 @@ func PlanSkill(agent Agent, root string, content []byte, remove bool) (Change, e
 	}
 	c.target = f.Target
 	if f.Exists && SkillFrontmatterName(f.Data) != SkillName {
-		return c, &contract.Error{Code: CodeConfigInvalid, Message: path + " exists but is not the whatsapp-axi skill (its frontmatter has no `name: " + SkillName + "`)",
-			Help: "move the file away, then rerun; whatsapp-axi only replaces or removes its own skill"}
+		return c, &contract.Error{Code: CodeConfigInvalid, Message: path + " exists but is not the wasync-axi skill (its frontmatter has no `name: " + SkillName + "`)",
+			Help: "move the file away, then rerun; wasync-axi only replaces or removes its own skill"}
 	}
 	switch {
 	case remove && f.Exists:
@@ -57,12 +58,12 @@ func PlanSkill(agent Agent, root string, content []byte, remove bool) (Change, e
 // SkillStatus is what InspectSkill found.
 type SkillStatus struct {
 	Path      string
-	Installed bool // the whatsapp-axi skill is there
+	Installed bool // the wasync-axi skill is there
 	Current   bool // and matches this build's skill
 	Err       error
 }
 
-// InspectSkill reports agent's whatsapp-axi skill under root.
+// InspectSkill reports agent's wasync-axi skill under root.
 func InspectSkill(agent Agent, root string, content []byte) SkillStatus {
 	s := SkillStatus{Path: agent.SkillPath(root)}
 	f, err := readFile(s.Path)
@@ -74,9 +75,27 @@ func InspectSkill(agent Agent, root string, content []byte) SkillStatus {
 		return s
 	}
 	if SkillFrontmatterName(f.Data) != SkillName {
-		s.Err = &contract.Error{Code: CodeConfigInvalid, Message: s.Path + " is not the whatsapp-axi skill"}
+		s.Err = &contract.Error{Code: CodeConfigInvalid, Message: s.Path + " is not the wasync-axi skill"}
 		return s
 	}
 	s.Installed, s.Current = true, bytes.Equal(f.Data, content)
 	return s
+}
+
+// PlanLegacySkill plans removing agent's skill from before the rename
+// (skills/whatsapp-axi), when that file is a plain file named LegacyName in
+// its frontmatter. Anything else there is left alone.
+func PlanLegacySkill(agent Agent, root string) Change {
+	path := filepath.Join(agent.configDir(root), "skills", LegacyName, "SKILL.md")
+	f, err := readFile(path)
+	ours := err == nil && f.Exists && f.Target == path && SkillFrontmatterName(f.Data) == LegacyName
+	return legacyRemoval(agent, ItemSkill, path, ours)
+}
+
+func legacyRemoval(agent Agent, item, path string, ours bool) Change {
+	c := Change{Agent: agent.Name, Item: item, Path: path, Action: ActionNone}
+	if ours {
+		c.target, c.Action, c.delete = path, ActionRemove, true
+	}
+	return c
 }

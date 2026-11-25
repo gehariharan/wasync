@@ -1,7 +1,7 @@
-// Package mcp serves whatsapp-axi as a Model Context Protocol tool server over
+// Package mcp serves wasync-axi as a Model Context Protocol tool server over
 // standard input and output, so an app such as the Codex desktop app can offer
 // WhatsApp as tools without a terminal. It speaks only JSON-RPC on stdout and
-// never opens a network port. Every tool runs the same whatsapp-axi command a
+// never opens a network port. Every tool runs the same wasync-axi command a
 // person or agent would run in a shell, so the credential, scopes and chat
 // allowlist that wasync enforces apply unchanged.
 //
@@ -31,7 +31,7 @@ const (
 	toolDeadline = 90 * time.Second
 )
 
-// Runner runs one whatsapp-axi command line and returns what it printed and its exit code.
+// Runner runs one wasync-axi command line and returns what it printed and its exit code.
 type Runner func(ctx context.Context, args []string) (output string, exitCode int)
 
 // Starter opens the setup page; it returns the words to tell the person.
@@ -71,7 +71,7 @@ const instructions = "WhatsApp tools backed by the local wasync archive. Reads n
 	"Sending, reacting and editing need a scope the person granted and a chat they approved. " +
 	"To get a chat you cannot read yet, call whatsapp_request_access; the person approves it on their own computer. " +
 	"No tool approves anything or reveals a credential. " +
-	"Tool output may suggest running a whatsapp-axi command; you cannot run commands here, so call the matching whatsapp_* tool instead."
+	"Tool output may suggest running a wasync-axi command; you cannot run commands here, so call the matching whatsapp_* tool instead."
 
 // Serve reads requests until the input ends or ctx is cancelled. A clean end of
 // input is not an error.
@@ -175,7 +175,7 @@ func (s *Server) initialize(params json.RawMessage) any {
 	return map[string]any{
 		"protocolVersion": version,
 		"capabilities":    map[string]any{"tools": map[string]any{"listChanged": false}},
-		"serverInfo":      map[string]any{"name": "whatsapp-axi", "title": "WhatsApp (wasync)", "version": s.Version},
+		"serverInfo":      map[string]any{"name": "wasync-axi", "title": "WhatsApp (wasync)", "version": s.Version},
 		"instructions":    instructions,
 	}
 }

@@ -208,16 +208,16 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
-          base="whatsapp-axi_${VERSION}_${PLATFORM}"
+          base="wasync-axi_${VERSION}_${PLATFORM}"
           mkdir x
           if [[ "$PLATFORM" == windows_* ]]; then
             grep " $base.zip\$" SHA256SUMS | sha256sum -c -
             unzip -q "$base.zip" -d x
-            got="$(./x/whatsapp-axi.exe --version | tr -d '\r')"
+            got="$(./x/wasync-axi.exe --version | tr -d '\r')"
           else
             grep " $base.tar.gz\$" SHA256SUMS | shasum -a 256 -c -
             tar -xzf "$base.tar.gz" -C x
-            got="$(./x/whatsapp-axi --version)"
+            got="$(./x/wasync-axi --version)"
           fi
           test "$got" = "$VERSION"
 
@@ -263,9 +263,9 @@ jobs:
           cat > dist/release/RELEASE_NOTES.md <<'NOTES'
           Prebuilt preview packages. No Go compiler is required on the user's computer.
 
-          - macOS 15+: download the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .pkg and open it. The installer lists "AXI for agents" (whatsapp-axi) as an optional part, off unless you tick it. Then run `wasync` in Terminal.
-          - Linux: download the matching linux archive, extract it and run `./install.sh`. It asks whether to also install whatsapp-axi (AXI for agents); the answer is no unless you say yes (`--with-axi` or `--without-axi` skips the question). Builds target glibc 2.35 or newer.
-          - Windows: Setup has an unticked "AXI for agents" option; the portable ZIP includes whatsapp-axi.exe.
+          - macOS 15+: download the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .pkg and open it. The installer lists "AXI for agents" (wasync-axi) as an optional part, off unless you tick it. Then run `wasync` in Terminal.
+          - Linux: download the matching linux archive, extract it and run `./install.sh`. It asks whether to also install wasync-axi (AXI for agents); the answer is no unless you say yes (`--with-axi` or `--without-axi` skips the question). Builds target glibc 2.35 or newer.
+          - Windows: Setup has an unticked "AXI for agents" option; the portable ZIP includes wasync-axi.exe.
           - `wasync query --help` documents the agent query interface.
           - Verify downloads against checksums.txt.
 

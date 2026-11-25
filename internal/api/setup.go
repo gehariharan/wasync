@@ -109,7 +109,7 @@ func (h *handler) setupRender(w http.ResponseWriter, d *setupData) {
 	}
 }
 
-// setupAgent creates an agent credential and saves it where whatsapp-axi reads
+// setupAgent creates an agent credential and saves it where wasync-axi reads
 // it, so the secret is never shown on the page. It needs the system prompt.
 func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	if !h.uiForm(w, r, sess) {
@@ -246,12 +246,12 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 {{if .Agents}}<p>Connected agents:</p><ul>{{range .Agents}}<li>{{.Name}} <span class="mut">{{.Status}}</span></li>{{end}}</ul>{{end}}
 {{if .Gate}}
 <form method="post" action="/ui/setup/agent"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<p class="mut">The agent may read only chats you approve, and starts with none. When it asks for one, the request appears under Approvals and you decide. The secret is saved straight to where whatsapp-axi reads it ({{.AxiPath}}) and is never shown.</p>
-<label>Name <input name="name" value="whatsapp-axi" maxlength="32" pattern="[a-z0-9-]{1,32}"></label>
-{{if .HasSavedCred}}<label><input type="checkbox" name="replace" value="yes"> Replace the credential whatsapp-axi already has saved</label>{{end}}
+<p class="mut">The agent may read only chats you approve, and starts with none. When it asks for one, the request appears under Approvals and you decide. The secret is saved straight to where wasync-axi reads it ({{.AxiPath}}) and is never shown.</p>
+<label>Name <input name="name" value="wasync-axi" maxlength="32" pattern="[a-z0-9-]{1,32}"></label>
+{{if .HasSavedCred}}<label><input type="checkbox" name="replace" value="yes"> Replace the credential wasync-axi already has saved</label>{{end}}
 <button class="go">Connect…</button> <span class="mut">Asks you to confirm on this computer.</span>
 </form>
-{{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page. Run <code>wasync agents grant whatsapp-axi --on-demand</code> in a terminal.</p>{{end}}
+{{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page. Run <code>wasync agents grant wasync-axi --on-demand</code> in a terminal.</p>{{end}}
 </section>
 {{end}}
 

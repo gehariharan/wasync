@@ -7,7 +7,7 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/contract"
 )
 
-const editUsage = "whatsapp-axi edit REF --text TEXT [--json]"
+const editUsage = "wasync-axi edit REF --text TEXT [--json]"
 
 var editCommand = &command{
 	name:        "edit",
@@ -20,7 +20,7 @@ var editCommand = &command{
 	minArgs:  1,
 	maxArgs:  1,
 	argsName: "REF",
-	examples: []string{`whatsapp-axi edit m1_... --text "Meet at 7, not 6"`},
+	examples: []string{`wasync-axi edit m1_... --text "Meet at 7, not 6"`},
 	run:      (*App).runEdit,
 }
 

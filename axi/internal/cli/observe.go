@@ -44,7 +44,7 @@ const (
 func observeCommand() *command {
 	return &command{
 		name:        "observe",
-		usage:       "whatsapp-axi observe [--consumer NAME] [--after CURSOR | --from-oldest] [--limit N] [--follow [--interval DUR]] [--commit] [--json]; whatsapp-axi observe ack CURSOR --consumer NAME [--json]",
+		usage:       "wasync-axi observe [--consumer NAME] [--after CURSOR | --from-oldest] [--limit N] [--follow [--interval DUR]] [--commit] [--json]; wasync-axi observe ack CURSOR --consumer NAME [--json]",
 		description: "Read wasync's change journal by opaque cursor, one page or --follow; a named consumer resumes from its checkpoint, which moves only on `observe ack CURSOR --consumer NAME` (running wasync only, never backwards) or --commit",
 		flags: []flagSpec{
 			{name: "--consumer", value: "NAME", description: "named consumer (a-z, 0-9, -; up to 64); without --after, start after its stored checkpoint; required by `observe ack`"},
@@ -59,11 +59,11 @@ func observeCommand() *command {
 		maxArgs:  2,
 		argsName: "ack CURSOR",
 		examples: []string{
-			"whatsapp-axi observe",
-			"whatsapp-axi observe --consumer replica",
-			"whatsapp-axi observe ack c1_... --consumer replica",
-			"whatsapp-axi observe --consumer replica --follow --json",
-			"whatsapp-axi observe --after c1_... --limit 500",
+			"wasync-axi observe",
+			"wasync-axi observe --consumer replica",
+			"wasync-axi observe ack c1_... --consumer replica",
+			"wasync-axi observe --consumer replica --follow --json",
+			"wasync-axi observe --after c1_... --limit 500",
 		},
 		run: (*App).runObserve,
 	}
@@ -81,7 +81,7 @@ type observeOptions struct {
 	interval   time.Duration
 }
 
-const observeAckUsage = "usage: whatsapp-axi observe ack CURSOR --consumer NAME"
+const observeAckUsage = "usage: wasync-axi observe ack CURSOR --consumer NAME"
 
 // parseObserveArgs checks what the shared flag parser cannot: the `ack`
 // subcommand, value ranges and flag combinations.
@@ -92,7 +92,7 @@ func parseObserveArgs(inv invocation) (observeOptions, error) {
 		o.ack, args = true, args[1:]
 	}
 	if len(args) > 0 && (!o.ack || len(args) > 1) {
-		return o, usageErr("usage: whatsapp-axi observe [flags], or "+observeAckUsage[len("usage: "):], "unexpected argument %q for `observe`", args[len(args)-1])
+		return o, usageErr("usage: wasync-axi observe [flags], or "+observeAckUsage[len("usage: "):], "unexpected argument %q for `observe`", args[len(args)-1])
 	}
 	if o.ack {
 		for name := range inv.flags {
@@ -167,7 +167,7 @@ func checkObserveConsumer(name string) error {
 }
 
 // checkObserveCursor accepts only the shape of an opaque v1 change cursor.
-// whatsapp-axi never decodes it; wasync validates it fully.
+// wasync-axi never decodes it; wasync validates it fully.
 func checkObserveCursor(what, c string) error {
 	ok := strings.HasPrefix(c, observeCursorPrefix) && len(c) > len(observeCursorPrefix) && len(c) <= observeMaxCursorLen
 	for _, r := range c {
@@ -286,7 +286,7 @@ func observeCommit(ctx context.Context, tr transport.Transport, consumer, cursor
 }
 
 func observeNeedsOwner(alternative string) error {
-	help := "ask the user to start wasync (the TUI or `wasync serve`); whatsapp-axi never starts it"
+	help := "ask the user to start wasync (the TUI or `wasync serve`); wasync-axi never starts it"
 	if alternative != "" {
 		help += "; or " + alternative
 	}
@@ -307,11 +307,11 @@ func (a *App) observeTransport(ctx context.Context) (transport.Transport, error)
 	case d.sel.APIErr != nil:
 		return nil, d.sel.APIErr
 	}
-	return nil, &contract.Error{Code: contract.CodeOwnerOffline, Message: "wasync is not reachable", Help: "run `whatsapp-axi` to see why"}
+	return nil, &contract.Error{Code: contract.CodeOwnerOffline, Message: "wasync is not reachable", Help: "run `wasync-axi` to see why"}
 }
 
 // observeExplain replaces wasync's generic help on errors observe users
-// commonly hit with the whatsapp-axi command that fixes them.
+// commonly hit with the wasync-axi command that fixes them.
 func observeExplain(err error, o observeOptions) error {
 	var ce *contract.Error
 	if !errors.As(err, &ce) {
@@ -320,13 +320,13 @@ func observeExplain(err error, o observeOptions) error {
 	e := *ce
 	switch {
 	case e.Code == contract.CodeCursorExpired && o.consumer != "":
-		e.Help = "Resnapshot: re-read the chats and messages you replicate, then run `whatsapp-axi observe --consumer " + o.consumer + " --from-oldest` and ack its next_cursor (or add --commit) to replace the expired checkpoint"
+		e.Help = "Resnapshot: re-read the chats and messages you replicate, then run `wasync-axi observe --consumer " + o.consumer + " --from-oldest` and ack its next_cursor (or add --commit) to replace the expired checkpoint"
 	case e.Code == contract.CodeCursorExpired:
-		e.Help = "Resnapshot: re-read the chats and messages you replicate, then run `whatsapp-axi observe` without --after to start at the oldest retained change"
+		e.Help = "Resnapshot: re-read the chats and messages you replicate, then run `wasync-axi observe` without --after to start at the oldest retained change"
 	case e.Code == contract.CodeInvalidCursor:
-		e.Help = "pass a c1_ cursor from a previous observe page unchanged, or run `whatsapp-axi observe` without --after"
+		e.Help = "pass a c1_ cursor from a previous observe page unchanged, or run `wasync-axi observe` without --after"
 	case e.Code == contract.CodeInvalidArgument && strings.Contains(e.Message, "backwards"):
-		e.Help = "checkpoints only move forward; run `whatsapp-axi observe --consumer " + o.consumer + "` to see the stored checkpoint, then ack a later cursor"
+		e.Help = "checkpoints only move forward; run `wasync-axi observe --consumer " + o.consumer + "` to see the stored checkpoint, then ack a later cursor"
 	case e.Code == contract.CodeCredentialAbsent:
 		e.Help = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages,observe`" + config.SaveHelp
 	default:
@@ -456,7 +456,7 @@ func (a *App) observeOnce(ctx context.Context, jsonMode bool, o observeOptions, 
 		if err != nil {
 			return observeExplain(err, o)
 		}
-		hint := "Checkpoint committed: `whatsapp-axi observe --consumer " + o.consumer + "` resumes after it"
+		hint := "Checkpoint committed: `wasync-axi observe --consumer " + o.consumer + "` resumes after it"
 		if jsonMode {
 			return output.JSON(a.Out, struct {
 				Committed observeCheckpoint `json:"committed"`
@@ -480,14 +480,14 @@ func observeOnceHints(o observeOptions, tr transport.Transport, page observePage
 	}
 	switch {
 	case page.HasMore:
-		h = append(h, "More changes are waiting: run `whatsapp-axi observe --after "+page.NextCursor+consumerFlag+"`")
+		h = append(h, "More changes are waiting: run `wasync-axi observe --after "+page.NextCursor+consumerFlag+"`")
 	case len(page.Changes) == 0:
 		h = append(h, "No changes after this position yet; run again later, or add --follow to wait for them")
 	}
 	_, online := tr.(observeWriter)
 	switch {
 	case o.consumer != "" && online && !o.commit && len(page.Changes) > 0:
-		h = append(h, "After processing, save progress with `whatsapp-axi observe ack "+page.NextCursor+" --consumer "+o.consumer+"`; `whatsapp-axi observe --consumer "+o.consumer+"` then resumes there")
+		h = append(h, "After processing, save progress with `wasync-axi observe ack "+page.NextCursor+" --consumer "+o.consumer+"`; `wasync-axi observe --consumer "+o.consumer+"` then resumes there")
 	case o.consumer != "" && !online:
 		h = append(h, "Checkpoints can only be committed while wasync is running; ask the user to start it to save progress")
 	case o.consumer == "" && len(page.Changes) > 0:
@@ -508,7 +508,7 @@ func (a *App) runObserveAck(ctx context.Context, jsonMode bool, o observeOptions
 	if err != nil {
 		return observeExplain(err, o)
 	}
-	hints := []string{"`whatsapp-axi observe --consumer " + o.consumer + "` now resumes after this checkpoint"}
+	hints := []string{"`wasync-axi observe --consumer " + o.consumer + "` now resumes after this checkpoint"}
 	if jsonMode {
 		return output.JSON(a.Out, map[string]any{"transport": tr.Name(), "checkpoint": cp, "help": hints})
 	}
@@ -596,14 +596,14 @@ func (a *App) observeFollow(ctx context.Context, jsonMode bool, o observeOptions
 	idle, errDelay, wait := o.interval, o.interval, time.Duration(0)
 
 	stopped := func() error {
-		hint := "Resume with `whatsapp-axi observe --after " + cursor + " --follow`"
+		hint := "Resume with `wasync-axi observe --after " + cursor + " --follow`"
 		switch {
 		case cursor == "":
-			hint = "Resume with `whatsapp-axi observe --follow`"
+			hint = "Resume with `wasync-axi observe --follow`"
 		case o.consumer != "" && committed == cursor:
-			hint = "Resume with `whatsapp-axi observe --consumer " + o.consumer + " --follow`"
+			hint = "Resume with `wasync-axi observe --consumer " + o.consumer + " --follow`"
 		case o.consumer != "":
-			hint = "Ack processed changes with `whatsapp-axi observe ack CURSOR --consumer " + o.consumer + "`, or resume with `whatsapp-axi observe --after " + cursor + " --consumer " + o.consumer + " --follow`"
+			hint = "Ack processed changes with `wasync-axi observe ack CURSOR --consumer " + o.consumer + "`, or resume with `wasync-axi observe --after " + cursor + " --consumer " + o.consumer + " --follow`"
 		}
 		if jsonMode {
 			return emit(observeEvent{Type: "stopped", NextCursor: cursor, Reason: "interrupted", Help: []string{hint}})

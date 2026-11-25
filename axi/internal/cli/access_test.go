@@ -26,7 +26,7 @@ func TestAccessRequestPostsOnceAndExplainsTheNextStep(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "transport: api", "access_request:", "request_id: "+accessID, "status: pending", "access: read+send", "Nothing is granted yet", "does not say whether the name matched", "wasync actions approve "+accessID, "whatsapp-axi access status "+accessID, "expires after 30 minutes")
+	mustContain(t, out, "transport: api", "access_request:", "request_id: "+accessID, "status: pending", "access: read+send", "Nothing is granted yet", "does not say whether the name matched", "wasync actions approve "+accessID, "wasync-axi access status "+accessID, "expires after 30 minutes")
 	n, body := posts(srv)
 	var sent map[string]any
 	if n != 1 || json.Unmarshal([]byte(body), &sent) != nil || sent["match"] != "+15551234567" || sent["send"] != true || sent["edit"] != true || sent["chat"] != nil {
@@ -52,7 +52,7 @@ func TestAccessStatusReportsEachOutcome(t *testing.T) {
 		extra  map[string]any
 		want   []string
 	}{
-		{"approved", map[string]any{"chat": "one@g.us", "history": "full"}, []string{"status: approved", "chat: one@g.us", "full history sync requested", "whatsapp-axi messages one@g.us"}},
+		{"approved", map[string]any{"chat": "one@g.us", "history": "full"}, []string{"status: approved", "chat: one@g.us", "full history sync requested", "wasync-axi messages one@g.us"}},
 		{"rejected", nil, []string{"status: rejected", "Do not ask again"}},
 		{"expired", nil, []string{"status: expired", "No access was granted"}},
 		{"pending", map[string]any{"approve_with": "wasync actions approve " + accessID}, []string{"status: pending", "Nothing is granted yet"}},

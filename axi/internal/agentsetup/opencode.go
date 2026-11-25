@@ -3,29 +3,30 @@ package agentsetup
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 
 	"github.com/gehariharan/wasync/axi/internal/contract"
 )
 
 const (
-	openCodeMarkerPrefix = "// Managed by whatsapp-axi: OpenCode "
+	openCodeMarkerPrefix = "// Managed by wasync-axi: OpenCode "
 	openCodeMarker       = openCodeMarkerPrefix + "ambient context v2\n"
 )
 
 // OpenCodePlugin uses the native system-transform hook for session-start
-// context and, for session-end capture, notes which whatsapp-axi commands the
+// context and, for session-end capture, notes which wasync-axi commands the
 // session's bash calls ran. Only the contentless brief view is read, and only
-// command names reach `whatsapp-axi session-end`, never arguments; the
+// command names reach `wasync-axi session-end`, never arguments; the
 // executable is invoked directly, without a shell.
 func OpenCodePlugin(executable string) []byte {
 	binary, _ := json.Marshal(executable)
 	return []byte(openCodeMarker + `import { execFile } from "node:child_process";
 
 const binary = ` + string(binary) + `;
-const marker = "[whatsapp-axi ambient context]";
-const invocation = /(?:^|[\s"'\/\\;&|(])whatsapp-axi(?:\.exe)?["']?\s+([a-z][a-z-]*)/g;
+const marker = "[wasync-axi ambient context]";
+const invocation = /(?:^|[\s"'\/\\;&|(])(?:wasync|whatsapp)-axi(?:\.exe)?["']?\s+([a-z][a-z-]*)/g;
 
-export const WhatsappAXI = async ({ directory }) => {
+export const WasyncAXI = async ({ directory }) => {
   const sessions = new Map();
   const used = new Map();
   const readBrief = () => new Promise((resolve) => {
@@ -33,7 +34,7 @@ export const WhatsappAXI = async ({ directory }) => {
       cwd: directory, timeout: 10000, maxBuffer: 8192, windowsHide: true,
     }, (error, stdout) => {
       resolve(error
-        ? "whatsapp-axi: ambient context unavailable\nhelp: Run whatsapp-axi doctor"
+        ? "wasync-axi: ambient context unavailable\nhelp: Run wasync-axi doctor"
         : stdout.trim());
     });
   });
@@ -86,7 +87,7 @@ export const WhatsappAXI = async ({ directory }) => {
 func openCodeFile(agent Agent, root string) (file, error) {
 	f, err := readFile(agent.HookPath(root))
 	if err == nil && f.Exists && !bytes.HasPrefix(f.Data, []byte(openCodeMarkerPrefix)) {
-		return f, &contract.Error{Code: CodeConfigInvalid, Message: f.Path + " exists but is not the managed whatsapp-axi plugin", Help: "move the file away, then rerun setup; whatsapp-axi only edits its own plugin"}
+		return f, &contract.Error{Code: CodeConfigInvalid, Message: f.Path + " exists but is not the managed wasync-axi plugin", Help: "move the file away, then rerun setup; wasync-axi only edits its own plugin"}
 	}
 	return f, err
 }
@@ -120,7 +121,16 @@ func InspectOpenCodeHook(agent Agent, root, executable string) HookStatus {
 	s.Exists, s.Installed = f.Exists, f.Exists
 	if f.Exists {
 		s.Current = bytes.Equal(f.Data, OpenCodePlugin(executable))
-		s.Command = "managed whatsapp-axi plugin"
+		s.Command = "managed wasync-axi plugin"
 	}
 	return s
+}
+
+// PlanLegacyOpenCodeHook plans removing the OpenCode plugin from before the
+// rename (plugins/whatsapp-axi.js), when it is a plain file with its marker.
+func PlanLegacyOpenCodeHook(agent Agent, root string) Change {
+	path := filepath.Join(agent.configDir(root), "plugins", LegacyName+".js")
+	f, err := readFile(path)
+	ours := err == nil && f.Exists && f.Target == path && bytes.HasPrefix(f.Data, []byte("// Managed by "+LegacyName+": OpenCode "))
+	return legacyRemoval(agent, ItemHook, path, ours)
 }

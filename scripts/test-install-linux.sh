@@ -20,12 +20,12 @@ cat > "$stage/wasync" <<'STUB'
 #!/bin/sh
 echo "wasync 0.0.0-stub linux/amd64"
 STUB
-cat > "$stage/whatsapp-axi" <<'STUB'
+cat > "$stage/wasync-axi" <<'STUB'
 #!/bin/sh
 if [ "${1:-}" = setup ]; then echo "$*" >> "$STUB_LOG"; exit 0; fi
 echo 0.0.0-stub
 STUB
-chmod 755 "$stage/install.sh" "$stage/wasync" "$stage/whatsapp-axi"
+chmod 755 "$stage/install.sh" "$stage/wasync" "$stage/wasync-axi"
 
 # run NAME ARGS...: fresh HOME and non-interactive stdin; sets $bin and $log.
 run() {
@@ -37,32 +37,46 @@ run() {
 
 run default
 [[ -x "$bin/wasync" ]] || fail "wasync was not installed by default"
-[[ ! -e "$bin/whatsapp-axi" ]] || fail "whatsapp-axi was installed without being asked"
+[[ ! -e "$bin/wasync-axi" ]] || fail "wasync-axi was installed without being asked"
 [[ ! -s "$log" ]] || fail "agent setup ran without consent"
 pass "non-interactive run without flags installs wasync only (default no)"
 
 run without --without-axi
-[[ -x "$bin/wasync" && ! -e "$bin/whatsapp-axi" ]] || fail "--without-axi installed whatsapp-axi"
+[[ -x "$bin/wasync" && ! -e "$bin/wasync-axi" ]] || fail "--without-axi installed wasync-axi"
 pass "--without-axi installs wasync only"
 
 run with --with-axi
-[[ -x "$bin/wasync" && -x "$bin/whatsapp-axi" ]] || fail "--with-axi did not install both"
+[[ -x "$bin/wasync" && -x "$bin/wasync-axi" ]] || fail "--with-axi did not install both"
 [[ ! -s "$log" ]] || fail "--with-axi alone changed agent settings"
 grep -q 'setup skill' "$work/with.out" || fail "output does not tell how to set up the skill later"
 pass "--with-axi installs both and changes no agent settings"
+
+[[ -L "$bin/whatsapp-axi" && "$(readlink "$bin/whatsapp-axi")" == wasync-axi ]] || fail "--with-axi did not link the old name whatsapp-axi"
+pass "the old name whatsapp-axi links to wasync-axi"
+
+home="$work/oldname-home"; mkdir -p "$home/bin"
+printf 'old build of github.com/gehariharan/wasync/axi\n' > "$home/bin/whatsapp-axi"
+HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > /dev/null 2>&1
+[[ -L "$home/bin/whatsapp-axi" ]] || fail "an old wasync whatsapp-axi was not replaced by the link"
+home="$work/foreign-home"; mkdir -p "$home/bin"
+printf '#!/bin/sh\necho another tool\n' > "$home/bin/whatsapp-axi"
+HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > "$work/foreign.out" 2>&1
+[[ ! -L "$home/bin/whatsapp-axi" ]] && grep -q 'another tool' "$home/bin/whatsapp-axi" || fail "another program named whatsapp-axi was replaced"
+grep -q 'Left .*whatsapp-axi alone' "$work/foreign.out" || fail "install.sh did not say it left another whatsapp-axi alone"
+pass "an old wasync whatsapp-axi becomes the link; another program of that name is kept"
 
 run consent --with-axi --axi-skill --axi-hooks
 [[ "$(sort "$log" | tr '\n' ';')" == 'setup hooks;setup skill;' ]] || fail "unexpected setup calls: $(cat "$log")"
 pass "--axi-skill and --axi-hooks run only those two setup commands"
 
 run skillonly --axi-skill
-[[ -x "$bin/whatsapp-axi" ]] || fail "--axi-skill should imply --with-axi"
+[[ -x "$bin/wasync-axi" ]] || fail "--axi-skill should imply --with-axi"
 [[ "$(cat "$log")" == 'setup skill' ]] || fail "unexpected setup calls: $(cat "$log")"
 pass "--axi-skill implies --with-axi and runs nothing else"
 
 home="$work/defaultdir-home"; mkdir -p "$home"
 HOME="$home" "$stage/install.sh" --with-axi < /dev/null > /dev/null 2>&1
-[[ -x "$home/.local/bin/wasync" && -x "$home/.local/bin/whatsapp-axi" ]] || fail "default directory is not ~/.local/bin"
+[[ -x "$home/.local/bin/wasync" && -x "$home/.local/bin/wasync-axi" ]] || fail "default directory is not ~/.local/bin"
 pass "default install directory is ~/.local/bin"
 
 if run conflict --without-axi --axi-hooks 2> /dev/null; then fail "--without-axi with --axi-hooks should be refused"; fi
@@ -112,10 +126,10 @@ for case in "enter:-" "no:n" "yes-skill-no-hooks:y,y,n"; do
   drive "$home" "$log" "$answers" || fail "interactive run '$name' failed"
   case "$name" in
     enter|no)
-      [[ -x "$home/bin/wasync" && ! -e "$home/bin/whatsapp-axi" ]] || fail "$name: whatsapp-axi was installed after answering no"
+      [[ -x "$home/bin/wasync" && ! -e "$home/bin/wasync-axi" ]] || fail "$name: wasync-axi was installed after answering no"
       [[ ! -s "$log" ]] || fail "$name: setup ran after answering no" ;;
     yes-skill-no-hooks)
-      [[ -x "$home/bin/whatsapp-axi" ]] || fail "$name: whatsapp-axi missing after yes"
+      [[ -x "$home/bin/wasync-axi" ]] || fail "$name: wasync-axi missing after yes"
       [[ "$(cat "$log")" == 'setup skill' ]] || fail "$name: unexpected setup calls: $(cat "$log")" ;;
   esac
 done
@@ -125,14 +139,15 @@ if [[ $# -ge 2 ]]; then
   archive="$1"; version="$2"
   real="$work/real"; mkdir -p "$real"
   tar -xzf "$archive" -C "$real"
-  for file in wasync whatsapp-axi install.sh README.md LICENSE THIRD_PARTY_LICENSES; do
+  for file in wasync wasync-axi install.sh README.md LICENSE THIRD_PARTY_LICENSES; do
     [[ -e "$real/$file" ]] || fail "archive is missing $file"
   done
   home="$work/real-home"; mkdir -p "$home"
   HOME="$home" "$real/install.sh" --bin-dir "$home/bin" < /dev/null > /dev/null
-  [[ ! -e "$home/bin/whatsapp-axi" ]] || fail "real archive installed whatsapp-axi without being asked"
+  [[ ! -e "$home/bin/wasync-axi" ]] || fail "real archive installed wasync-axi without being asked"
   HOME="$home" "$real/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > /dev/null
-  [[ "$("$home/bin/whatsapp-axi" --version)" == "$version" ]] || fail "installed whatsapp-axi is not version $version"
+  [[ "$("$home/bin/wasync-axi" --version)" == "$version" ]] || fail "installed wasync-axi is not version $version"
+  [[ "$("$home/bin/whatsapp-axi" --version 2>/dev/null)" == "$version" ]] || fail "the old name whatsapp-axi does not run wasync-axi $version"
   "$home/bin/wasync" version | grep -qF "wasync $version " || fail "installed wasync is not version $version"
   [[ -z "$(find "$home" -mindepth 1 -maxdepth 1 ! -name bin)" ]] || fail "installing wrote outside the bin directory"
   pass "real archive $version: opt-in installs both tools at one version and writes nothing else"

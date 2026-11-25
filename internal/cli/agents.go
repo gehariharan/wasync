@@ -43,7 +43,7 @@ gets read.chats,read.messages. There is no destructive scope: clean, delete,
 revoke and purge always need human approval.
 The scopes send, react, edit.own, chat.state, group.admin and capture.manage need a chat
 list. Normally use --on-demand: the client starts with no chats and asks for
-one by name (whatsapp-axi access request); you approve each chat, its access
+one by name (wasync-axi access request); you approve each chat, its access
 level (read, and separately send) and its history depth in the TUI or with
 wasync actions approve. Granted chats show in agents list. Revoke and
 re-grant the client to remove them.
@@ -54,8 +54,8 @@ name is refused. The two options combine.
 --rate is requests per minute (default 60). --expires is a duration; omit it
 for no expiry.
 
-After granting, wasync offers to save the credential where whatsapp-axi
-reads it (WHATSAPP_AXI_CONFIG_DIR, else the user config directory), private
+After granting, wasync offers to save the credential where wasync-axi
+reads it (WASYNC_AXI_CONFIG_DIR, else the user config directory), private
 and written atomically, so you do not copy it by hand. It never replaces a
 different saved credential without asking. If you decline it is printed once
 instead. Only its hash is stored; it cannot be shown again. list never prints credentials or hashes. Legacy api.token, send.token
@@ -208,7 +208,7 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	if _, err = fmt.Fprintln(a.Out, credential); err != nil {
 		return err
 	}
-	fmt.Fprintf(a.Err, "To use it with whatsapp-axi, put it in WHATSAPP_AXI_TOKEN or save it to the file whatsapp-axi reads (%s).\n", a.axiCredentialPathText())
+	fmt.Fprintf(a.Err, "To use it with wasync-axi, put it in WASYNC_AXI_TOKEN or save it to the file wasync-axi reads (%s).\n", a.axiCredentialPathText())
 	return nil
 }
 
@@ -236,7 +236,7 @@ func (a *App) axiCredentialPathText() string {
 	if p, err := axicred.Path(a.getenv); err == nil {
 		return p
 	}
-	return "WHATSAPP_AXI_CONFIG_DIR/credential"
+	return "WASYNC_AXI_CONFIG_DIR/credential"
 }
 
 // askYesNo prints a prompt and reads one line. Empty input or end of input
@@ -257,13 +257,13 @@ func (a *App) askYesNo(ctx context.Context, prompt string, def bool) bool {
 }
 
 // offerSaveAxiCredential asks whether to store a new credential where
-// whatsapp-axi reads it, and reports whether it did. Any problem or a "no"
+// wasync-axi reads it, and reports whether it did. Any problem or a "no"
 // falls back to printing the credential, so it is never lost. The secret is
 // never written to the terminal here.
 func (a *App) offerSaveAxiCredential(ctx context.Context, name, credential string) bool {
 	path, err := axicred.Path(a.getenv)
 	if err != nil {
-		fmt.Fprintf(a.Err, "note: cannot find whatsapp-axi's credential file (%v)\n", err)
+		fmt.Fprintf(a.Err, "note: cannot find wasync-axi's credential file (%v)\n", err)
 		return false
 	}
 	existing, err := axicred.Existing(path)
@@ -272,10 +272,10 @@ func (a *App) offerSaveAxiCredential(ctx context.Context, name, credential strin
 		return false
 	}
 	if existing != "" {
-		if !a.askYesNo(ctx, fmt.Sprintf("whatsapp-axi already has a different credential saved at %s.\nReplace it with the one for %s? [y/N]: ", path, name), false) {
+		if !a.askYesNo(ctx, fmt.Sprintf("wasync-axi already has a different credential saved at %s.\nReplace it with the one for %s? [y/N]: ", path, name), false) {
 			return false
 		}
-	} else if !a.askYesNo(ctx, fmt.Sprintf("Save this credential for whatsapp-axi now, at %s? [Y/n]: ", path), true) {
+	} else if !a.askYesNo(ctx, fmt.Sprintf("Save this credential for wasync-axi now, at %s? [Y/n]: ", path), true) {
 		return false
 	}
 	if err := axicred.Save(path, credential); err != nil {
@@ -283,8 +283,8 @@ func (a *App) offerSaveAxiCredential(ctx context.Context, name, credential strin
 		return false
 	}
 	fmt.Fprintf(a.Err, "Saved the credential for %s to %s (private, owner-only). It is not shown again; revoke with: wasync agents revoke %s\n", name, path, name)
-	if a.getenv(axicred.EnvToken) != "" {
-		fmt.Fprintf(a.Err, "note: %s is set in this environment and takes priority over the saved file; unset it so whatsapp-axi uses the new credential\n", axicred.EnvToken)
+	if name := axicred.TokenEnv(a.getenv); name != "" {
+		fmt.Fprintf(a.Err, "note: %s is set in this environment and takes priority over the saved file; unset it so wasync-axi uses the new credential\n", name)
 	}
 	return true
 }

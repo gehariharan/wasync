@@ -75,7 +75,7 @@ func TestQueryArgsReadRoutes(t *testing.T) {
 
 func TestQueryVersionRunsWasync(t *testing.T) {
 	bin, log := testutil.FakeWasync(t, testutil.ModeOK)
-	t.Setenv("WHATSAPP_AXI_TOKEN", "wsa_should_not_leak")
+	t.Setenv("WASYNC_AXI_TOKEN", "wsa_should_not_leak")
 	q := NewQuery(QueryConfig{Bin: bin, DataDir: t.TempDir()})
 	v, err := q.Version(context.Background())
 	if err != nil {

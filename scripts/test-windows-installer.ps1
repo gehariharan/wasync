@@ -11,7 +11,7 @@ $zip = Join-Path $dist "wasync_${Version}_windows_amd64.zip"
 foreach ($file in $setup, $zip) { if (-not (Test-Path $file)) { throw "Missing package: $file" } }
 $temp = Join-Path $env:RUNNER_TEMP "wasync-installer-test-$([guid]::NewGuid())"
 New-Item -ItemType Directory $temp | Out-Null
-# Agent settings that whatsapp-axi setup would create. None may appear from installing alone.
+# Agent settings that wasync-axi setup would create. None may appear from installing alone.
 $agentFolders = @('.claude', '.codex', '.config/opencode') | ForEach-Object { Join-Path $env:USERPROFILE $_ }
 foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Refusing to run: $folder already exists on this runner" } }
 function Install-Wasync($directory, $tasks) {
@@ -32,7 +32,7 @@ try {
  $plain = Join-Path $temp 'plain'
  Install-Wasync $plain '!addtopath'
  if (-not (Test-Path (Join-Path $plain 'wasync.exe'))) { throw 'Setup did not install wasync.exe' }
- if (Test-Path (Join-Path $plain 'whatsapp-axi.exe')) { throw 'Setup installed whatsapp-axi without being asked' }
+ if (Test-Path (Join-Path $plain 'wasync-axi.exe')) { throw 'Setup installed wasync-axi without being asked' }
  if (((& (Join-Path $plain 'wasync.exe') version) | Out-String) -notmatch [regex]::Escape("wasync $Version ")) { throw 'Installed wasync reports the wrong version' }
  Uninstall-Wasync $plain
  if (Test-Path (Join-Path $plain 'wasync.exe')) { throw 'Uninstall left wasync.exe behind' }
@@ -40,7 +40,8 @@ try {
  # 2. Opt in: both tools at one version, and still no agent settings changed.
  $both = Join-Path $temp 'both'
  Install-Wasync $both '!addtopath,installaxi'
- if ((& (Join-Path $both 'whatsapp-axi.exe') --version).Trim() -ne $Version) { throw 'Installed whatsapp-axi is not the release version' }
+ if ((& (Join-Path $both 'wasync-axi.exe') --version).Trim() -ne $Version) { throw 'Installed wasync-axi is not the release version' }
+ if ((& (Join-Path $both 'whatsapp-axi.exe') --version 2>$null).Trim() -ne $Version) { throw 'The old name whatsapp-axi.exe is not the release wasync-axi' }
  if (((& (Join-Path $both 'wasync.exe') version) | Out-String) -notmatch [regex]::Escape("wasync $Version ")) { throw 'Installed wasync reports the wrong version' }
  foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Setup changed agent settings: $folder" } }
 
@@ -51,7 +52,7 @@ try {
  if ($LASTEXITCODE -ne 0) { throw "install-windows.ps1 dry run failed: $plan" }
  if ($plan -notmatch ('Folder:\s+' + [regex]::Escape($both) + '\s')) { throw "install-windows.ps1 did not report the install in ${both}: $plan" }
 
- # 2b. The Codex plugin launches `whatsapp-axi mcp`. Speak the tool protocol to the installed program
+ # 2b. The Codex plugin launches `wasync-axi mcp`. Speak the tool protocol to the installed program
  # the way Codex does, through Windows pipes: line-delimited JSON-RPC, answers on standard output only.
  $requests = @(
   '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}',
@@ -59,11 +60,11 @@ try {
   '{"jsonrpc":"2.0","id":2,"method":"tools/list"}',
   '{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"whatsapp_status","arguments":{}}}'
  )
- $replies = @($requests | & (Join-Path $both 'whatsapp-axi.exe') mcp)
- if ($LASTEXITCODE -ne 0) { throw "whatsapp-axi mcp exited with code $LASTEXITCODE" }
- if ($replies.Count -ne 3) { throw "whatsapp-axi mcp answered $($replies.Count) times, expected 3: $replies" }
+ $replies = @($requests | & (Join-Path $both 'wasync-axi.exe') mcp)
+ if ($LASTEXITCODE -ne 0) { throw "wasync-axi mcp exited with code $LASTEXITCODE" }
+ if ($replies.Count -ne 3) { throw "wasync-axi mcp answered $($replies.Count) times, expected 3: $replies" }
  $answers = $replies | ForEach-Object { $_ | ConvertFrom-Json }
- if ($answers[0].result.serverInfo.name -ne 'whatsapp-axi') { throw 'whatsapp-axi mcp did not identify itself' }
+ if ($answers[0].result.serverInfo.name -ne 'wasync-axi') { throw 'wasync-axi mcp did not identify itself' }
  $names = @($answers[1].result.tools | ForEach-Object { $_.name })
  foreach ($want in 'whatsapp_status', 'whatsapp_read_messages', 'whatsapp_request_access', 'whatsapp_start_setup') { if ($names -notcontains $want) { throw "Tool list is missing $want" } }
  foreach ($name in $names) { if ($name -match 'approve|grant|revoke|credential|secret|token') { throw "Tool server offers a forbidden tool: $name" } }
@@ -89,13 +90,13 @@ try {
   if (-not $owner.HasExited) { Stop-Process -Id $owner.Id -Force }
  }
  Uninstall-Wasync $both
- foreach ($name in 'wasync.exe', 'whatsapp-axi.exe') { if (Test-Path (Join-Path $both $name)) { throw "Uninstall left $name behind" } }
+ foreach ($name in 'wasync.exe', 'wasync-axi.exe', 'whatsapp-axi.exe') { if (Test-Path (Join-Path $both $name)) { throw "Uninstall left $name behind" } }
 
  # 3. The portable ZIP carries both executables; extracting it installs and configures nothing.
  $extracted = Join-Path $temp 'zip'
  Expand-Archive $zip $extracted
- foreach ($name in 'wasync.exe', 'whatsapp-axi.exe', 'LICENSE', 'THIRD_PARTY_LICENSES') { if (-not (Test-Path (Join-Path $extracted $name))) { throw "ZIP is missing $name" } }
- if ((& (Join-Path $extracted 'whatsapp-axi.exe') --version).Trim() -ne $Version) { throw 'ZIP whatsapp-axi is not the release version' }
+ foreach ($name in 'wasync.exe', 'wasync-axi.exe', 'whatsapp-axi.exe', 'LICENSE', 'THIRD_PARTY_LICENSES') { if (-not (Test-Path (Join-Path $extracted $name))) { throw "ZIP is missing $name" } }
+ if ((& (Join-Path $extracted 'wasync-axi.exe') --version).Trim() -ne $Version) { throw 'ZIP wasync-axi is not the release version' }
  foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Extracting changed agent settings: $folder" } }
  Write-Host 'Windows Setup: AXI for agents is off by default, installs on request at the release version, and changes no agent settings; the installed tool server speaks MCP and offers no approving tool; wasync serve starts with its pages closed to visitors; the ZIP carries both tools.'
 } finally {

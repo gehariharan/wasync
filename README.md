@@ -8,7 +8,7 @@ The executable is named **`wasync`**: launch it for the terminal UI, or use
 **`wasync query …`** for read-only JSON queries from local agents. Sending is
 separate and always explicit: `send`, `reply`, `react` and `edit`.
 
-This monorepo also contains **whatsapp-axi**, the agent-facing CLI in
+This monorepo also contains **wasync-axi**, the agent-facing CLI in
 [`axi/`](axi/). Both binaries, their documentation, release automation, and
 Homebrew definitions are maintained here. wasync owns the WhatsApp connection
 and archive; AXI reads it through the local API or `wasync query`. Reading is open to
@@ -25,7 +25,7 @@ If you use the **Codex desktop app** on macOS or Windows, you can ask Codex to i
 and set up WhatsApp for you. Paste this into a Codex conversation (the same words on both):
 
 > Set up WhatsApp for me with wasync from https://github.com/gehariharan/wasync. Follow the
-> "Let your agent set this up" section of its README: install wasync and whatsapp-axi on this
+> "Let your agent set this up" section of its README: install wasync and wasync-axi on this
 > computer, add the WhatsApp plugin, then start the setup page by running `wasync setup`
 > through its full installed path, outside the sandbox, as a background process that keeps
 > running, and ask for my approval to run it outside the sandbox. Tell me whenever I need to do
@@ -34,15 +34,15 @@ and set up WhatsApp for you. Paste this into a Codex conversation (the same word
 Codex's default settings run commands in a sandbox with no network and no writing outside your
 project, so Codex asks your approval before the commands below. In order, they are:
 
-1. **Install wasync and whatsapp-axi** (no administrator password).
+1. **Install wasync and wasync-axi** (no administrator password).
    - macOS: `brew tap --custom-remote gehariharan/tap https://github.com/gehariharan/wasync.git`,
      then `brew trust --cask gehariharan/tap/wasync` if your Homebrew has `brew trust`, then
-     `brew install --cask gehariharan/tap/wasync` and `brew install gehariharan/tap/whatsapp-axi`.
-     Homebrew's `whatsapp-axi` builds from source, so that step takes a few minutes.
+     `brew install --cask gehariharan/tap/wasync` and `brew install gehariharan/tap/wasync-axi`.
+     Homebrew's `wasync-axi` builds from source, so that step takes a few minutes.
    - Windows: `Invoke-WebRequest https://raw.githubusercontent.com/gehariharan/wasync/main/scripts/install-windows.ps1 -OutFile $env:TEMP\install-wasync.ps1`
      then `powershell -ExecutionPolicy Bypass -File $env:TEMP\install-wasync.ps1`. The script finds
      the newest release, checks the download against the release's published SHA-256 checksum,
-     and runs Setup quietly for your account with the PATH entry and `whatsapp-axi` (`-DryRun`
+     and runs Setup quietly for your account with the PATH entry and `wasync-axi` (`-DryRun`
      shows what it would do). It changes no agent settings.
 2. **Add the plugin**, the same on both: `codex plugin marketplace add gehariharan/wasync`, then
    `codex plugin add whatsapp@wasync`.
@@ -71,11 +71,11 @@ Either way, restarting Codex is the last step of the pasted prompt.
 
 No tool Codex has can approve anything, create a credential or read one (see
 [ADR-003](docs/architecture/ADR-003-mcp-tool-server.md)). If Codex says it has no WhatsApp tools
-after the restart, the plugin could not start `whatsapp-axi`: check `whatsapp-axi --version` in
+after the restart, the plugin could not start `wasync-axi`: check `wasync-axi --version` in
 a terminal and that the Codex app was started after the install.
 
 > **Windows:** continuous integration installs the Setup program directly and runs the
-> `whatsapp-axi mcp` tool server and `wasync serve` on a Windows runner. It runs the install
+> `wasync-axi mcp` tool server and `wasync serve` on a Windows runner. It runs the install
 > script only as a dry run: the script's real download, checksum comparison and quiet install
 > have not been run end to end by the author. The Codex desktop app, Windows Hello, the
 > password prompt and the setup page in a real browser have not yet been exercised on a real
@@ -96,19 +96,23 @@ release workflow produces these downloads:
 
 ### Choose whether to add AXI for agents
 
-wasync is the app and engine for people. **`whatsapp-axi`** ("AXI for agents") is a
+wasync is the app and engine for people. **`wasync-axi`** ("AXI for agents") is a
 separate, small command that AI agents such as Claude Code, Codex and OpenCode use
 to work with your local wasync archive. You do not need it to use wasync, so every
 installer asks for it as a choice, off unless you say yes. Both programs always come
 from the same release and have the same version.
 
+`wasync-axi` was called `whatsapp-axi`. The installers keep `whatsapp-axi` as an alias
+(on Homebrew, the old `whatsapp-axi` formula now installs `wasync-axi` plus the alias),
+and the old environment variables, config folder, skill and hooks still work.
+
 | Where you install from | How you choose AXI for agents |
 | --- | --- |
-| macOS `.pkg` | On the installer's **Customize** step, tick **AXI for agents (whatsapp-axi)**. It starts unticked. |
+| macOS `.pkg` | On the installer's **Customize** step, tick **AXI for agents (wasync-axi)**. It starts unticked. |
 | Linux archive | `./install.sh` asks and the default is no. Skip the question with `--with-axi` or `--without-axi`. |
-| Windows Setup | Tick **Also install whatsapp-axi** on the tasks page (unticked by default). For a silent install add `/MERGETASKS="installaxi"`. |
-| Windows ZIP | The ZIP already contains `whatsapp-axi.exe` next to `wasync.exe`; extracting installs and configures nothing. |
-| Homebrew | `brew install gehariharan/tap/whatsapp-axi` (see [Homebrew installation](#homebrew-installation)). |
+| Windows Setup | Tick **Also install wasync-axi** on the tasks page (unticked by default). For a silent install add `/MERGETASKS="installaxi"`. |
+| Windows ZIP | The ZIP already contains `wasync-axi.exe` next to `wasync.exe`; extracting installs and configures nothing. |
+| Homebrew | `brew install gehariharan/tap/wasync-axi` (see [Homebrew installation](#homebrew-installation)). |
 | Microsoft Store | Not offered: the Store edition is wasync only (see [the MSIX section](#microsoft-store-msix-distribution)). |
 
 Installing AXI for agents never changes your agents' settings. To let your agents
@@ -116,8 +120,8 @@ learn about it, you run (or accept an offer to run) these two commands; add
 `--dry-run` to either to preview what it would write:
 
 ```sh
-whatsapp-axi setup skill   # adds the whatsapp-axi skill to your agents
-whatsapp-axi setup hooks   # adds whatsapp-axi's session hooks to your agents
+wasync-axi setup skill   # adds the wasync-axi skill to your agents
+wasync-axi setup hooks   # adds wasync-axi's session hooks to your agents
 ```
 
 The Linux script and Windows Setup offer these as separate steps, each off by default
@@ -134,7 +138,7 @@ Source code and prebuilt downloads are public. No GitHub account is needed to in
 
 On macOS the package installs `/usr/local/bin/wasync` and dependency notices under
 `/usr/local/share/wasync`; if you tick **AXI for agents** it also installs
-`/usr/local/bin/whatsapp-axi`. It asks for administrator approval. After installation,
+`/usr/local/bin/wasync-axi`. It asks for administrator approval. After installation,
 open Terminal and run:
 
 ```sh
@@ -154,7 +158,7 @@ signatures and include validated stapled notarization tickets. Older previews
 were unsigned/ad hoc. No installer removes quarantine or bypasses Gatekeeper.
 
 Linux users can extract the matching archive and install without administrator
-access. The archive holds `wasync`, `whatsapp-axi` and `install.sh`; extracting it
+access. The archive holds `wasync`, `wasync-axi` and `install.sh`; extracting it
 installs nothing:
 
 ```sh
@@ -168,7 +172,7 @@ wasync version
 
 `install.sh --bin-dir DIR` installs somewhere else. Without a terminal and without
 `--with-axi`, the script installs wasync only. To install by hand instead, copy
-`wasync` (and, if you want it, `whatsapp-axi`) with `install -m 755` into a directory on
+`wasync` (and, if you want it, `wasync-axi`) with `install -m 755` into a directory on
 your PATH.
 
 The `checksums.txt` release asset contains SHA-256 hashes of each download. On
@@ -190,12 +194,12 @@ Linux Homebrew installs both tools from source:
 brew tap --custom-remote gehariharan/tap https://github.com/gehariharan/wasync.git
 # On Homebrew versions with tap trust, authorize the core dependency:
 if brew help trust >/dev/null 2>&1; then brew trust --formula gehariharan/tap/wasync; fi
-brew install gehariharan/tap/whatsapp-axi
+brew install gehariharan/tap/wasync-axi
 ```
 
 On macOS, install the signed core cask below. AXI for agents is your choice there:
-add it with `brew install gehariharan/tap/whatsapp-axi` (the cask prints this
-reminder after installing). The standalone `whatsapp-axi` formula stays separate on
+add it with `brew install gehariharan/tap/wasync-axi` (the cask prints this
+reminder after installing). The standalone `wasync-axi` formula stays separate on
 purpose, so the agent tool can be installed, upgraded or removed on its own. The
 combined release's core source formula is Linux-only. The source formulas use Homebrew's Go and allow
 Go to download the project-selected toolchain when needed.
@@ -220,7 +224,7 @@ brew upgrade --cask gehariharan/tap/wasync
 wasync version
 ```
 
-If AXI is installed, upgrade it with `brew upgrade gehariharan/tap/whatsapp-axi`.
+If AXI is installed, upgrade it with `brew upgrade gehariharan/tap/wasync-axi`.
 Homebrew upgrades preserve the local archive, capture preferences and pairing.
 
 Releases from `0.1.0-preview.5` onward are Developer ID signed and notarized.
@@ -250,15 +254,15 @@ instead of a terminal, see [Setting up without a terminal](#setting-up-without-a
 
    `--on-demand` starts the agent with no chats at all; it asks for each chat by
    name and you decide. Type the agent's name to confirm. wasync then asks
-   **"Save this credential for whatsapp-axi now, at …? [Y/n]"**. Press Enter: it writes
-   the credential into whatsapp-axi's private credential file (owner-only, in
-   whatsapp-axi's config folder) and does not print it. If you say no, it prints
-   the credential once so you can put it in `WHATSAPP_AXI_TOKEN` or your agent's
+   **"Save this credential for wasync-axi now, at …? [Y/n]"**. Press Enter: it writes
+   the credential into wasync-axi's private credential file (owner-only, in
+   wasync-axi's config folder) and does not print it. If you say no, it prints
+   the credential once so you can put it in `WASYNC_AXI_TOKEN` or your agent's
    own secret store. wasync never replaces a different saved credential without
    asking.
-4. **Check the agent can reach wasync:** `whatsapp-axi doctor`.
+4. **Check the agent can reach wasync:** `wasync-axi doctor`.
 5. **The agent asks for a chat by name**, for example
-   `whatsapp-axi access request --match "Family" --send`. It is told the request is
+   `wasync-axi access request --match "Family" --send`. It is told the request is
    pending whatever matched.
 6. **You approve it.** Open the request in the TUI, or run `wasync actions list`
    and `wasync actions approve REQUEST_ID`. You choose the chat when several
@@ -913,18 +917,18 @@ The release workflow builds Windows 10/11 x64 using a native Windows runner,
 CGO SQLite with FTS5, and a statically linked MinGW runtime. Downloads:
 
 - `wasync_VERSION_windows_amd64-setup.exe`: per-user Inno Setup installer.
-- `wasync_VERSION_windows_amd64.zip`: portable `wasync.exe`, `whatsapp-axi.exe` and license notices.
+- `wasync_VERSION_windows_amd64.zip`: portable `wasync.exe`, `wasync-axi.exe` and license notices.
 
 Run Setup, then open **wasync** from the Start menu or open a new terminal and
 run `wasync`. The installer offers a user PATH entry and, as a separate unticked
-task, **AXI for agents** (`whatsapp-axi.exe`; keep the PATH entry ticked so agents
+task, **AXI for agents** (`wasync-axi.exe`; keep the PATH entry ticked so agents
 can find it). If you pick it, the last page offers two more unticked boxes that run
-`whatsapp-axi setup skill` and `whatsapp-axi setup hooks` as you; a silent install
+`wasync-axi setup skill` and `wasync-axi setup hooks` as you; a silent install
 never runs them. Silent examples:
 `wasync_VERSION_windows_amd64-setup.exe /VERYSILENT /MERGETASKS="installaxi"` adds
 AXI for agents, and omitting `installaxi` leaves it out. No administrator access is
-needed. If you set up your agents, run `whatsapp-axi setup hooks --remove` and
-`whatsapp-axi setup skill --remove` before uninstalling. Quit wasync before upgrading. Uninstall removes program files and its
+needed. If you set up your agents, run `wasync-axi setup hooks --remove` and
+`wasync-axi setup skill --remove` before uninstalling. Quit wasync before upgrading. Uninstall removes program files and its
 PATH entry; it preserves `%APPDATA%\wasync`, including the archive and device
 session. The portable ZIP uses the same data directory unless `--data-dir` is set.
 Local data uses a private Windows ACL for your user and SYSTEM; concurrent capture
@@ -991,9 +995,9 @@ business-name events; `@lid` chats are looked up through whatsmeow's LID-to-phon
 mapping. They are refreshed on every connect and when a contact changes (a failed
 refresh never stops message capture; it is retried on the next such event), and appear
 in `query chats` (including `--v1 --match`, which is case-insensitive and matches
-part of a name), the terminal UI, the local API and `whatsapp-axi`. Names are
+part of a name), the terminal UI, the local API and `wasync-axi`. Names are
 personal data: they are stored in the local archive only, never logged, and
-`whatsapp-axi` prints them as untrusted. A contact you have not saved and who has
+`wasync-axi` prints them as untrusted. A contact you have not saved and who has
 never messaged you keeps its number as its name.
 
 ```sh
@@ -1052,10 +1056,10 @@ target's chat approved for it (`wasync agents grant NAME --scope send
 the audit log. Errors use the v1 envelope: `target_unavailable` (deleted or a
 reaction), `not_found` (not archived or another account), `owner_offline`
 (wasync is not connected) and `send_failed`, whose outcome is unknown and must
-not be retried automatically. `whatsapp-axi reply REF --text TEXT` calls it.
+not be retried automatically. `wasync-axi reply REF --text TEXT` calls it.
 
 To send a new message rather than a quoted reply, agents use
-`POST /api/v1/messages` with `{ "chat", "text" }` or `{ "to", "text" }` (`whatsapp-axi send --chat CHAT_JID
+`POST /api/v1/messages` with `{ "chat", "text" }` or `{ "to", "text" }` (`wasync-axi send --chat CHAT_JID
 --text TEXT`, or `--to PHONE_NUMBER`). It needs the same `send` scope and an approved chat, and refuses a chat or
 number the agent was not given, unless you have switched on open sending.
 
@@ -1086,7 +1090,7 @@ and one-attempt behaviour are the same as for `reply`; the signed owner route is
 Agents use `PUT /api/v1/messages/{ref}/reaction` with `{ "emoji" }` and `DELETE` on the
 same path to clear it. Both need the `react` scope (separate from `send`) and the
 chat in the credential's allowlist, and are audited by scope, chat and ref.
-`whatsapp-axi react REF EMOJI` and `whatsapp-axi react REF --remove` call them. Your
+`wasync-axi react REF EMOJI` and `wasync-axi react REF --remove` call them. Your
 own sent reactions are archived like incoming ones, including removals.
 
 ### Editing your own messages
@@ -1103,7 +1107,7 @@ error says which rule applied. The signed owner route is `POST /api/edit` with
 `{ "chat", "message_id", "text" }`. Agents use `POST /api/v1/messages/{ref}/edit` with
 `{ "text" }`, which needs the `edit.own` scope and the chat in the credential's
 allowlist; refusals use the codes `not_editable` and `edit_window_expired`, and an
-unknown outcome is `send_failed`, never retried automatically. `whatsapp-axi edit REF
+unknown outcome is `send_failed`, never retried automatically. `wasync-axi edit REF
 --text TEXT` calls it. Your edit is archived like one made on your phone, so
 `edited_at` and the new text appear in queries.
 
@@ -1250,9 +1254,9 @@ codex plugin marketplace add gehariharan/wasync
 codex plugin add whatsapp@wasync
 ```
 
-The plugin gives Codex `whatsapp_*` tools served by `whatsapp-axi mcp` (read, search, follow changes, and reply, react and edit only where you allow it, plus asking for access to a chat and starting setup). Ask Codex to "set up WhatsApp": it opens the setup page below, you scan the QR code and choose chats, and later every chat Codex asks for is approved by you on your own computer (unless you set wasync to sync all chats, where asking grants it). No tool can approve, grant or reveal a credential. See [ADR-003](docs/architecture/ADR-003-mcp-tool-server.md) and the threat model.
+The plugin gives Codex `whatsapp_*` tools served by `wasync-axi mcp` (read, search, follow changes, and reply, react and edit only where you allow it, plus asking for access to a chat and starting setup). Ask Codex to "set up WhatsApp": it opens the setup page below, you scan the QR code and choose chats, and later every chat Codex asks for is approved by you on your own computer (unless you set wasync to sync all chats, where asking grants it). No tool can approve, grant or reveal a credential. See [ADR-003](docs/architecture/ADR-003-mcp-tool-server.md) and the threat model.
 
-It needs `wasync` and `whatsapp-axi` installed (see [Choose whether to add AXI for agents](#choose-whether-to-add-axi-for-agents)) with `whatsapp-axi` on the PATH the Codex app uses. [Let your agent set this up](#let-your-agent-set-this-up) has the install commands for macOS and Windows and the steps only you can do.
+It needs `wasync` and `wasync-axi` installed (see [Choose whether to add AXI for agents](#choose-whether-to-add-axi-for-agents)) with `wasync-axi` on the PATH the Codex app uses. [Let your agent set this up](#let-your-agent-set-this-up) has the install commands for macOS and Windows and the steps only you can do.
 
 ## Setting up without a terminal
 
@@ -1271,7 +1275,7 @@ that walks through the first-time steps that used to need a terminal:
    on this computer. Agents see none of them until you connect one.
 3. **Connect an agent.** Pick a name. The agent may read chats and messages, only those
    you approve, until you revoke it (`wasync agents grant` offers other access and
-   expiry). The credential is created and saved straight to where whatsapp-axi reads
+   expiry). The credential is created and saved straight to where wasync-axi reads
    it; it is never shown. The agent starts with no chats, and each one it asks for
    appears under **Approvals**.
 4. **Start at login.** Optionally add a login item (a macOS LaunchAgent, or a Windows
@@ -1336,11 +1340,11 @@ wasync agents grant helper --scope read.chats,read.messages,send --on-demand
 ```
 
 After you confirm, wasync offers to save the credential straight into
-whatsapp-axi's credential file, so there is nothing to copy by hand (see
+wasync-axi's credential file, so there is nothing to copy by hand (see
 [Set up an agent, start to finish](#set-up-an-agent-start-to-finish)).
 
 When the agent needs a chat it cannot use, its refusal points at
-`whatsapp-axi access request --chat JID` for that exact chat; an agent can also ask
+`wasync-axi access request --chat JID` for that exact chat; an agent can also ask
 by name with `--match NAME` (a contact or group name, or a phone number). `--send`
 also asks to send, reply and react; `--edit` also asks to edit its own messages.
 wasync resolves the request to concrete candidate chats that only you see and
@@ -1515,10 +1519,10 @@ remain for the selection interface and may be refreshed by later WhatsApp events
 The Store edition is an x64 desktop console application with a `wasync.exe` app
 execution alias and the same optional TUI/CLI. **It contains wasync only, not
 AXI for agents.** A Store package cannot ask the user a question at install time, so
-bundling `whatsapp-axi` would install it for everyone, which is not a choice. A
+bundling `wasync-axi` would install it for everyone, which is not a choice. A
 separate Store add-on that people could pick would be a new Partner Center product
 and a new certification, which only the Store account owner can do. Store users who
-want it can take `whatsapp-axi.exe` from the Windows ZIP on the
+want it can take `wasync-axi.exe` from the Windows ZIP on the
 [Releases page](https://github.com/gehariharan/wasync/releases); with the Store
 execution alias on PATH, it finds `wasync` the same way it does for other installs.
 That Store-plus-AXI combination has not been tested on a real Store installation. Windows 10 build 19041 or newer is

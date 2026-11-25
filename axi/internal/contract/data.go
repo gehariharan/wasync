@@ -2,7 +2,7 @@ package contract
 
 import "encoding/json"
 
-// The types below are the parts of wasync's v1 read data that whatsapp-axi
+// The types below are the parts of wasync's v1 read data that wasync-axi
 // renders as text. They mirror wasync's internal/query v1 shapes; unknown
 // fields are ignored, and --json output passes the original data through
 // unchanged. Times stay the RFC 3339 strings wasync sent.

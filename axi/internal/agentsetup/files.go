@@ -1,6 +1,6 @@
-// Package agentsetup installs and inspects whatsapp-axi's opt-in agent
+// Package agentsetup installs and inspects wasync-axi's opt-in agent
 // integrations: a session-start hook in each agent's settings (AXI
-// principle 7, ambient context) and the whatsapp-axi agent skill. It edits
+// principle 7, ambient context) and the wasync-axi agent skill. It edits
 // only what it owns, preserves every other byte of the user's files, writes
 // atomically with private permissions and refuses files it cannot parse.
 // It never touches wasync, its data directory or its tokens.
@@ -16,7 +16,7 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/contract"
 )
 
-// maxFileSize bounds the agent settings files whatsapp-axi reads.
+// maxFileSize bounds the agent settings files wasync-axi reads.
 const maxFileSize = 4 << 20
 
 // Error codes of setup problems.
@@ -25,7 +25,7 @@ const (
 	CodeWriteFailed   = "write_failed"   // reading or writing a file failed
 )
 
-// file is the current state of a file whatsapp-axi may change.
+// file is the current state of a file wasync-axi may change.
 type file struct {
 	Path   string // as given
 	Target string // Path with symlinks resolved; the file that is written
@@ -71,7 +71,7 @@ func readFile(path string) (file, error) {
 		return f, ioErr(path, "cannot read", err)
 	}
 	if len(data) > maxFileSize {
-		return f, &contract.Error{Code: CodeConfigInvalid, Message: path + " is larger than 4 MiB", Help: "whatsapp-axi does not edit files this large; add the hook by hand"}
+		return f, &contract.Error{Code: CodeConfigInvalid, Message: path + " is larger than 4 MiB", Help: "wasync-axi does not edit files this large; add the hook by hand"}
 	}
 	f.Exists, f.Data = true, data
 	return f, nil
@@ -85,7 +85,7 @@ func writeAtomic(target string, data []byte) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return ioErr(dir, "cannot create", err)
 	}
-	tmp, err := os.CreateTemp(dir, ".whatsapp-axi-*.tmp")
+	tmp, err := os.CreateTemp(dir, ".wasync-axi-*.tmp")
 	if err != nil {
 		return ioErr(target, "cannot write", err)
 	}

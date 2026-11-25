@@ -15,6 +15,6 @@ messages[4]{ref,time,sender,untrusted_text}:
   m1_bWVAbGlkAGZhbWlseUBnLnVzAGYz,"2026-10-01T08:10:00Z",alice@lid,""
   m1_bWVAbGlkAGZhbWlseUBnLnVzAGYy,"2026-10-01T08:05:00Z",me,"me, dinner at 8"
 help[3]:
-  Older messages: run `whatsapp-axi messages family@g.us --cursor c2`
-  Text over 200 chars is cut and ends in …; run `whatsapp-axi message <ref> --full` for a whole message
-  Run `whatsapp-axi thread <ref>` to read a message with its neighbours
+  Older messages: run `wasync-axi messages family@g.us --cursor c2`
+  Text over 200 chars is cut and ends in …; run `wasync-axi message <ref> --full` for a whole message
+  Run `wasync-axi thread <ref>` to read a message with its neighbours

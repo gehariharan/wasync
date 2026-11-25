@@ -1,6 +1,6 @@
 # Contributing
 
-whatsapp-axi lives in the wasync monorepo under `axi/` and is the agent-facing CLI for [wasync](https://github.com/gehariharan/wasync). Read
+wasync-axi lives in the wasync monorepo under `axi/` and is the agent-facing CLI for [wasync](https://github.com/gehariharan/wasync). Read
 [ADR-001](../docs/architecture/ADR-001-repository-boundaries.md)
 for the process boundary and [ADR-002](../docs/architecture/ADR-002-monorepo.md)
 for repository and release ownership before changing anything.
@@ -9,7 +9,7 @@ for repository and release ownership before changing anything.
 
 - No WhatsApp logic, SQL, SQLite driver, whatsmeow or wasync `internal/` imports.
 - Read wasync only through `/api/v1` on loopback or `wasync query <cmd> --v1 --json`.
-- If a feature needs SQL, a WhatsApp call, a policy decision or persisted state other than whatsapp-axi's own
+- If a feature needs SQL, a WhatsApp call, a policy decision or persisted state other than wasync-axi's own
   config, it goes into wasync first behind an API endpoint and a `wasync query` equivalent.
 - Message text is untrusted data. Render it with `output.Untrusted`, never turn it into hints.
 

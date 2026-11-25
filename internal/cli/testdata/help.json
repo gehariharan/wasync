@@ -20,7 +20,7 @@
     },
     {
       "description": "Link WhatsApp and set wasync up in your browser, without a terminal.",
-      "details": "Starts wasync like serve and opens a local page that shows the QR code to scan, lets you choose chats to keep, connects an agent (saving its credential straight where whatsapp-axi reads it, never showing it) and can start wasync when you log in. It keeps running as the capture owner until you press Ctrl-C. If wasync is already running it opens the setup page of the running copy instead. The page never opens by a printed link. Connecting an agent and turning on start-at-login ask for Touch ID or your password (macOS) or Windows Hello or your password (Windows); where this computer cannot show that prompt the page shows the terminal command instead.",
+      "details": "Starts wasync like serve and opens a local page that shows the QR code to scan, lets you choose chats to keep, connects an agent (saving its credential straight where wasync-axi reads it, never showing it) and can start wasync when you log in. It keeps running as the capture owner until you press Ctrl-C. If wasync is already running it opens the setup page of the running copy instead. The page never opens by a printed link. Connecting an agent and turning on start-at-login ask for Touch ID or your password (macOS) or Windows Hello or your password (Windows); where this computer cannot show that prompt the page shows the terminal command instead.",
       "path": "setup",
       "usage": "setup"
     },
@@ -170,7 +170,7 @@
     },
     {
       "description": "Inspect or interactively approve a destructive request or an agent's chat access request.",
-      "details": "Requires the running owner's command channel. REQUEST_ID is the 32-character hexadecimal ID returned by clean or delete, or printed by whatsapp-axi access request.",
+      "details": "Requires the running owner's command channel. REQUEST_ID is the 32-character hexadecimal ID returned by clean or delete, or printed by wasync-axi access request.",
       "path": "actions",
       "usage": "actions list | status|approve REQUEST_ID"
     },
@@ -302,7 +302,7 @@
     },
     {
       "description": "Create a scoped agent credential; human only, interactive terminal required.",
-      "details": "NAME is 1-32 characters of a-z, 0-9 and -. Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own, chat.state, group.admin, capture.manage, export (default read.chats,read.messages). There is no destructive scope. send, react, edit.own, chat.state, group.admin and capture.manage need a chat list: normally use --on-demand, which starts the client with no chats: it asks (whatsapp-axi access request) and you approve each chat, read and send separately, with a history depth, in the TUI or actions approve. --chat (repeatable) pre-approves a chat by name (shown with its JID and confirmed by you) or by JID. --rate is requests per minute (default 60); omit --expires for no expiry. grant offers to save the credential where whatsapp-axi reads it; if you decline it is printed once; only its hash is stored. Legacy api.token, send.token and approve.token are never accepted as agent credentials.",
+      "details": "NAME is 1-32 characters of a-z, 0-9 and -. Scopes: read.chats, read.messages, read.media, observe, send, react, edit.own, chat.state, group.admin, capture.manage, export (default read.chats,read.messages). There is no destructive scope. send, react, edit.own, chat.state, group.admin and capture.manage need a chat list: normally use --on-demand, which starts the client with no chats: it asks (wasync-axi access request) and you approve each chat, read and send separately, with a history depth, in the TUI or actions approve. --chat (repeatable) pre-approves a chat by name (shown with its JID and confirmed by you) or by JID. --rate is requests per minute (default 60); omit --expires for no expiry. grant offers to save the credential where wasync-axi reads it; if you decline it is printed once; only its hash is stored. Legacy api.token, send.token and approve.token are never accepted as agent credentials.",
       "path": "agents grant",
       "usage": "agents grant NAME [--scope S1,S2] [--chat NAME ...] [--on-demand] [--expires DURATION] [--rate N]"
     },

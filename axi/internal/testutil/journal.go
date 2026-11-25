@@ -22,8 +22,8 @@ const ModeJournal = "journal"
 
 // Environment variables of the journal mode.
 const (
-	EnvFakeJournal    = "WHATSAPP_AXI_FAKE_JOURNAL"     // JSON file holding the journal state
-	EnvFakeJournalLog = "WHATSAPP_AXI_FAKE_JOURNAL_LOG" // call log, one JSON array per line
+	EnvFakeJournal    = "WASYNC_AXI_FAKE_JOURNAL"     // JSON file holding the journal state
+	EnvFakeJournalLog = "WASYNC_AXI_FAKE_JOURNAL_LOG" // call log, one JSON array per line
 )
 
 // JournalAccount is the account JID the fake journal belongs to.

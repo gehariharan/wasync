@@ -1,6 +1,6 @@
 # Releasing wasync
 
-Both `wasync` and `whatsapp-axi` ship from this repository. The root module owns
+Both `wasync` and `wasync-axi` ship from this repository. The root module owns
 the TUI, WhatsApp connection and archive; the nested `axi` module owns the agent
 CLI. Repository and release ownership is defined in
 [ADR-002](architecture/ADR-002-monorepo.md).
@@ -32,52 +32,52 @@ never use a paired account. Review both modules and run no-mistakes before merge
 
 ## Installers and the AXI choice
 
-wasync (the app and engine) and `whatsapp-axi` (the agent command) stay separate
+wasync (the app and engine) and `wasync-axi` (the agent command) stay separate
 programs, as in [ADR-002](architecture/ADR-002-monorepo.md), but every installer that
-can offer a choice installs `whatsapp-axi` from the same release on request. It is
+can offer a choice installs `wasync-axi` from the same release on request. It is
 always off by default. Both binaries get the same `VERSION`, and installers refuse to
 build or verify if they do not.
 
 | Channel | What ships | How AXI for agents is chosen |
 | --- | --- | --- |
-| macOS `.pkg` | A product archive with two components: `wasync` (locked on) and `whatsapp-axi` (starts unticked), defined by `packaging/macos/distribution.xml` | Installer's Customize step |
-| macOS Homebrew cask | `wasync` only | `brew install gehariharan/tap/whatsapp-axi` (the cask prints this) |
-| Linux archive | `wasync`, `whatsapp-axi`, `install.sh` (from `packaging/linux/`) | `install.sh` asks, default no; `--with-axi`/`--without-axi` |
-| Linux Homebrew | The `whatsapp-axi` formula depends on `wasync` | Install the formula or not |
-| Windows Setup | `whatsapp-axi.exe` is a file of the unticked `installaxi` task in `packaging/windows/wasync.iss` | Tasks page; silent `/MERGETASKS="installaxi"` |
+| macOS `.pkg` | A product archive with two components: `wasync` (locked on) and `wasync-axi` (starts unticked), defined by `packaging/macos/distribution.xml` | Installer's Customize step |
+| macOS Homebrew cask | `wasync` only | `brew install gehariharan/tap/wasync-axi` (the cask prints this) |
+| Linux archive | `wasync`, `wasync-axi`, `install.sh` (from `packaging/linux/`) | `install.sh` asks, default no; `--with-axi`/`--without-axi` |
+| Linux Homebrew | The `wasync-axi` formula depends on `wasync` | Install the formula or not |
+| Windows Setup | `wasync-axi.exe` is a file of the unticked `installaxi` task in `packaging/windows/wasync.iss` | Tasks page; silent `/MERGETASKS="installaxi"` |
 | Windows ZIP | Both executables | Portable; nothing is installed or configured by extracting |
 | Microsoft Store MSIX | `wasync` only | Not offered, by design |
 
 The MSIX stays wasync only. A Store package cannot prompt, so including
-`whatsapp-axi` would install it for every Store user and add a second executable to the
+`wasync-axi` would install it for every Store user and add a second executable to the
 certified package; a real choice there would mean a separate Store add-on, which needs
 a new Partner Center product and certification. That is an **owner-only action**
 and was not started. Nothing was submitted to the Store.
 
 No installer changes agent configuration. Where the installer can run a command as
 the user (the Linux script and Windows Setup's last page) it offers
-`whatsapp-axi setup skill` and `whatsapp-axi setup hooks` as separate, off-by-default
+`wasync-axi setup skill` and `wasync-axi setup hooks` as separate, off-by-default
 steps; the macOS installer cannot, so its last page only says to run them.
 
-macOS details. `scripts/package.sh` builds `wasync.pkg` and `whatsapp-axi.pkg`
+macOS details. `scripts/package.sh` builds `wasync.pkg` and `wasync-axi.pkg`
 with `pkgbuild` and joins them with `productbuild` (signed with the Developer ID
 Installer identity). The signing step expands the installer, replaces both executables
 with the signed ones, rebuilds both components with the same identifiers
 (`com.gehariharan.wasynctuicli` and `com.gehariharan.wasynctuicli.axi`) and the
 installer's own `Distribution` and `Resources`, then signs and notarizes it. The
-signed standalone `whatsapp-axi` is the one placed in the installer, so the two are
+signed standalone `wasync-axi` is the one placed in the installer, so the two are
 byte-identical; `verify-signed-release.sh` checks that.
 
 ## Preview publication
 
 Main updates start `auto-release.yml`, except ordinary documentation and generated
-Homebrew-only commits. Changes to the embedded `axi/skills/whatsapp-axi/SKILL.md`
+Homebrew-only commits. Changes to the embedded `axi/skills/wasync-axi/SKILL.md`
 are executable changes and still trigger publication. The workflow chooses one
 increasing preview version, `0.1.0-preview.YYYYMMDDHHMMSS` (UTC), and invokes the
 common `release.yml`. That workflow creates `vVERSION` and `axi/vVERSION`
 at the same commit, tests/builds both binaries, executes native AXI smoke tests,
 generates both source formulas from the root source archive, and creates a draft.
-The native Mac and Linux jobs build `whatsapp-axi` themselves from the same checkout
+The native Mac and Linux jobs build `wasync-axi` themselves from the same checkout
 and version, so the macOS installer and the Linux archive can carry it; Windows does
 the same in `scripts/package-windows.ps1`.
 
@@ -90,7 +90,7 @@ identifier are unchanged by the repository rename. AXI's signing identifier is
 `publish-signed.yml` independently verifies the signed draft on both Mac CPUs,
 checks the full asset checksum manifest and generated formula contents, and
 publishes it. It updates `Casks/wasync.rb`, `Formula/wasync.rb` and
-`Formula/whatsapp-axi.rb` on this same repository's main branch with the normal
+`Formula/wasync-axi.rb` on this same repository's main branch with the normal
 workflow token, then runs Homebrew installation checks. A failed publishing step
 can be retried; it must not change already published binaries or tags.
 
@@ -133,7 +133,7 @@ Outputs are written under `dist/VERSION/OS_ARCH/` (ignored by Git). Each build
 contains version, commit and timestamp metadata, dependency license notices (for both
 tools), a compressed executable archive and checksums. The Linux archive holds both
 executables and `install.sh`; the macOS archive holds `wasync` only. macOS builds
-additionally contain a native `.pkg` with the optional `whatsapp-axi` component. The build compiles SQLite with FTS5 enabled and embeds the
+additionally contain a native `.pkg` with the optional `wasync-axi` component. The build compiles SQLite with FTS5 enabled and embeds the
 result in the executable; it requires no separately installed SQLite package.
 Linux executables use the build platform's libc, so the workflow uses Ubuntu
 22.04 (glibc 2.35). macOS builds target macOS 15 or later.

@@ -184,7 +184,7 @@ func (h *handler) v1AccessStatus(w http.ResponseWriter, r *http.Request, id stri
 	}
 	req := h.approvals.Get(a.ID, r.PathValue("id"))
 	if req == nil || req.Kind != approval.KindChatAccess || req.Access.AgentID != c.ID {
-		v1Fail(w, id, 404, query.CodeNotFound, "no such access request for this credential", "requests are forgotten when wasync restarts; ask again with `whatsapp-axi access request`")
+		v1Fail(w, id, 404, query.CodeNotFound, "no such access request for this credential", "requests are forgotten when wasync restarts; ask again with `wasync-axi access request`")
 		return
 	}
 	view := accessView{RequestID: req.ID, Status: agentStatus(req.Status), Access: accessLevels(req.Access.Send, req.Access.Edit)}

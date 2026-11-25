@@ -7,7 +7,7 @@
 
 ## Context
 
-wasync is the only component that pairs with WhatsApp, holds `device.lock`, owns the SQLite archive and enforces selective capture. A new agent-facing CLI, `whatsapp-axi`, is planned. The inspection found:
+wasync is the only component that pairs with WhatsApp, holds `device.lock`, owns the SQLite archive and enforces selective capture. A new agent-facing CLI, `wasync-axi`, is planned. The inspection found:
 
 - The local API already separates a read bearer token (`api.token`) from HMAC-signed control requests (`send.token`) and human approval (`approve.token`) in `internal/api/server.go`.
 - The read bearer token can also mutate state today: `POST /api/chats/{id}/enable|disable`, `enable-all|disable-all` and `/history` require only `api.token`. Any client holding the read token can change capture policy.
@@ -19,7 +19,7 @@ wasync is the only component that pairs with WhatsApp, holds `device.lock`, owns
 
 ### D-1. Two read transports, nothing else
 
-`whatsapp-axi` reads through exactly two transports:
+`wasync-axi` reads through exactly two transports:
 
 1. **Local API** (`/api/v1` on the loopback address) when a wasync owner is running, authenticated with an AXI-specific scoped credential (D-2).
 2. **`wasync query … --json`** as a subprocess for offline archive reads when no owner is listening.
@@ -43,7 +43,7 @@ CLI flags, AXI confirmations, agent skills and hook instructions are UX only. Th
 
 The wasync core owns: WhatsApp protocol, capture policy, normalization, storage and migrations, search and context, identity resolution, the change journal and checkpoints, authorization, audit, sending and every other operation.
 
-whatsapp-axi owns only: command parsing and composition, transport selection, output formatting (compact text, TOON if justified, `--json`), truncation, hints, discovery/help, `doctor` presentation, `setup hooks`, agent skills and benchmarks. Release ownership is defined in [ADR-002](ADR-002-monorepo.md).
+wasync-axi owns only: command parsing and composition, transport selection, output formatting (compact text, TOON if justified, `--json`), truncation, hints, discovery/help, `doctor` presentation, `setup hooks`, agent skills and benchmarks. Release ownership is defined in [ADR-002](ADR-002-monorepo.md).
 
 Test of the rule: if a feature would need SQL, a whatsmeow call, a policy decision or persistent state other than AXI's own config, it belongs in wasync behind an API endpoint and a `wasync query` equivalent.
 
@@ -53,10 +53,10 @@ Test of the rule: if a feature would need SQL, a whatsmeow call, a policy decisi
 - Each entry has a monotonic `sequence` (INTEGER PRIMARY KEY AUTOINCREMENT), `account_jid`, `chat_jid`, `message_id`, `op`, `op_version`, `committed_at`. No message bodies; consumers fetch content by ref under `read.messages`.
 - Cursors are opaque and encode `(account_jid, journal_epoch, sequence)`. `journal_epoch` changes if the archive is recreated, so a stale cursor fails with `cursor_expired` instead of silently skipping. Timestamps and message row IDs are never cursors.
 - **Account-aware checkpoints:** wasync stores named consumer checkpoints keyed by `(account_jid, consumer)`. Advancing a checkpoint is a write and goes through the API under the `observe` scope. Offline `observe` can read the journal through `wasync query changes` but cannot commit a checkpoint; AXI says so.
-- `whatsapp-axi observe [--after CURSOR | --consumer NAME] [--chat JID] [--limit N] [--follow]` prints bounded batches with the next cursor and an explicit commit step (`--commit` or `observe ack`).
+- `wasync-axi observe [--after CURSOR | --consumer NAME] [--chat JID] [--limit N] [--follow]` prints bounded batches with the next cursor and an explicit commit step (`--commit` or `observe ack`).
 - Retention: journal rows older than the retention window are pruned; a cursor behind the low-water mark returns `cursor_expired` with a resnapshot hint.
 
-### D-5. `whatsapp-axi doctor`
+### D-5. `wasync-axi doctor`
 
 `doctor` checks and reports with pass/warn/fail and repair guidance; see
 [doctor usage](../../axi/README.md#usage):

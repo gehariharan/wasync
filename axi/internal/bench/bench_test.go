@@ -38,7 +38,7 @@ type rawCall struct {
 	q    url.Values
 }
 
-// task is a typical agent task done both ways: whatsapp-axi commands, or
+// task is a typical agent task done both ways: wasync-axi commands, or
 // the raw wasync reads that give the agent the same information.
 type task struct {
 	name, goal string
@@ -114,7 +114,7 @@ type side struct {
 type result struct {
 	Task      task
 	AXI, Raw  side
-	AXIWasync int // wasync subprocess calls whatsapp-axi made for the task
+	AXIWasync int // wasync subprocess calls wasync-axi made for the task
 }
 
 type env struct {
@@ -137,22 +137,22 @@ func setup(tb testing.TB, c corpus) env {
 	return env{bin: bin, log: log, dir: dir, addr: testutil.ClosedAddr(tb)}
 }
 
-// runAXI runs one whatsapp-axi command in process against the fake wasync,
+// runAXI runs one wasync-axi command in process against the fake wasync,
 // with no API listening on e.addr, so it reads through `wasync query`.
 func (e env) runAXI(tb testing.TB, args []string) string {
 	tb.Helper()
 	vars := map[string]string{
 		"WASYNC_BIN": e.bin, "WASYNC_API_ADDR": e.addr,
-		"WHATSAPP_AXI_CONFIG_DIR": e.dir, "WHATSAPP_AXI_AGENT_HOME": e.dir,
+		"WASYNC_AXI_CONFIG_DIR": e.dir, "WASYNC_AXI_AGENT_HOME": e.dir,
 	}
 	var out bytes.Buffer
 	a := cli.New(&out)
 	a.Getenv = func(k string) string { return vars[k] }
 	a.HomeDir = func() (string, error) { return e.dir, nil }
-	a.Executable = func() (string, error) { return "whatsapp-axi", nil }
+	a.Executable = func() (string, error) { return "wasync-axi", nil }
 	a.ProbeTimeout = 2 * time.Second
 	if code := a.Run(context.Background(), args); code != cli.ExitOK {
-		tb.Fatalf("whatsapp-axi %v: exit %d\n%s", args, code, out.String())
+		tb.Fatalf("wasync-axi %v: exit %d\n%s", args, code, out.String())
 	}
 	return out.String()
 }
@@ -205,7 +205,7 @@ func measure(tb testing.TB, c corpus) ([]result, side) {
 	}
 	brief := side{Output: e.runAXI(tb, []string{"--brief"}), Calls: 1}
 	brief.Bytes, brief.Tokens = len(brief.Output), approxTokens(brief.Output)
-	if dir := os.Getenv("WHATSAPP_AXI_BENCH_DUMP"); dir != "" {
+	if dir := os.Getenv("WASYNC_AXI_BENCH_DUMP"); dir != "" {
 		for _, r := range results {
 			_ = os.WriteFile(filepath.Join(dir, r.Task.name+".axi.txt"), []byte(r.AXI.Output), 0o600)
 			_ = os.WriteFile(filepath.Join(dir, r.Task.name+".raw.json"), []byte(r.Raw.Output), 0o600)
@@ -237,7 +237,7 @@ func report(results []result, brief side, chats, perChat int) string {
 	}
 	fmt.Fprintf(&b, "| **total** | %d / %d | | %d / %d | %s | %d / %d | %s |\n", ta.Calls, tr.Calls,
 		ta.Bytes, tr.Bytes, saved(ta.Bytes, tr.Bytes), ta.Tokens, tr.Tokens, saved(ta.Tokens, tr.Tokens))
-	fmt.Fprintf(&b, "\nSession hook (`whatsapp-axi --brief`): %d bytes, ~%d tokens per session.\n", brief.Bytes, brief.Tokens)
+	fmt.Fprintf(&b, "\nSession hook (`wasync-axi --brief`): %d bytes, ~%d tokens per session.\n", brief.Bytes, brief.Tokens)
 	return b.String()
 }
 
@@ -249,10 +249,10 @@ func TestBenchmarkReport(t *testing.T) {
 	results, brief := measure(t, newCorpus(chats, perChat))
 	for _, r := range results {
 		if r.AXI.Calls > r.Raw.Calls {
-			t.Errorf("%s: whatsapp-axi needs more calls (%d) than raw wasync (%d)", r.Task.name, r.AXI.Calls, r.Raw.Calls)
+			t.Errorf("%s: wasync-axi needs more calls (%d) than raw wasync (%d)", r.Task.name, r.AXI.Calls, r.Raw.Calls)
 		}
 		if r.AXI.Tokens >= r.Raw.Tokens || r.AXI.Bytes >= r.Raw.Bytes {
-			t.Errorf("%s: whatsapp-axi output is not smaller: %d/%d bytes, %d/%d tokens", r.Task.name, r.AXI.Bytes, r.Raw.Bytes, r.AXI.Tokens, r.Raw.Tokens)
+			t.Errorf("%s: wasync-axi output is not smaller: %d/%d bytes, %d/%d tokens", r.Task.name, r.AXI.Bytes, r.Raw.Bytes, r.AXI.Tokens, r.Raw.Tokens)
 		}
 		if strings.Contains(r.AXI.Output, "error:") || r.AXI.Bytes == 0 || r.Raw.Bytes == 0 {
 			t.Errorf("%s: empty or failed output", r.Task.name)
@@ -308,7 +308,7 @@ func TestApproxTokens(t *testing.T) {
 	}
 }
 
-// BenchmarkTasks times each task through whatsapp-axi (process-local CLI,
+// BenchmarkTasks times each task through wasync-axi (process-local CLI,
 // subprocess fake wasync) and reports the output sizes as metrics.
 func BenchmarkTasks(b *testing.B) {
 	c := newCorpus(fullChats, fullPerChat)

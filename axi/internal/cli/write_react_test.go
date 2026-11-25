@@ -108,7 +108,7 @@ func TestReactNeverWritesOfflineOrToIncompatibleWasync(t *testing.T) {
 	offline := newHarness(t)
 	bin, log := testutil.FakeWasync(t, testutil.ModeOK)
 	offline.env["WASYNC_BIN"] = bin
-	offline.env["WHATSAPP_AXI_TOKEN"] = "wsa_writer"
+	offline.env["WASYNC_AXI_TOKEN"] = "wsa_writer"
 	out, code := offline.run(t, "react", testRef, "👍")
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
