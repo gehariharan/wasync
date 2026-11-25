@@ -39,7 +39,7 @@ encrypt data at rest.
 | `access-mode.json` | Whether agents' chat requests are asked each time or synced all |
 | `pending-approvals.json` | Requests waiting for a person, so a restart does not lose them |
 | `send-lists.json` | Approved phone-number lists for agents, their pacing, and for up to 30 days who a removed list already messaged |
-| `send-record.json` | Kept for good: when each number first got a list message, and the numbers that replied STOP (numbers and times only, never message text) |
+| `send-record.json` | Kept for good: when each number first and last got a list message, and the numbers that replied STOP (numbers and times only, never message text) |
 | `open-sending.json` | Whether open sending is on, and until when |
 | `tailnet.json` | The tailnet name and Tailscale login allowed to open the web app from other devices ([Tailscale](tailscale.md)); absent when off |
 | `sent-log.jsonl` | Every send by you or an agent: who, which chat, when, message ID and outcome, never the text |

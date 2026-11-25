@@ -57,7 +57,7 @@ const (
 	maxFileBytes = 1 << 20
 
 	// RecordFileName is the private file that remembers, for good, when each
-	// number first got a list message and which numbers replied STOP.
+	// number first and last got a list message and which numbers replied STOP.
 	RecordFileName = "send-record.json"
 	maxRecordBytes = 16 << 20
 )
@@ -164,6 +164,7 @@ type file struct {
 // unreadable: numbers and times only, never message text.
 type record struct {
 	FirstSent map[string]time.Time `json:"first_sent,omitempty"` // earliest first list message, by any agent
+	LastSent  map[string]time.Time `json:"last_sent,omitempty"`  // latest list message, by any agent
 	OptedOut  []string             `json:"opted_out,omitempty"`  // numbers that replied STOP
 }
 
@@ -213,8 +214,8 @@ func readPrivate(dir, name string, limit int, v any) error {
 }
 
 // load reads the lists. A number any agent's list ever messaged counts as
-// messaged on every list, so no agent sends it another first message before
-// it replies.
+// messaged on every list, as of the latest list message to it by any agent,
+// so no agent sends it another message before it replies to that one.
 func load(dir string) (file, error) {
 	var v file
 	if err := readPrivate(dir, FileName, maxFileBytes, &v); err != nil {
@@ -245,9 +246,9 @@ func load(dir string) (file, error) {
 			n := &v.Lists[i].Numbers[j]
 			if at, ok := r.FirstSent[n.Chat]; ok && n.FirstSentAt == nil {
 				n.FirstSentAt = &at
-				if n.LastSentAt == nil {
-					n.LastSentAt = &at
-				}
+			}
+			if at, ok := r.LastSent[n.Chat]; ok && (n.LastSentAt == nil || at.After(*n.LastSentAt)) {
+				n.LastSentAt = &at
 			}
 		}
 	}
@@ -259,9 +260,11 @@ func loadRecord(dir string) (record, error) {
 	if err := readPrivate(dir, RecordFileName, maxRecordBytes, &r); err != nil {
 		return record{}, err
 	}
-	for chat := range r.FirstSent {
-		if !numberAddress(chat) {
-			return record{}, fmt.Errorf("invalid %s: %q is not a phone number address", RecordFileName, chat)
+	for _, m := range []map[string]time.Time{r.FirstSent, r.LastSent} {
+		for chat := range m {
+			if !numberAddress(chat) {
+				return record{}, fmt.Errorf("invalid %s: %q is not a phone number address", RecordFileName, chat)
+			}
 		}
 	}
 	for _, chat := range r.OptedOut {
@@ -272,15 +275,22 @@ func loadRecord(dir string) (record, error) {
 	if r.FirstSent == nil {
 		r.FirstSent = map[string]time.Time{}
 	}
+	if r.LastSent == nil {
+		r.LastSent = map[string]time.Time{}
+	}
 	return r, nil
 }
 
-// note adds every first message in v to r, and reports whether r changed.
+// note adds every first and latest message in v to r, and reports whether r
+// changed.
 func (r *record) note(v file) bool {
 	changed := false
 	add := func(x Number) {
 		if at, seen := r.FirstSent[x.Chat]; x.FirstSentAt != nil && (!seen || x.FirstSentAt.Before(at)) {
 			r.FirstSent[x.Chat], changed = x.FirstSentAt.UTC(), true
+		}
+		if at, seen := r.LastSent[x.Chat]; x.LastSentAt != nil && (!seen || x.LastSentAt.After(at)) {
+			r.LastSent[x.Chat], changed = x.LastSentAt.UTC(), true
 		}
 	}
 	for _, l := range v.Lists {

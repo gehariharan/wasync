@@ -651,9 +651,22 @@ func TestRemovingAndApprovingAListAgainNeverSendsASecondFirstMessage(t *testing.
 	}
 }
 
-// A first message belongs to the number, not the agent: another agent's list
-// may not send a number a second unanswered first message.
-func TestAFirstMessageFromOneAgentCountsOnEveryList(t *testing.T) {
+// replyBetween stores a reply from the person at chat timed now, between the
+// list message before it and the one after it.
+func (f fixture) replyBetween(t *testing.T, chat, id, text string) {
+	t.Helper()
+	time.Sleep(10 * time.Millisecond)
+	m := storage.Message{GroupID: chat, MessageID: id, SenderID: chat, Timestamp: time.Now(), Type: "text", Text: text}
+	if res, err := f.store.Apply(context.Background(), f.account, []storage.Message{m}); err != nil || res.Stored != 1 {
+		t.Fatalf("store reply: %+v %v", res, err)
+	}
+	time.Sleep(10 * time.Millisecond)
+}
+
+// One message per number until it replies holds across every agent: while
+// two lists hold the same number, neither sends while the latest list message
+// to it, by either agent, is unanswered.
+func TestNoAgentMessagesANumberWhileAnotherAgentsMessageIsUnanswered(t *testing.T) {
 	rec := &sendRecorder{}
 	f := setupSend(t, rec)
 	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
@@ -661,29 +674,63 @@ func TestAFirstMessageFromOneAgentCountsOnEveryList(t *testing.T) {
 	f.approveList(t, "other", nil, "15551230000", "15551230001")
 	f.approveList(t, "poster", nil, "15551230000", "15551230001")
 	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
-		t.Fatalf("first: %d %s", status, body)
+		t.Fatalf("first message: %d %s", status, body)
 	}
 	status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
 	wantV1Error(t, status, body, 429, query.CodeRateLimited)
 	if !strings.Contains(string(body), "has not replied") {
-		t.Fatalf("a list approved before the first message sent another: %s", body)
+		t.Fatalf("another agent sent a second first message: %s", body)
+	}
+	f.replyBetween(t, listed, "R1", "Yes, tell me more")
+	if status, body = f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"here it is"}`); status != 200 {
+		t.Fatalf("after a reply: %d %s", status, body)
+	}
+	status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if rec.count() != 2 {
+		t.Fatalf("a reply to the first message let another agent answer past the latest one: %d", rec.count())
+	}
+	f.incoming(t, listed, "R2", "Thanks")
+	if status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"anything else?"}`); status != 200 {
+		t.Fatalf("after a reply to the latest message: %d %s", status, body)
+	}
+	if entries := f.sentEntries(t); len(entries) != 3 || entries[0].NewNumber {
+		t.Fatalf("a number already messaged was counted as new: %+v", entries)
+	}
+}
+
+// The latest list message to a number is remembered for good, after a removed
+// list's send history is forgotten.
+func TestAnUnansweredListMessageOutlivesTheSendHistory(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first message: %d %s", status, body)
+	}
+	f.replyBetween(t, listed, "R1", "Yes, tell me more")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"here it is"}`); status != 200 {
+		t.Fatalf("after a reply: %d %s", status, body)
 	}
 	c, _ := agentauth.ActiveByName(f.dir, "poster")
 	if err := sendlist.Remove(f.dir, c.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Day 35: the removed list's send history has been forgotten.
+	if err := os.WriteFile(filepath.Join(f.dir, sendlist.FileName), []byte(`{"lists":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	f.approveList(t, "other", nil, "15551230000", "15551230001")
-	status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
 	wantV1Error(t, status, body, 429, query.CodeRateLimited)
-	if l := listOf(t, f, "other"); l.NotMessaged() != 1 || rec.count() != 1 {
-		t.Fatalf("another agent's list sent a second first message: %d %+v", rec.count(), l)
+	if l := listOf(t, f, "other"); l.NotMessaged() != 1 || rec.count() != 2 {
+		t.Fatalf("another agent's list messaged a number with an unanswered message: %d %+v", rec.count(), l)
 	}
-	f.incoming(t, listed, "R1", "Yes, tell me more")
-	if status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"here it is"}`); status != 200 {
-		t.Fatalf("after a reply: %d %s", status, body)
-	}
-	if entries := f.sentEntries(t); len(entries) != 2 || entries[0].NewNumber {
-		t.Fatalf("a number already messaged was counted as new: %+v", entries)
+	f.incoming(t, listed, "R2", "Thanks")
+	if status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"anything else?"}`); status != 200 {
+		t.Fatalf("after a reply to the latest message: %d %s", status, body)
 	}
 }
 
