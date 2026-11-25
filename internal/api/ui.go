@@ -38,6 +38,9 @@ const (
 type uiSession struct {
 	csrf    string
 	expires time.Time
+	// login is the Tailscale login a remote session belongs to; "" for a
+	// session opened on this computer with a one-time link.
+	login string
 }
 
 // uiState holds single-use sign-in links and the sessions they were swapped for.
@@ -101,6 +104,21 @@ func (s *uiState) enter(link string) (cookie string, ok bool) {
 		return "", false
 	}
 	delete(s.links, link)
+	cookie, _ = s.add(now, "")
+	return cookie, true
+}
+
+// start opens a session for a remote browser whose Tailscale login was checked.
+func (s *uiState) start(login string) (cookie string, sess uiSession) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	now := time.Now()
+	s.prune(now)
+	return s.add(now, login)
+}
+
+// add records a new session; the caller holds s.mu.
+func (s *uiState) add(now time.Time, login string) (string, uiSession) {
 	if s.sessions == nil {
 		s.sessions = map[string]uiSession{}
 	}
@@ -110,9 +128,10 @@ func (s *uiState) enter(link string) (cookie string, ok bool) {
 			break
 		}
 	}
-	cookie = token()
-	s.sessions[cookie] = uiSession{csrf: token(), expires: now.Add(uiSessionTTL)}
-	return cookie, true
+	cookie := token()
+	sess := uiSession{csrf: token(), expires: now.Add(uiSessionTTL), login: login}
+	s.sessions[cookie] = sess
+	return cookie, sess
 }
 
 func (s *uiState) session(r *http.Request) (uiSession, bool) {
@@ -165,6 +184,7 @@ var notices = map[string]struct {
 	"invalid":   {"That choice is not valid for this request, so nothing changed.", false},
 	"failed":    {"That did not work and nothing changed. The request may have expired.", false},
 	"nogate":    {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
+	"remote":    {"Do this on the computer running wasync.", false},
 	"saved":     {"Saved.", true},
 	"sentok":    {"Sent: WhatsApp accepted it. It shows in the chat once WhatsApp passes it back.", true},
 	"sendfail":  {"That was not sent, or WhatsApp did not confirm it. Check WhatsApp before sending it again.", false},
@@ -200,14 +220,28 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; media-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	hd.Set("X-Frame-Options", "DENY")
 	hd.Set("Referrer-Policy", "same-origin")
+	login := remoteLogin(r)
 	switch {
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/enter" && login != "":
+		http.Redirect(w, r, "/ui/", http.StatusSeeOther)
+		return
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/enter":
 		h.uiEnter(w, r)
 		return
 	}
 	sess, ok := h.ui.session(r)
+	if ok && sess.login != login {
+		ok = false // a session belongs to the one place and login it was opened for
+	}
+	if !ok && login != "" && r.Method == http.MethodGet {
+		// The Tailscale login was checked on this request; it signs the browser in.
+		var cookie string
+		cookie, sess = h.ui.start(login)
+		http.SetCookie(w, &http.Cookie{Name: uiCookie, Value: cookie, Path: "/ui/", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: int(uiSessionTTL / time.Second)})
+		ok = true
+	}
 	if !ok {
-		h.uiRender(w, http.StatusUnauthorized, &uiData{Signedout: true, Title: "wasync approvals"})
+		h.uiRender(w, http.StatusUnauthorized, &uiData{Signedout: true, Title: "wasync approvals", Remote: login != ""})
 		return
 	}
 	switch {
@@ -324,8 +358,8 @@ func (h *handler) uiDecide(w http.ResponseWriter, r *http.Request, sess uiSessio
 		}
 		h.uiBack(w, r, "rejected")
 	case "approve":
-		if !h.human.Enabled() || h.approve == nil {
-			h.uiBack(w, r, "nogate")
+		if !h.gate(r).Enabled() || h.approve == nil {
+			h.uiBack(w, r, noGate(r))
 			return
 		}
 		var choice *accessChoice
@@ -360,8 +394,8 @@ func (h *handler) uiMode(w http.ResponseWriter, r *http.Request, sess uiSession)
 		return
 	}
 	if mode.Mode == accessmode.All {
-		if !h.human.Enabled() {
-			h.uiBack(w, r, "nogate")
+		if !h.gate(r).Enabled() {
+			h.uiBack(w, r, noGate(r))
 			return
 		}
 		if err := h.confirmError(r.Context(), "Approve: "+mode.Effect()); err != nil {
@@ -399,6 +433,7 @@ type uiData struct {
 	ModeAll      bool
 	ModeHistory  string
 	Signedout    bool
+	Remote       bool // opened from another computer through the tailnet
 	Title        string
 	Refresh      int
 	Wide         bool // use the wide two-pane frame
@@ -406,8 +441,8 @@ type uiData struct {
 }
 
 func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	data := &uiData{CSRF: sess.csrf, Gate: h.human.Name(), Title: "wasync approvals"}
-	if !h.human.Enabled() {
+	data := &uiData{CSRF: sess.csrf, Gate: h.human.Name(), Title: "wasync approvals", Remote: remoteLogin(r) != ""}
+	if !h.gate(r).Enabled() {
 		data.Gate = ""
 	}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
@@ -484,11 +519,13 @@ code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
 
 var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}
 <h1>wasync approvals</h1>
-{{if .Signedout}}
-<p>This page needs a fresh link. Run <code>wasync approvals</code> in a terminal and it opens the page for you.</p>
+{{if .Signedout}}{{if .Remote}}
+<p>Signed out. Reload the page.</p>{{else}}
+<p>This page needs a fresh link. Run <code>wasync approvals</code> in a terminal and it opens the page for you.</p>{{end}}
 {{else}}
 {{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
 {{if .Gate}}<p class="mut">Every approval here asks you for {{.Gate}} on this computer, showing exactly what you are approving. This page cannot approve anything by itself.</p>
+{{else if .Remote}}<p class="bad">Approve on the computer running wasync.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so this page only shows requests. Approve in a terminal with <code>wasync actions approve REQUEST_ID</code>.</p>{{end}}
 <h2>Waiting for you</h2>
 {{range .Pending}}<section class="card">

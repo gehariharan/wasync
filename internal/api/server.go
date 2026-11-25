@@ -291,7 +291,21 @@ func (h *handler) routes() http.Handler {
 			}
 		}
 		if r.Host != h.authority {
-			deny(w, 403, "invalid host")
+			// The only other host served is the owner's opt-in tailnet name,
+			// reached through `tailscale serve`, and only for the web app.
+			login, known := h.tailnetLogin(r)
+			switch {
+			case !known:
+				deny(w, 403, "invalid host")
+			case login == "":
+				fail(w, 403, "tailscale login not allowed")
+			case !isUI(r.URL.Path):
+				fail(w, 403, "only the web app is served on this address")
+			case !sameHTTPSOrigin(r):
+				fail(w, 403, "foreign origin")
+			default:
+				h.serveUI(w, r.WithContext(context.WithValue(r.Context(), remoteKey{}, login)))
+			}
 			return
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {

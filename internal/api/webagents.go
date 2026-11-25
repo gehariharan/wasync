@@ -69,7 +69,7 @@ type agentsData struct {
 }
 
 func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	d := &agentsData{uiData: uiData{CSRF: sess.csrf, Title: "wasync agents", Wide: true}}
+	d := &agentsData{uiData: uiData{CSRF: sess.csrf, Title: "wasync agents", Wide: true, Remote: remoteLogin(r) != ""}}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		d.Notice, d.NoticeOK = n.text, n.ok
 	}
@@ -119,7 +119,7 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 			d.Lists.Rows = append(d.Lists.Rows, row)
 		}
 	}
-	d.Open = openView{Gate: h.human.Enabled(), MaxMessages: opensend.MaxMessages, MaxNew: opensend.MaxNewNumbers, Cap: opensend.MaxMessages, NewCap: opensend.MaxNewNumbers}
+	d.Open = openView{Gate: h.gate(r).Enabled(), MaxMessages: opensend.MaxMessages, MaxNew: opensend.MaxNewNumbers, Cap: opensend.MaxMessages, NewCap: opensend.MaxNewNumbers}
 	if d.Open.Gate {
 		d.Open.GateName = h.human.Name()
 	}
@@ -228,8 +228,8 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 			back("sendoff")
 			return
 		}
-		if !h.human.Enabled() {
-			back("nogate")
+		if !h.gate(r).Enabled() {
+			back(noGate(r))
 			return
 		}
 		// Check the change would be accepted before bothering the person.
@@ -267,8 +267,8 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 		audit("scope_add", name)
 		back("sendon")
 	case "openon":
-		if !h.human.Enabled() {
-			back("nogate")
+		if !h.gate(r).Enabled() {
+			back(noGate(r))
 			return
 		}
 		if err := h.confirmError(r.Context(), "Approve: "+opensend.Effect()); err != nil {
@@ -313,8 +313,8 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 
 // listOn approves a recipient list for one agent after the system confirmation.
 func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, back func(string), audit func(string, string)) {
-	if !h.human.Enabled() {
-		back("nogate")
+	if !h.gate(r).Enabled() {
+		back(noGate(r))
 		return
 	}
 	end, ok := listEnds[r.PostForm.Get("ends")]
@@ -397,7 +397,7 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{template "head" .}}
 <h1>Agents</h1>
 {{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
-{{if not .Open.Gate}}<p class="bad">This computer cannot show a system confirmation, so this page is read-only. Anything that gives an agent more power cannot be done here; stopping things still can.</p>{{end}}
+{{if not .Open.Gate}}{{if .Remote}}<p class="bad">Read-only from another computer. Stopping things still works.</p>{{else}}<p class="bad">This computer cannot show a system confirmation, so this page is read-only. Anything that gives an agent more power cannot be done here; stopping things still can.</p>{{end}}{{end}}
 
 <h2>Open sending</h2>
 {{if .Open.On}}
