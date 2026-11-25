@@ -1,6 +1,7 @@
 package sendlist
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -187,5 +188,41 @@ func TestAPausedListStaysInForceAndResumes(t *testing.T) {
 	}
 	if err := Pause(dir, "nobody", true, now); err != ErrNoList {
 		t.Fatalf("pausing a missing list: %v", err)
+	}
+}
+
+// The file must stay readable however much is remembered: load refuses a file
+// over maxFileBytes, which would stop every list. The oldest history goes first.
+func TestHistoryNeverGrowsTheFilePastWhatLoadReads(t *testing.T) {
+	dir := privateDir(t)
+	at := time.Now().UTC().Add(-time.Hour)
+	full := func(i int) List {
+		l := List{AgentID: fmt.Sprintf("a%d", i), Agent: fmt.Sprintf("agent %d", i), GrantedAt: at}
+		for j := range MaxNumbers {
+			l.Numbers = append(l.Numbers, Number{Chat: fmt.Sprintf("1555%d%06d@s.whatsapp.net", i, j), FirstSentAt: &at, LastSentAt: &at})
+		}
+		return l
+	}
+	for i := range 5 {
+		if err := Put(dir, full(i)); err != nil {
+			t.Fatalf("list %d: %v", i, err)
+		}
+		if i < 3 {
+			if err := Remove(dir, fmt.Sprintf("a%d", i)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	if info, err := os.Stat(filepath.Join(dir, FileName)); err != nil || info.Size() > maxFileBytes {
+		t.Fatalf("file size: %v %v", info, err)
+	}
+	if lists, err := Load(dir); err != nil || len(lists) != 2 {
+		t.Fatalf("the saved file must load: %d %v", len(lists), err)
+	}
+	if err := Put(dir, List{AgentID: "a2", Agent: "agent 2", Numbers: []Number{{Chat: "15552000999@s.whatsapp.net"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := For(dir, "a2", time.Now()); got.NotMessaged() != 0 {
+		t.Fatalf("the newest history was forgotten: %+v", got)
 	}
 }

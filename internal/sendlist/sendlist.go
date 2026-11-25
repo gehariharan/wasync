@@ -47,10 +47,10 @@ const (
 	// MessagesPerNew is how many list messages, replies to replies included,
 	// one agent may send per Window for each new number it may start.
 	MessagesPerNew = 3
-	// HistoryKept is how long a removed list's send history is remembered.
+	// HistoryKept is the longest a removed list's send history is remembered.
 	HistoryKept = 30 * 24 * time.Hour
-	// maxHistory bounds the remembered numbers so the file stays readable;
-	// the oldest go first.
+	// maxHistory bounds the remembered numbers, and so does maxFileBytes, so
+	// the file stays readable; the oldest go first.
 	maxHistory = 3000
 
 	maxFileBytes = 1 << 20
@@ -363,6 +363,7 @@ func Pause(dir, agentID string, pause bool, now time.Time) error {
 var ErrNoList = errors.New("no approved list for this agent")
 
 // Update changes the agent's list in force under the file lock and saves it.
+// A messaged number the change takes off the list is remembered as if removed.
 func Update(dir, agentID string, now time.Time, change func(*List) error) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -372,8 +373,14 @@ func Update(dir, agentID string, now time.Time, change func(*List) error) error 
 	}
 	for i := range v.Lists {
 		if v.Lists[i].AgentID == agentID && v.Lists[i].Active(now) {
+			before := messaged(v.Lists[i], now.UTC())
 			if err = change(&v.Lists[i]); err != nil {
 				return err
+			}
+			for _, x := range before {
+				if v.Lists[i].Find(x.Chat) == nil {
+					v.Sent = append(v.Sent, x)
+				}
 			}
 			return save(dir, v)
 		}
@@ -391,8 +398,15 @@ func save(dir string, v file) (result error) {
 	sort.SliceStable(v.Lists, func(i, j int) bool { return v.Lists[i].Agent < v.Lists[j].Agent })
 	v.Sent = recent(v.Sent)
 	data, err := json.MarshalIndent(v, "", "  ")
+	for err == nil && len(data)+1 > maxFileBytes && len(v.Sent) > 0 {
+		v.Sent = v.Sent[:len(v.Sent)-max(1, len(v.Sent)/10)]
+		data, err = json.MarshalIndent(v, "", "  ")
+	}
 	if err != nil {
 		return err
+	}
+	if len(data)+1 > maxFileBytes {
+		return fmt.Errorf("the approved lists are too large for %s; remove a list first", FileName)
 	}
 	tmp := filepath.Join(dir, "."+FileName+".tmp")
 	f, err := localfs.OpenFile(tmp)

@@ -93,10 +93,18 @@ func (s *Store) LastIncoming(ctx context.Context, account int64, chat string) (t
 	return time.UnixMilli(last.Int64).UTC(), nil
 }
 
-// StopSenders returns which of chats (phone-number addresses) ever asked to
-// be left alone in a direct chat, by a reply IsOptOut accepts.
-func (s *Store) StopSenders(ctx context.Context, account int64, chats []string) (map[string]bool, error) {
+// StopSenders returns which of the phone-number addresses in since asked to
+// be left alone in a direct chat, by a reply IsOptOut accepts, at or after
+// the time since gives for that address. Earlier messages never count, and an
+// address with a zero time is not looked up.
+func (s *Store) StopSenders(ctx context.Context, account int64, since map[string]time.Time) (map[string]bool, error) {
 	out := map[string]bool{}
+	var chats []string
+	for c, at := range since {
+		if !at.IsZero() {
+			chats = append(chats, c)
+		}
+	}
 	if len(chats) == 0 {
 		return out, nil
 	}
@@ -106,17 +114,18 @@ func (s *Store) StopSenders(ctx context.Context, account int64, chats []string) 
 	}
 	// A cheap filter before IsOptOut: every opt-out holds one of these
 	// letters in order, and a lone keyword is short.
-	rows, err := s.db.QueryContext(ctx, "SELECT group_id,text_content"+directIncoming+` AND (length(text_content) <= 16 OR lower(text_content) LIKE '%stop%' OR lower(text_content) LIKE '%unsub%' OR lower(text_content) LIKE '%opt%out%' OR lower(text_content) LIKE '%remove%me%' OR lower(text_content) LIKE '%take%me%off%')`, account, in)
+	rows, err := s.db.QueryContext(ctx, "SELECT group_id,timestamp,text_content"+directIncoming+` AND (length(text_content) <= 16 OR lower(text_content) LIKE '%stop%' OR lower(text_content) LIKE '%unsub%' OR lower(text_content) LIKE '%opt%out%' OR lower(text_content) LIKE '%remove%me%' OR lower(text_content) LIKE '%take%me%off%')`, account, in)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var chat, text string
-		if err = rows.Scan(&chat, &text); err != nil {
+		var at int64
+		if err = rows.Scan(&chat, &at, &text); err != nil {
 			return nil, err
 		}
-		if IsOptOut(text) {
+		if at >= since[person[chat]].UnixMilli() && IsOptOut(text) {
 			out[person[chat]] = true
 		}
 	}

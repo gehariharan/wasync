@@ -193,6 +193,32 @@ func TestANumberThatRepliesStopIsDroppedFromTheList(t *testing.T) {
 	}
 }
 
+// Older chat with a listed person never drops them, only a reply after the
+// list's first message to them does.
+func TestOnlyAStopAfterTheFirstListMessageDropsTheNumber(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	old := storage.Message{GroupID: listed, MessageID: "OLD", SenderID: listed, Timestamp: time.Now().Add(-48 * time.Hour), Type: "text", Text: "see you at the bus stop"}
+	if _, err := f.store.Apply(context.Background(), f.account, []storage.Message{old}); err != nil {
+		t.Fatal(err)
+	}
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000")
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	f.incoming(t, listed, "R1", "sure")
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("an old message dropped the number: %d %s", status, body)
+	}
+	f.incoming(t, listed, "R2", "stop")
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if l := listOf(t, f, "poster"); l.Find(listed) != nil || l.Stopped != 1 || rec.count() != 2 {
+		t.Fatalf("a STOP after the first message must drop it: %+v sends=%d", l, rec.count())
+	}
+}
+
 func TestAListEndsWhenItExpiresIsRemovedOrTheAgentCannotSend(t *testing.T) {
 	rec := &sendRecorder{}
 	f := setupSend(t, rec)

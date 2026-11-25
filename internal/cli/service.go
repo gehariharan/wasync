@@ -58,10 +58,13 @@ func (a *App) runService(ctx context.Context, cfg config.Config, args []string) 
 		}
 		_, err = fmt.Fprintf(a.Out, "start at login: %s (%s)\n", state, mgr.Where())
 		if err == nil && on {
-			if owner, ok := liveOwner(cfg); !ok || owner.StartedBy != "login item" {
-				_, err = fmt.Fprintln(a.Out, "running in the background: no (start it with: wasync service restart)")
-			} else {
+			switch owner, ok := liveOwner(cfg); {
+			case ok && owner.StartedBy == "login item":
 				_, err = fmt.Fprintln(a.Out, "running in the background: yes")
+			case ok && owner.StartedBy == "":
+				_, err = fmt.Fprintln(a.Out, "running: yes, but wasync cannot tell whether in the background (to be sure, run: wasync service restart)")
+			default:
+				_, err = fmt.Fprintln(a.Out, "running in the background: no (start it with: wasync service restart)")
 			}
 		}
 		return err
@@ -71,7 +74,7 @@ func (a *App) runService(ctx context.Context, cfg config.Config, args []string) 
 		}
 		_, err := fmt.Fprintln(a.Out, "wasync will no longer start by itself when you log in.")
 		return err
-	case "restart", "start":
+	case "restart":
 		return a.serviceStart(ctx, cfg, mgr, true)
 	case "install":
 		if !a.Interactive {
@@ -127,6 +130,10 @@ func (a *App) serviceStart(ctx context.Context, cfg config.Config, mgr service.M
 		return err
 	}
 	if owner, running := liveOwner(cfg); running && owner.StartedBy != "login item" && !takeOver {
+		if owner.StartedBy == "" {
+			_, err = fmt.Fprintf(a.Out, "%s is running now, so it was left alone; wasync cannot tell whether it is the background copy. To be sure the background copy runs this version, run: %s\n", describeOwner(owner), commandFor(cfg, "service restart"))
+			return err
+		}
 		_, err = fmt.Fprintf(a.Out, "%s is running now, so it was left alone. To run wasync in the background instead, run: %s\n", describeOwner(owner), commandFor(cfg, "service restart"))
 		return err
 	}

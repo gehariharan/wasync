@@ -127,30 +127,40 @@ func (h *handler) listPace(agent string, now time.Time) (listPace, error) {
 	return p, nil
 }
 
-// dropStopped removes the numbers that replied STOP from the active list of
-// agentID, or from every active list when agentID is empty. Only those
-// numbers are looked up.
+// dropStopped removes the numbers that replied STOP after their first list
+// message from the active list of agentID, or from every active list when
+// agentID is empty. Only those numbers are looked up.
 func (h *handler) dropStopped(ctx context.Context, now time.Time, agentID string) error {
 	lists, err := sendlist.Load(h.dataDir)
 	if err != nil {
 		return err
 	}
-	var chats []string
+	first := map[string]time.Time{}
 	for _, l := range lists {
-		if l.Active(now) && (agentID == "" || l.AgentID == agentID) {
-			for _, x := range l.Numbers {
-				chats = append(chats, x.Chat)
+		for _, x := range l.Numbers {
+			if at, seen := first[x.Chat]; l.Active(now) && x.FirstSentAt != nil && (!seen || x.FirstSentAt.Before(at)) {
+				first[x.Chat] = *x.FirstSentAt
 			}
 		}
 	}
-	if len(chats) == 0 {
+	since := map[string]time.Time{}
+	for _, l := range lists {
+		if l.Active(now) && (agentID == "" || l.AgentID == agentID) {
+			for _, x := range l.Numbers {
+				if at, ok := first[x.Chat]; ok {
+					since[x.Chat] = at
+				}
+			}
+		}
+	}
+	if len(since) == 0 {
 		return nil
 	}
 	account, err := h.store.Account(ctx)
 	if err != nil || account == nil {
 		return err
 	}
-	stops, err := h.store.StopSenders(ctx, account.ID, chats)
+	stops, err := h.store.StopSenders(ctx, account.ID, since)
 	if err != nil || len(stops) == 0 {
 		return err
 	}

@@ -450,7 +450,11 @@ func TestServiceInstallLeavesATerminalWasyncRunningAndRestartTakesOver(t *testin
 	if !item.installed || item.starts() != 0 || !owner.held() || !strings.Contains(out.String(), "left alone") || !strings.Contains(out.String(), "service restart") {
 		t.Fatalf("install must not stop or race the running wasync: starts=%d held=%v\n%s", item.starts(), owner.held(), out.String())
 	}
-	if err := run("status"); err != nil || !strings.Contains(out.String(), "running in the background: no") {
+	want := "running in the background: no"
+	if record, _ := processlock.ReadOwner(owner.dir); record.StartedBy == "" {
+		want = "cannot tell whether in the background"
+	}
+	if err := run("status"); err != nil || !strings.Contains(out.String(), want) {
 		t.Fatalf("status: %v\n%s", err, out.String())
 	}
 	if err := run("restart"); err != nil {
@@ -463,6 +467,35 @@ func TestServiceInstallLeavesATerminalWasyncRunningAndRestartTakesOver(t *testin
 	// With nothing running it just starts.
 	if err := run("restart"); err != nil || item.starts() != 2 {
 		t.Fatalf("restart with nothing running: %v %d", err, item.starts())
+	}
+}
+
+// Where wasync cannot tell how the running copy was started (Windows), it is
+// neither reported as off nor called a terminal wasync.
+func TestServiceStatusAndInstallDoNotGuessAnUnknownStart(t *testing.T) {
+	dir := holdAsOwner(t, "127.0.0.1:1")
+	item := &loginItem{}
+	app, out, _ := otherApp(t)
+	app.In, app.Interactive, app.Service, app.Human = &lineReader{[]string{"INSTALL"}}, true, item, humancheck.NewGate(&humanStub{confirm: true})
+	run := func(args ...string) error {
+		return app.Run(context.Background(), append([]string{"--data-dir", dir, "service"}, args...))
+	}
+	if err := run("install"); err != nil {
+		t.Fatal(err)
+	}
+	if item.starts() != 0 || !strings.Contains(out.String(), "cannot tell whether it is the background copy") || strings.Contains(out.String(), "in the background instead") {
+		t.Fatalf("install: starts=%d\n%s", item.starts(), out.String())
+	}
+	if err := run("status"); err != nil || !strings.Contains(out.String(), "running: yes, but wasync cannot tell whether in the background") || strings.Contains(out.String(), "running in the background: no") {
+		t.Fatalf("status: %v\n%s", err, out.String())
+	}
+}
+
+func TestServiceStartIsNotACommand(t *testing.T) {
+	item := &loginItem{installed: true}
+	app := &App{Out: io.Discard, Err: io.Discard, Service: item}
+	if err := app.Run(context.Background(), []string{"--data-dir", filepath.Join(t.TempDir(), "data"), "service", "start"}); err == nil || !strings.Contains(err.Error(), "install|restart|uninstall|status") || item.starts() != 0 {
+		t.Fatalf("service start: %v starts=%d", err, item.starts())
 	}
 }
 
