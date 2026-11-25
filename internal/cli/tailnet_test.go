@@ -50,6 +50,9 @@ func TestTailnetAllowIsAHumanChoice(t *testing.T) {
 		{"allow", "--host", "localhost", "--login", "owner@example.com"},
 		{"allow", "--host", "machine", "--login", "owner@example.com"},
 		{"allow", "--host", "machine.example.ts.net", "--login", "two words"},
+		{"allow", "--host", "machine.example.ts.net:8443", "--login", "owner@example.com"},
+		{"allow", "--host", "machine.example.ts.net", "--host", "other.example.ts.net", "--login", "owner@example.com"},
+		{"allow", "--host", "machine.example.ts.net", "--login", "owner@example.com", "--login", "someone@example.com"},
 	} {
 		app, _ = build("ALLOW", true)
 		if err := run(app, bad...); err == nil || on() {

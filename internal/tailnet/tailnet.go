@@ -5,8 +5,8 @@
 // computer accepts HTTPS on the machine's tailnet name and forwards each request
 // to the loopback listener, adding the signed-in Tailscale user's login in the
 // Tailscale-User-Login header (and removing any copy a client sent). The setting
-// names which tailnet host names the web app answers on and which Tailscale
-// logins count as the owner. With no setting, nothing changes: only the loopback
+// names the tailnet host name the web app answers on and the Tailscale login
+// that counts as the owner. With no setting, nothing changes: only the loopback
 // address is served.
 //
 // Only a human changes it (`wasync tailnet allow` asks for a typed word and the
@@ -22,7 +22,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -38,59 +37,38 @@ const (
 	// FunnelHeader marks a request that arrived from the public internet through
 	// Tailscale Funnel. Such requests are always refused.
 	FunnelHeader = "Tailscale-Funnel-Request"
-	maxEntries   = 16
 )
 
 // Setting is the saved opt-in.
 type Setting struct {
-	Hosts  []string  `json:"hosts"`
-	Logins []string  `json:"logins"`
-	SetAt  time.Time `json:"set_at"`
+	Host  string    `json:"host"`
+	Login string    `json:"login"`
+	SetAt time.Time `json:"set_at"`
 }
 
-// Validate checks a setting and returns it with host names in canonical form.
+// Validate checks a setting and returns it with the host name in canonical form.
 func (s Setting) Validate() (Setting, error) {
-	if len(s.Hosts) == 0 || len(s.Logins) == 0 {
-		return s, fmt.Errorf("name at least one host and one login")
+	if s.Host == "" || s.Login == "" {
+		return s, fmt.Errorf("name the host and the login")
 	}
-	if len(s.Hosts) > maxEntries || len(s.Logins) > maxEntries {
-		return s, fmt.Errorf("name at most %d hosts and %d logins", maxEntries, maxEntries)
+	host, err := CanonicalHost(s.Host)
+	if err != nil {
+		return s, err
 	}
-	out := Setting{SetAt: s.SetAt}
-	for _, h := range s.Hosts {
-		c, err := CanonicalHost(h)
-		if err != nil {
-			return s, err
-		}
-		out.Hosts = append(out.Hosts, c)
+	if err := validLogin(s.Login); err != nil {
+		return s, err
 	}
-	for _, l := range s.Logins {
-		if err := validLogin(l); err != nil {
-			return s, err
-		}
-		out.Logins = append(out.Logins, l)
-	}
-	return out, nil
+	return Setting{Host: host, Login: s.Login, SetAt: s.SetAt}, nil
 }
 
-// CanonicalHost checks a tailnet host name such as machine.example.ts.net,
-// optionally with a port, and returns it in lower case. Addresses, loopback and
-// single-label names are refused: the web app is reached through the HTTPS
-// name `tailscale serve` has a certificate for.
+// CanonicalHost checks a tailnet host name such as machine.example.ts.net and
+// returns it in lower case. Ports, addresses, loopback and single-label names
+// are refused: the web app is reached through the HTTPS name `tailscale serve`
+// has a certificate for, on the default HTTPS port.
 func CanonicalHost(h string) (string, error) {
 	h = strings.ToLower(strings.TrimSpace(h))
 	bad := fmt.Errorf("host %q must be a full tailnet name such as machine.example.ts.net", h)
-	name, port := h, ""
-	if strings.Contains(h, ":") {
-		var err error
-		if name, port, err = net.SplitHostPort(h); err != nil {
-			return "", bad
-		}
-		if n, err := strconv.Atoi(port); err != nil || n < 1 || n > 65535 || strconv.Itoa(n) != port {
-			return "", bad
-		}
-	}
-	name = strings.TrimSuffix(name, ".")
+	name := strings.TrimSuffix(h, ".")
 	if name == "" || len(name) > 253 || net.ParseIP(name) != nil || !strings.Contains(name, ".") || name == "localhost" || strings.HasSuffix(name, ".localhost") {
 		return "", bad
 	}
@@ -103,9 +81,6 @@ func CanonicalHost(h string) (string, error) {
 				return "", bad
 			}
 		}
-	}
-	if port != "" {
-		return name + ":" + port, nil
 	}
 	return name, nil
 }
@@ -122,31 +97,17 @@ func validLogin(l string) error {
 	return nil
 }
 
-// Host returns the configured host a request's Host header names, or "" when
-// it names none. A configured name without a port also matches the default
-// HTTPS port.
-func (s Setting) Host(requestHost string) string {
+// Serves reports whether a request's Host header names the allowed host, with
+// or without the default HTTPS port.
+func (s Setting) Serves(requestHost string) bool {
 	got := strings.ToLower(requestHost)
-	for _, h := range s.Hosts {
-		if got == h || !strings.Contains(h, ":") && got == h+":443" {
-			return h
-		}
-	}
-	return ""
+	return s.Host != "" && (got == s.Host || got == s.Host+":443")
 }
 
-// Allows reports whether login is one of the owner's Tailscale logins. Login
-// names are compared exactly, as Tailscale reports them.
+// Allows reports whether login is the owner's Tailscale login. Login names are
+// compared exactly, as Tailscale reports them.
 func (s Setting) Allows(login string) bool {
-	if login == "" {
-		return false
-	}
-	for _, l := range s.Logins {
-		if l == login {
-			return true
-		}
-	}
-	return false
+	return login != "" && login == s.Login
 }
 
 // Load returns the saved setting, or ok=false when there is none. A damaged or

@@ -54,7 +54,7 @@ func (c *tailnetClient) post(path string, form url.Values) (int, string, http.He
 
 func allowTailnet(t *testing.T, f accessFixture) {
 	t.Helper()
-	if err := tailnet.Save(f.dir, tailnet.Setting{Hosts: []string{tailnetHost}, Logins: []string{tailnetLogin}}); err != nil {
+	if err := tailnet.Save(f.dir, tailnet.Setting{Host: tailnetHost, Login: tailnetLogin}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -118,6 +118,7 @@ func TestTailnetRequestsWithTheWrongHostOrLoginAreRefused(t *testing.T) {
 		"two logins":         func(c *tailnetClient) { c.headers[tailnet.LoginHeader] = []string{"someone@example.com"} },
 		"through funnel":     func(c *tailnetClient) { c.headers.Set(tailnet.FunnelHeader, "?1") },
 		"wrong port in host": func(c *tailnetClient) { c.host = tailnetHost + ":8443" },
+		"https port origin":  func(c *tailnetClient) { c.headers.Set("Origin", "https://"+tailnetHost+":8443") },
 	}
 	for name, change := range cases {
 		c := newTailnetClient(t, f, tailnetLogin)
@@ -165,18 +166,18 @@ func TestTailnetFormsNeedTheirOwnOriginAndSession(t *testing.T) {
 	if code, _, _ := fresh.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "action": {"clearall"}}); code != 401 {
 		t.Fatalf("post without a session: %d", code)
 	}
-	// The remote session is bound to its login: another allowed login, or the
-	// loopback address, does not get it.
-	if err := tailnet.Save(f.dir, tailnet.Setting{Hosts: []string{tailnetHost}, Logins: []string{tailnetLogin, "partner@example.com"}}); err != nil {
-		t.Fatal(err)
-	}
-	c.login = "partner@example.com"
-	if code, _, _ := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "action": {"clearall"}}); code != 401 {
-		t.Fatalf("session reused by another login: %d", code)
-	}
+	// The remote session is bound to its login: the loopback address, or a
+	// login allowed later in place of it, does not get it.
 	local := &pageClient{t: t, base: f.server.URL, http: c.http}
 	if code, _, _ := local.get("/ui/chats"); code != 401 {
 		t.Fatalf("remote session reused on loopback: %d", code)
+	}
+	if err := tailnet.Save(f.dir, tailnet.Setting{Host: tailnetHost, Login: "new-owner@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	c.login = "new-owner@example.com"
+	if code, _, _ := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "action": {"clearall"}}); code != 401 {
+		t.Fatalf("session reused by another login: %d", code)
 	}
 }
 
@@ -234,7 +235,10 @@ func TestRemotePagesNeverRaiseTheSystemPrompt(t *testing.T) {
 	}
 	// Rejecting needs no prompt and still works remotely.
 	_, _, hd = c.post("/ui/decide", url.Values{"csrf": {csrf}, "id": {r.ID}, "action": {"reject"}})
-	if !strings.Contains(hd.Get("Location"), "n=rejected") && !strings.Contains(hd.Get("Location"), "n=failed") {
+	if !strings.Contains(hd.Get("Location"), "n=rejected") {
 		t.Fatalf("remote reject: %q", hd.Get("Location"))
+	}
+	if got := f.queue.Get(f.account, r.ID); got.Status == approval.StatusPending {
+		t.Fatalf("request still pending after a remote reject: %+v", got)
 	}
 }

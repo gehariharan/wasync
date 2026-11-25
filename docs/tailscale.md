@@ -23,8 +23,8 @@ certificates must be enabled for your tailnet (admin console, DNS, HTTPS Certifi
    wasync tailnet allow --host machine.example.ts.net --login you@example.com
    ```
 
-   Type `ALLOW` and confirm the system prompt. Repeat `--host` or `--login` to allow more than
-   one. A running wasync picks the setting up at once.
+   Type `ALLOW` and confirm the system prompt. Give one name and one login; running `allow` again
+   replaces them. A running wasync picks the setting up at once.
 
 2. Share the loopback address with your tailnet over HTTPS:
 
@@ -37,7 +37,7 @@ certificates must be enabled for your tailnet (admin console, DNS, HTTPS Certifi
 
 ## Open it from another computer
 
-On any device signed in to your tailnet as an allowed login, open:
+On any device signed in to your tailnet as the allowed login, open:
 
 ```text
 https://machine.example.ts.net/ui/
@@ -64,17 +64,19 @@ the CLI use stay on the loopback address, and agent credentials work there exact
 
 Requests through `tailscale serve` arrive from loopback, so arriving from loopback proves
 nothing. wasync instead reads the `Tailscale-User-Login` header that `tailscale serve` sets to
-the signed-in Tailscale user (it removes any copy the browser sent) and accepts only the logins
+the signed-in Tailscale user (it removes any copy the browser sent) and accepts only the login
 you allowed. Requests are refused when:
 
-- the Host is not an allowed tailnet name (exactly as when the setting is off),
+- the Host is not the allowed tailnet name on the default HTTPS port (exactly as when the setting
+  is off),
 - there is no login, or a login you did not allow (tagged devices and devices shared from other
   tailnets carry none or another one),
 - they came through Funnel, or
 - they ask for anything but the web app, or a form comes from another origin.
 
-Each session belongs to the login that opened it and to the tailnet name; it does not work on
-the loopback address or for another login.
+Each session belongs to the login that opened it and does not work for another login. Browsers
+keep cookies per site, so a session opened on the tailnet name is not sent to the loopback
+address either.
 
 The login header is trusted because only `tailscale serve` can reach wasync from another
 computer. A program on this computer can connect to the loopback port too, and could send the

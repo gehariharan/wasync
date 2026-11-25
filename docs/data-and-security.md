@@ -40,7 +40,7 @@ encrypt data at rest.
 | `pending-approvals.json` | Requests waiting for a person, so a restart does not lose them |
 | `send-lists.json` | Approved phone-number lists for agents and their pacing |
 | `open-sending.json` | Whether open sending is on, and until when |
-| `tailnet.json` | Tailnet names and Tailscale logins allowed to open the web app from other devices ([Tailscale](tailscale.md)); absent when off |
+| `tailnet.json` | The tailnet name and Tailscale login allowed to open the web app from other devices ([Tailscale](tailscale.md)); absent when off |
 | `sent-log.jsonl` | Every send by you or an agent: who, which chat, when, message ID and outcome, never the text |
 | `agent-audit.log` | Agent requests, grants, approvals and webhook deliveries: identifiers and outcomes only |
 | `webhooks.json` | Webhook endpoints and their signing secrets; keep private |

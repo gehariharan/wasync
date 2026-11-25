@@ -14,7 +14,7 @@ Scope: the local wasync owner (TUI or `serve`), its loopback API, the `wasync qu
 | Boundary | Enforcement |
 |---|---|
 | Other machines → API | Literal loopback address only (`api.ValidateAddr`); Host and Origin checks against DNS rebinding and browsers |
-| Other tailnet devices → web app (opt-in) | Off by default. With `tailnet.json` set by a human (typed word and system prompt), `tailscale serve` on this computer forwards HTTPS on the tailnet name to loopback. Only `/ui/` is served for that Host, only with a single `Tailscale-User-Login` in the allowed list, never via Funnel, and forms need the HTTPS tailnet origin. Sessions are bound to that login. Remote pages never raise the system prompt. See [Tailscale](../tailscale.md) |
+| Other tailnet devices → web app (opt-in) | Off by default. With `tailnet.json` set by a human (typed word and system prompt), `tailscale serve` on this computer forwards HTTPS on the tailnet name to loopback. Only `/ui/` is served for that Host, only on the default HTTPS port and only with a single `Tailscale-User-Login` equal to the one allowed login, never via Funnel, and forms need the HTTPS tailnet origin. Sessions are bound to that login. Remote pages never raise the system prompt. See [Tailscale](../tailscale.md) |
 | Other local users → data dir | Private file and directory permissions (`internal/localfs`, Unix modes and Windows ACLs) |
 | Agent → wasync | Scoped agent credential checked by wasync on every `/api/v1` request; scopes, chat allowlist, rate limit, expiry; audit log |
 | Agent → destructive actions | Not grantable; human approval queue; the owner asks the person at the computer to confirm (see "What the human check is, and is not") |

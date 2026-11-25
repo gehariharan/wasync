@@ -44,11 +44,11 @@ func remoteFrom(ctx context.Context) string {
 }
 
 // tailnetLogin checks a request whose Host is not the loopback address. known
-// says the host is one the owner allowed; login is the allowed Tailscale login
-// it carries, or "" when it carries none or one that is not allowed.
+// says the host is the one the owner allowed; login is the allowed Tailscale
+// login it carries, or "" when it carries none or another one.
 func (h *handler) tailnetLogin(r *http.Request) (login string, known bool) {
 	s, on, err := tailnet.Load(h.dataDir)
-	if err != nil || !on || s.Host(r.Host) == "" {
+	if err != nil || !on || !s.Serves(r.Host) {
 		return "", false
 	}
 	// Funnel requests come from the public internet; they are never the owner.
@@ -78,9 +78,7 @@ func sameHTTPSOrigin(r *http.Request) bool {
 	if err != nil || u.Scheme != "https" || u.Path != "" || u.User != nil {
 		return false
 	}
-	host := strings.ToLower(r.Host)
-	got := strings.ToLower(u.Host)
-	return got == host || got+":443" == host || got == host+":443"
+	return strings.ToLower(u.Host) == strings.TrimSuffix(strings.ToLower(r.Host), ":443")
 }
 
 // gate is the confirmation prompt for this request: none for a remote browser,

@@ -10,7 +10,7 @@ import (
 	"github.com/gehariharan/wasync/internal/tailnet"
 )
 
-const tailnetUsage = `Usage: wasync tailnet allow --host NAME --login LOGIN [--host NAME ...] [--login LOGIN ...]
+const tailnetUsage = `Usage: wasync tailnet allow --host NAME --login LOGIN
        wasync tailnet off
        wasync tailnet status
 
@@ -19,7 +19,7 @@ Open the web app from your other computers on your Tailscale network, through
 
   allow   --host is this computer's tailnet name, as in its HTTPS address
           (for example machine.example.ts.net). --login is the Tailscale login
-          that counts as you (for example you@example.com). Both repeat.
+          that counts as you (for example you@example.com). Give each once.
           Human only: needs an interactive terminal, typing ALLOW and, where
           available, the system prompt; there is no --yes.
   off     Stop answering on the tailnet name at once.
@@ -57,7 +57,7 @@ func (a *App) runTailnet(ctx context.Context, cfg config.Config, args []string) 
 			_, err = fmt.Fprintln(a.Out, "tailnet access: off")
 			return err
 		}
-		_, err = fmt.Fprintf(a.Out, "tailnet access: on\nhosts: %s\nlogins: %s\n", strings.Join(s.Hosts, ", "), strings.Join(s.Logins, ", "))
+		_, err = fmt.Fprintf(a.Out, "tailnet access: on\nhost: %s\nlogin: %s\n", s.Host, s.Login)
 		return err
 	case "off":
 		if len(args) != 1 {
@@ -79,22 +79,22 @@ func (a *App) tailnetAllow(ctx context.Context, cfg config.Config, args []string
 	fs := a.flags("tailnet allow")
 	fs.Usage = func() { fmt.Fprint(fs.Output(), tailnetUsage) }
 	var hosts, logins stringList
-	fs.Var(&hosts, "host", "this computer's tailnet name (repeatable)")
-	fs.Var(&logins, "login", "Tailscale login that counts as you (repeatable)")
+	fs.Var(&hosts, "host", "this computer's tailnet name")
+	fs.Var(&logins, "login", "Tailscale login that counts as you")
 	if err := a.parseFlags(fs, args); err != nil {
 		return err
 	}
-	if fs.NArg() != 0 {
-		return fmt.Errorf("usage: wasync tailnet allow --host NAME --login LOGIN")
+	if fs.NArg() != 0 || len(hosts) != 1 || len(logins) != 1 {
+		return fmt.Errorf("usage: wasync tailnet allow --host NAME --login LOGIN, each given once")
 	}
-	s, err := tailnet.Setting{Hosts: hosts, Logins: logins}.Validate()
+	s, err := tailnet.Setting{Host: hosts[0], Login: logins[0]}.Validate()
 	if err != nil {
 		return err
 	}
 	if !a.Interactive {
 		return fmt.Errorf("tailnet allow requires an interactive terminal; nothing changed")
 	}
-	effect := "let " + strings.Join(s.Logins, ", ") + " open the wasync web app, read your chats and send as you, from any device on your tailnet at https://" + strings.Join(s.Hosts, ", https://") + "/ui/"
+	effect := "let " + s.Login + " open the wasync web app, read your chats and send as you, from any device on your tailnet at https://" + s.Host + "/ui/"
 	fmt.Fprintf(a.Err, "This will %s.\nType ALLOW then Enter to continue: ", effect)
 	line, err := readLine(ctx, a.In)
 	if err != nil {
@@ -110,6 +110,6 @@ func (a *App) tailnetAllow(ctx context.Context, cfg config.Config, args []string
 		return err
 	}
 	_ = agentauth.NewAuditLog(cfg.DataDir).Append(agentauth.AuditEntry{Event: "tailnet_allow", Outcome: agentauth.OutcomeAllowed})
-	_, err = fmt.Fprintf(a.Out, "tailnet access: on. Now run: tailscale serve --bg http://%s\nThen open https://%s/ui/ on your other computer.\n", cfg.APIAddr, s.Hosts[0])
+	_, err = fmt.Fprintf(a.Out, "tailnet access: on. Now run: tailscale serve --bg http://%s\nThen open https://%s/ui/ on your other computer.\n", cfg.APIAddr, s.Host)
 	return err
 }

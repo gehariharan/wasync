@@ -218,7 +218,7 @@
     },
     {
       "description": "Open the web app from your other computers on your Tailscale network.",
-      "details": "wasync keeps listening on loopback only; tailscale serve on this computer forwards HTTPS on its tailnet name to it. allow names the tailnet host name(s) and the Tailscale login(s) that count as you; it needs an interactive terminal, typing ALLOW and, where available, the system prompt; there is no --yes. Only the web app is served there, never the API. Requests with another host, without an allowed login, or through Tailscale Funnel are refused. Approvals, giving an agent more power and start at login still need the computer running wasync. off stops it at once; status shows it.",
+      "details": "wasync keeps listening on loopback only; tailscale serve on this computer forwards HTTPS on its tailnet name to it. allow names the tailnet host name and the Tailscale login that counts as you, each once; it needs an interactive terminal, typing ALLOW and, where available, the system prompt; there is no --yes. Only the web app is served there, never the API. Requests with another host, without the allowed login, or through Tailscale Funnel are refused. Approvals, giving an agent more power and start at login still need the computer running wasync. off stops it at once; status shows it.",
       "path": "tailnet",
       "usage": "tailnet allow --host NAME --login LOGIN | off | status"
     },
