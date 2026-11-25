@@ -171,6 +171,9 @@ var notices = map[string]struct {
 	"offline":   {"wasync is not connected to WhatsApp, so nothing was sent.", false},
 	"notext":    {"Write a message first.", false},
 	"badto":     {"Enter the phone number with its country code, such as +15551230000.", false},
+	"dlqueued":  {"Downloading. Refresh in a moment to see it.", true},
+	"dlfail":    {"That could not be downloaded. WhatsApp may be disconnected or no longer have the file.", false},
+	"dlpolicy":  {"Saved. New attachments in this chat follow it.", true},
 	"sendon":    {"That agent may now send in the chats you approve for it.", true},
 	"sendoff":   {"That agent can no longer send.", true},
 	"openon":    {"Open sending is on for the next hour.", true},
@@ -188,7 +191,7 @@ var notices = map[string]struct {
 
 func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	hd := w.Header()
-	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; media-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	hd.Set("X-Frame-Options", "DENY")
 	hd.Set("Referrer-Policy", "same-origin")
 	switch {
@@ -218,6 +221,10 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		h.sentPage(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats/new":
 		h.composeNewPage(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/media":
+		h.mediaFile(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/chats/media":
+		h.chatsMedia(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/chats/send":
 		h.composeSend(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats/pick":
@@ -389,6 +396,7 @@ type uiData struct {
 	Title        string
 	Refresh      int
 	Wide         bool // use the wide two-pane frame
+	Full         bool // with Wide, fill the whole browser window
 }
 
 func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
@@ -465,7 +473,7 @@ label{display:block;margin:.25rem 0}fieldset{border:0;padding:0;margin:.6rem 0}l
 button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;margin-right:.5rem}
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
-</style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Wide}} class="wide"{{end}}>
+</style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
 <nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
 
 var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}

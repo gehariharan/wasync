@@ -54,7 +54,7 @@ func TestChatsPageShowsSyncedChatsAndTheirMessagesSafely(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("chats: %d", code)
 	}
-	for _, want := range []string{"Family Group", "my own reply", "[image]", "&#43;15551230000", "Member", "1 of 3 syncing"} {
+	for _, want := range []string{"Family Group", "my own reply", `<span class="fn">Photo</span>`, "&#43;15551230000", "Member", "1 of 3 syncing"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("chats page lacks %q:\n%s", want, page)
 		}
@@ -71,6 +71,21 @@ func TestChatsPageShowsSyncedChatsAndTheirMessagesSafely(t *testing.T) {
 	_, all, _ := c.get("/ui/chats?all=1&c=" + url.QueryEscape(phoneChat))
 	if !strings.Contains(all, "c=15551234567%40") || !strings.Contains(all, "not syncing") || !strings.Contains(all, "No messages kept for this chat yet.") {
 		t.Fatalf("show-all view:\n%s", all)
+	}
+}
+
+func TestChatsPageFillsTheWindowAndShowsOnePaneOnAPhone(t *testing.T) {
+	_, c, _ := chatsFixture(t)
+	_, page, _ := c.get("/ui/chats")
+	if !strings.Contains(page, `<main class="full">`) || !strings.Contains(page, `<div class="app">`) {
+		t.Fatalf("the chats page is not in the full-window frame, or opened a chat nobody asked for on a phone:\n%s", page)
+	}
+	_, page, _ = c.get("/ui/chats?c=" + url.QueryEscape(familyChat))
+	if !strings.Contains(page, `<div class="app picked">`) || !strings.Contains(page, `class="back"`) {
+		t.Fatalf("a chosen chat does not replace the list on a phone:\n%s", page)
+	}
+	if _, sent, _ := c.get("/ui/sent"); strings.Contains(sent, `class="full"`) || !strings.Contains(sent, `<main class="wide">`) {
+		t.Fatalf("the sent page changed frame:\n%s", sent)
 	}
 }
 
