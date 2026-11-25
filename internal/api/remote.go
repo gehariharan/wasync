@@ -19,7 +19,7 @@ import (
 // in its Host header. Arriving from loopback therefore proves nothing about who
 // is at the other end. What counts as the owner is the Tailscale login that
 // `tailscale serve` puts in Tailscale-User-Login (it removes any copy the
-// browser sent), checked against the logins the owner allowed with
+// browser sent), checked against the one login the owner allowed with
 // `wasync tailnet allow`. With no such setting, any Host other than the
 // loopback address is refused exactly as before.
 //

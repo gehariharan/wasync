@@ -17,7 +17,8 @@ wasync --no-api                       # terminal UI with the API disabled
 ```
 
 The default address is **http://127.0.0.1:8787**. Use the numeric address as shown; other Host
-headers are rejected. `WASYNC_API_ADDR` supplies the default bind address; `--api-addr`
+headers are rejected (the one exception, only for the web app, is the tailnet name you allow
+with `wasync tailnet allow`; see [Tailscale](tailscale.md)). `WASYNC_API_ADDR` supplies the default bind address; `--api-addr`
 overrides it. Only literal IPv4/IPv6 loopback addresses are accepted. `serve --offline` cannot
 be combined with `--no-api`.
 
