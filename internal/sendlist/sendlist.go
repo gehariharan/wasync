@@ -212,6 +212,9 @@ func readPrivate(dir, name string, limit int, v any) error {
 	return nil
 }
 
+// load reads the lists. A number any agent's list ever messaged counts as
+// messaged on every list, so no agent sends it another first message before
+// it replies.
 func load(dir string) (file, error) {
 	var v file
 	if err := readPrivate(dir, FileName, maxFileBytes, &v); err != nil {
@@ -233,6 +236,21 @@ func load(dir string) (file, error) {
 		}
 	}
 	v.Sent = recent(v.Sent)
+	r, err := loadRecord(dir)
+	if err != nil {
+		return file{}, err
+	}
+	for i := range v.Lists {
+		for j := range v.Lists[i].Numbers {
+			n := &v.Lists[i].Numbers[j]
+			if at, ok := r.FirstSent[n.Chat]; ok && n.FirstSentAt == nil {
+				n.FirstSentAt = &at
+				if n.LastSentAt == nil {
+					n.LastSentAt = &at
+				}
+			}
+		}
+	}
 	return v, nil
 }
 
@@ -326,8 +344,9 @@ func Listed(dir, chat string, now time.Time) bool {
 
 // Put saves l as the agent's list, replacing any earlier one. Numbers the
 // earlier list, or a list removed in the last HistoryKept, already messaged
-// keep that history, so approving a list again never lets a number be
-// messaged twice without a reply. Numbers the earlier list messaged that l
+// keep that history, and numbers any agent's list ever messaged count as
+// messaged, so approving a list again never lets a number be messaged twice
+// without a reply. Numbers the earlier list messaged that l
 // leaves out are remembered as if removed. Numbers that ever replied STOP are
 // left out of l and counted in its Stopped.
 func Put(dir string, l List) error {

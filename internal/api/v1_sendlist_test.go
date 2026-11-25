@@ -651,6 +651,42 @@ func TestRemovingAndApprovingAListAgainNeverSendsASecondFirstMessage(t *testing.
 	}
 }
 
+// A first message belongs to the number, not the agent: another agent's list
+// may not send a number a second unanswered first message.
+func TestAFirstMessageFromOneAgentCountsOnEveryList(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "other", nil, "15551230000", "15551230001")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if !strings.Contains(string(body), "has not replied") {
+		t.Fatalf("a list approved before the first message sent another: %s", body)
+	}
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Remove(f.dir, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.approveList(t, "other", nil, "15551230000", "15551230001")
+	status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if l := listOf(t, f, "other"); l.NotMessaged() != 1 || rec.count() != 1 {
+		t.Fatalf("another agent's list sent a second first message: %d %+v", rec.count(), l)
+	}
+	f.incoming(t, listed, "R1", "Yes, tell me more")
+	if status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"here it is"}`); status != 200 {
+		t.Fatalf("after a reply: %d %s", status, body)
+	}
+	if entries := f.sentEntries(t); len(entries) != 2 || entries[0].NewNumber {
+		t.Fatalf("a number already messaged was counted as new: %+v", entries)
+	}
+}
+
 func TestPausingAListNeedsNoConfirmationAndResumingDoes(t *testing.T) {
 	stub := &promptStub{}
 	f, c, csrf := agentsFixture(t, stub)

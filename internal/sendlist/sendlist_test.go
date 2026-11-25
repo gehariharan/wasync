@@ -115,12 +115,12 @@ func TestARemovedListsSendHistoryComesBackWhenTheSameNumbersAreApprovedAgain(t *
 	if err := Remove(dir, "a1"); err != nil {
 		t.Fatal(err)
 	}
-	// Another agent's list does not inherit it.
-	if err := Put(dir, List{AgentID: "b2", Agent: "other", Numbers: []Number{{Chat: sent}}}); err != nil {
+	// A first message belongs to the number, so another agent's list counts it as messaged too.
+	if err := Put(dir, List{AgentID: "b2", Agent: "other", Numbers: []Number{{Chat: sent}, {Chat: fresh}}}); err != nil {
 		t.Fatal(err)
 	}
-	if o, _ := For(dir, "b2", time.Now()); o.NotMessaged() != 1 {
-		t.Fatalf("another agent inherited the history: %+v", o)
+	if o, _ := For(dir, "b2", time.Now()); o.NotMessaged() != 1 || o.Find(sent).FirstSentAt == nil || !o.Find(sent).FirstSentAt.Equal(at) {
+		t.Fatalf("another agent's list forgot the first message: %+v", o)
 	}
 	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: sent}, {Chat: fresh}}}); err != nil {
 		t.Fatal(err)

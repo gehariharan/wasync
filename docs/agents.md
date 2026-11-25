@@ -181,9 +181,11 @@ number count, so older chat with that person never removes it. That counts any r
 can see the replies, including a listed contact's replies that WhatsApp delivers in a separate
 hidden-ID chat, unless you already turned archiving of that hidden-ID chat on or off yourself.
 **Pause** stops a list's sends and keeps everything else; **Resume…** asks you to confirm.
-Removing a list needs no confirmation. Approving the same numbers again, after removing a list
-or by approving a new one, keeps who was already messaged for up to 30 days (the oldest are
-forgotten sooner if very many numbers were messaged), so nobody gets a second first message.
+Removing a list needs no confirmation. A first message belongs to the number, not the agent: a
+number any agent's list ever messaged counts as already messaged on every list, even after the
+list is removed or the same numbers are approved for another agent, so nobody gets a second first
+message before replying. Approving the same numbers again also keeps each number's latest message
+time for up to 30 days (the oldest are forgotten sooner if very many numbers were messaged).
 
 ### Open sending
 
