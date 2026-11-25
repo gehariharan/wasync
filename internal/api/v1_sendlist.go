@@ -127,26 +127,22 @@ func (h *handler) listPace(agent string, now time.Time) (listPace, error) {
 	return p, nil
 }
 
-// dropStopped removes the numbers on the active list of agentID, or on every
-// active list when agentID is empty, that replied STOP after any agent's first
-// list message to them, from every list for good. Only those numbers are
-// looked up.
+// dropStopped finds the numbers that replied STOP after any agent's first
+// list message to them and keeps them off every list for good. It looks up
+// the numbers on the active list of agentID, or, when agentID is empty, every
+// number a list ever messaged, so a STOP after a list is gone still counts.
 func (h *handler) dropStopped(ctx context.Context, now time.Time, agentID string) error {
 	first, err := sendlist.FirstSent(h.dataDir)
 	if err != nil {
 		return err
 	}
-	lists, err := sendlist.Load(h.dataDir)
-	if err != nil {
-		return err
-	}
-	since := map[string]time.Time{}
-	for _, l := range lists {
-		if l.Active(now) && (agentID == "" || l.AgentID == agentID) {
-			for _, x := range l.Numbers {
-				if at, ok := first[x.Chat]; ok {
-					since[x.Chat] = at
-				}
+	since := first
+	if agentID != "" {
+		list, _ := sendlist.For(h.dataDir, agentID, now)
+		since = map[string]time.Time{}
+		for _, x := range list.Numbers {
+			if at, ok := first[x.Chat]; ok {
+				since[x.Chat] = at
 			}
 		}
 	}

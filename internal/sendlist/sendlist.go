@@ -55,6 +55,11 @@ const (
 	maxHistory = 3000
 
 	maxFileBytes = 1 << 20
+
+	// RecordFileName is the private file that remembers, for good, when each
+	// number first got a list message and which numbers replied STOP.
+	RecordFileName = "send-record.json"
+	maxRecordBytes = 16 << 20
 )
 
 // Number is one approved recipient and what was sent to it.
@@ -151,9 +156,15 @@ func (l *List) Drop(stop map[string]bool) int {
 }
 
 type file struct {
-	Lists    []List   `json:"lists"`
-	Sent     []sent   `json:"sent,omitempty"`      // removed lists' send history
-	OptedOut []string `json:"opted_out,omitempty"` // numbers that replied STOP, kept for good
+	Lists []List `json:"lists"`
+	Sent  []sent `json:"sent,omitempty"` // removed lists' send history
+}
+
+// record is kept for good, apart from the lists so it never makes them
+// unreadable: numbers and times only, never message text.
+type record struct {
+	FirstSent map[string]time.Time `json:"first_sent,omitempty"` // earliest first list message, by any agent
+	OptedOut  []string             `json:"opted_out,omitempty"`  // numbers that replied STOP
 }
 
 // mu serializes changes within the one wasync owner process that writes the file.
@@ -168,34 +179,43 @@ func Load(dir string) ([]List, error) {
 	return v.Lists, err
 }
 
-func load(dir string) (file, error) {
+// readPrivate decodes the private file name in dir into v. A missing file
+// leaves v as it is.
+func readPrivate(dir, name string, limit int, v any) error {
 	if dir == "" {
-		return file{}, nil
+		return nil
 	}
-	path := filepath.Join(dir, FileName)
+	path := filepath.Join(dir, name)
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		return file{}, nil
+		return nil
 	}
 	if err := localfs.CheckPrivateFile(path); err != nil {
-		return file{}, fmt.Errorf("%s must be a regular private file: %w", FileName, err)
+		return fmt.Errorf("%s must be a regular private file: %w", name, err)
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return file{}, err
+		return err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 	if err != nil {
-		return file{}, err
+		return err
 	}
-	if len(data) > maxFileBytes {
-		return file{}, fmt.Errorf("%s is too large", FileName)
+	if len(data) > limit {
+		return fmt.Errorf("%s is too large", name)
 	}
-	var v file
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if err = dec.Decode(&v); err != nil {
-		return file{}, fmt.Errorf("invalid %s: %w", FileName, err)
+	if err = dec.Decode(v); err != nil {
+		return fmt.Errorf("invalid %s: %w", name, err)
+	}
+	return nil
+}
+
+func load(dir string) (file, error) {
+	var v file
+	if err := readPrivate(dir, FileName, maxFileBytes, &v); err != nil {
+		return file{}, err
 	}
 	for _, l := range v.Lists {
 		if l.AgentID == "" || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
@@ -212,13 +232,48 @@ func load(dir string) (file, error) {
 			return file{}, fmt.Errorf("invalid %s: a remembered number has no agent or is not a phone number address", FileName)
 		}
 	}
-	for _, chat := range v.OptedOut {
-		if !numberAddress(chat) {
-			return file{}, fmt.Errorf("invalid %s: %q is not a phone number address", FileName, chat)
-		}
-	}
 	v.Sent = recent(v.Sent)
 	return v, nil
+}
+
+func loadRecord(dir string) (record, error) {
+	var r record
+	if err := readPrivate(dir, RecordFileName, maxRecordBytes, &r); err != nil {
+		return record{}, err
+	}
+	for chat := range r.FirstSent {
+		if !numberAddress(chat) {
+			return record{}, fmt.Errorf("invalid %s: %q is not a phone number address", RecordFileName, chat)
+		}
+	}
+	for _, chat := range r.OptedOut {
+		if !numberAddress(chat) {
+			return record{}, fmt.Errorf("invalid %s: %q is not a phone number address", RecordFileName, chat)
+		}
+	}
+	if r.FirstSent == nil {
+		r.FirstSent = map[string]time.Time{}
+	}
+	return r, nil
+}
+
+// note adds every first message in v to r, and reports whether r changed.
+func (r *record) note(v file) bool {
+	changed := false
+	add := func(x Number) {
+		if at, seen := r.FirstSent[x.Chat]; x.FirstSentAt != nil && (!seen || x.FirstSentAt.Before(at)) {
+			r.FirstSent[x.Chat], changed = x.FirstSentAt.UTC(), true
+		}
+	}
+	for _, l := range v.Lists {
+		for _, x := range l.Numbers {
+			add(x)
+		}
+	}
+	for _, x := range v.Sent {
+		add(x.Number)
+	}
+	return changed
 }
 
 // recent keeps the history removed in the last HistoryKept, newest first, at
@@ -310,8 +365,12 @@ func Put(dir string, l List) error {
 		}
 		kept = append(kept, x)
 	}
+	r, err := loadRecord(dir)
+	if err != nil {
+		return err
+	}
 	l.Stopped = 0
-	l.Drop(chatSet(v.OptedOut))
+	l.Drop(chatSet(r.OptedOut))
 	v.Lists, v.Sent = append(out, l), kept
 	return save(dir, v)
 }
@@ -324,8 +383,9 @@ func chatSet(chats []string) map[string]bool {
 	return out
 }
 
-// FirstSent returns, for every number any list sent to that is still listed
-// or remembered, the earliest first message to it from any agent.
+// FirstSent returns, for every number a list ever messaged that has not
+// replied STOP, the earliest first list message to it from any agent. It is
+// kept for good, after the lists and their history are gone.
 func FirstSent(dir string) (map[string]time.Time, error) {
 	mu.Lock()
 	defer mu.Unlock()
@@ -333,21 +393,15 @@ func FirstSent(dir string) (map[string]time.Time, error) {
 	if err != nil {
 		return nil, err
 	}
-	out := map[string]time.Time{}
-	add := func(x Number) {
-		if at, seen := out[x.Chat]; x.FirstSentAt != nil && (!seen || x.FirstSentAt.Before(at)) {
-			out[x.Chat] = *x.FirstSentAt
-		}
+	r, err := loadRecord(dir)
+	if err != nil {
+		return nil, err
 	}
-	for _, l := range v.Lists {
-		for _, x := range l.Numbers {
-			add(x)
-		}
+	r.note(v)
+	for _, chat := range r.OptedOut {
+		delete(r.FirstSent, chat)
 	}
-	for _, x := range v.Sent {
-		add(x.Number)
-	}
-	return out, nil
+	return r.FirstSent, nil
 }
 
 // OptOut remembers for good that the numbers in stop replied STOP and drops
@@ -356,16 +410,27 @@ func FirstSent(dir string) (map[string]time.Time, error) {
 func OptOut(dir string, stop map[string]bool) error {
 	mu.Lock()
 	defer mu.Unlock()
+	r, err := loadRecord(dir)
+	if err != nil {
+		return err
+	}
+	known := chatSet(r.OptedOut)
+	for chat := range stop {
+		if stop[chat] && !known[chat] {
+			r.OptedOut = append(r.OptedOut, chat)
+		}
+	}
+	if len(r.OptedOut) > len(known) {
+		sort.Strings(r.OptedOut)
+		if err = saveRecord(dir, r); err != nil {
+			return err
+		}
+	}
 	v, err := load(dir)
 	if err != nil {
 		return err
 	}
-	known, changed := chatSet(v.OptedOut), false
-	for chat := range stop {
-		if stop[chat] && !known[chat] {
-			v.OptedOut, changed = append(v.OptedOut, chat), true
-		}
-	}
+	changed := false
 	for i := range v.Lists {
 		if v.Lists[i].Drop(stop) > 0 {
 			changed = true
@@ -374,7 +439,6 @@ func OptOut(dir string, stop map[string]bool) error {
 	if !changed {
 		return nil
 	}
-	sort.Strings(v.OptedOut)
 	return save(dir, v)
 }
 
@@ -452,9 +516,16 @@ func Update(dir, agentID string, now time.Time, change func(*List) error) error 
 	return ErrNoList
 }
 
-func save(dir string, v file) (result error) {
-	if err := localfs.EnsureDir(dir); err != nil {
+// save writes the lists, after noting their first messages in the record.
+func save(dir string, v file) error {
+	r, err := loadRecord(dir)
+	if err != nil {
 		return err
+	}
+	if r.note(v) {
+		if err = saveRecord(dir, r); err != nil {
+			return err
+		}
 	}
 	if v.Lists == nil {
 		v.Lists = []List{}
@@ -472,7 +543,26 @@ func save(dir string, v file) (result error) {
 	if len(data)+1 > maxFileBytes {
 		return fmt.Errorf("the approved lists are too large for %s; remove a list first", FileName)
 	}
-	tmp := filepath.Join(dir, "."+FileName+".tmp")
+	return writePrivate(dir, FileName, data)
+}
+
+func saveRecord(dir string, r record) error {
+	data, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	if len(data)+1 > maxRecordBytes {
+		return fmt.Errorf("%s is full", RecordFileName)
+	}
+	return writePrivate(dir, RecordFileName, data)
+}
+
+// writePrivate replaces the private file name in dir with data, atomically.
+func writePrivate(dir, name string, data []byte) (result error) {
+	if err := localfs.EnsureDir(dir); err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir, "."+name+".tmp")
 	f, err := localfs.OpenFile(tmp)
 	if err != nil {
 		return err
@@ -491,7 +581,7 @@ func save(dir string, v file) (result error) {
 	if err = errors.Join(err, f.Close()); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(dir, FileName))
+	return os.Rename(tmp, filepath.Join(dir, name))
 }
 
 // NumberChat turns a phone number in international form ("+1 555 123 0000",

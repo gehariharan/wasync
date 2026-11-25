@@ -166,8 +166,11 @@ func TestAStopOutlivesTheSendHistory(t *testing.T) {
 	dir := privateDir(t)
 	x, y := "15551230000@s.whatsapp.net", "15551230001@s.whatsapp.net"
 	old := time.Now().Add(-HistoryKept - time.Hour).UTC().Format(time.RFC3339)
-	content := `{"lists":[],"sent":[{"agent_id":"a1","chat":"` + x + `","first_sent_at":"` + old + `","removed_at":"` + old + `"}],"opted_out":["` + x + `"]}`
+	content := `{"lists":[],"sent":[{"agent_id":"a1","chat":"` + x + `","first_sent_at":"` + old + `","removed_at":"` + old + `"}]}`
 	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, RecordFileName), []byte(`{"opted_out":["`+x+`"]}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, agent := range []string{"a1", "b2", "a1"} {

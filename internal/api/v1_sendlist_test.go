@@ -8,6 +8,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -247,6 +249,34 @@ func TestAStopToOneAgentKeepsTheNumberOffEveryList(t *testing.T) {
 	}
 	if rec.count() != 1 {
 		t.Fatalf("a number that said STOP was messaged again: %d", rec.count())
+	}
+}
+
+// A STOP that arrives after the list is gone, and after its send history is
+// forgotten, still keeps the number from any agent's first message.
+func TestAStopAfterTheListIsRemovedOutlivesTheHistory(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Remove(f.dir, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.incoming(t, listed, "R1", "stop")
+	// Day 35: the removed list's send history has been forgotten.
+	if err := os.WriteFile(filepath.Join(f.dir, sendlist.FileName), []byte(`{"lists":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.approveList(t, "other", nil, "15551230000")
+	status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if rec.count() != 1 {
+		t.Fatalf("a number that said STOP after its list was removed got a first message: %d", rec.count())
 	}
 }
 
