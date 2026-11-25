@@ -111,6 +111,17 @@ const (
 	CodeUsage            = "usage"
 )
 
+// CodeAXITooOldLegacy is the deprecated pre-rename spelling of CodeAXITooOld.
+const CodeAXITooOldLegacy = "whatsapp_axi_too_old"
+
+// LegacyCode returns the deprecated pre-rename spelling of code, or "".
+func LegacyCode(code string) string {
+	if code == CodeAXITooOld {
+		return CodeAXITooOldLegacy
+	}
+	return ""
+}
+
 // Feature names advertised in VersionInfo.Features.
 const (
 	FeatureChats         = "chats"

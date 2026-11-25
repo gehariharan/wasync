@@ -241,7 +241,11 @@ func TestVersionJSON(t *testing.T) {
 		Version string `json:"wasync_axi_version"`
 		Commit  string `json:"wasync_axi_commit"`
 		Date    string `json:"wasync_axi_date"`
-		Wasync  struct {
+		// Keys published before the rename must keep their values.
+		OldVersion string `json:"whatsapp_axi_version"`
+		OldCommit  string `json:"whatsapp_axi_commit"`
+		OldDate    string `json:"whatsapp_axi_date"`
+		Wasync     struct {
 			State     string                `json:"state"`
 			Transport string                `json:"transport"`
 			Version   *contract.VersionInfo `json:"version"`
@@ -250,6 +254,9 @@ func TestVersionJSON(t *testing.T) {
 	}
 	if code != ExitOK || json.Unmarshal([]byte(out), &got) != nil {
 		t.Fatalf("%d %s", code, out)
+	}
+	if got.OldVersion != buildinfo.Version || got.OldCommit != buildinfo.Commit || got.OldDate != buildinfo.Date {
+		t.Fatalf("pre-rename keys missing: %s", out)
 	}
 	if got.Version != buildinfo.Version || got.Commit != buildinfo.Commit || got.Date != buildinfo.Date || got.Wasync.Transport != "api" || got.Wasync.Version == nil || len(got.Wasync.Version.Features) != 18 || !got.Compat.OK {
 		t.Fatalf("%+v", got)
@@ -269,7 +276,15 @@ func TestIncompatibleWasync(t *testing.T) {
 	if code != ExitOK {
 		t.Fatal(out)
 	}
-	mustContain(t, out, "state: incompatible", "status: wasync_axi_too_old")
+	mustContain(t, out, "state: incompatible", "status: wasync_axi_too_old", "legacy_status: whatsapp_axi_too_old")
+	out, _ = h.run(t, "--json")
+	var home struct {
+		OldVersion string     `json:"whatsapp_axi_version"`
+		Compat     compatJSON `json:"compatibility"`
+	}
+	if json.Unmarshal([]byte(out), &home) != nil || home.OldVersion != buildinfo.Version || home.Compat.Status != "wasync_axi_too_old" || home.Compat.LegacyStatus != "whatsapp_axi_too_old" {
+		t.Fatalf("pre-rename home keys missing: %s", out)
+	}
 
 	bin, _ := testutil.FakeWasync(t, testutil.ModeOld)
 	h = newHarness(t)

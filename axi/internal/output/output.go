@@ -209,19 +209,21 @@ func JSON(w io.Writer, v any) error {
 
 // ErrorJSON is the --json shape of an error, matching the v1 envelope.
 type ErrorJSON struct {
-	RequestID string          `json:"request_id,omitempty"`
-	ErrorCode string          `json:"error_code"`
-	Error     string          `json:"error"`
-	Help      string          `json:"help,omitempty"`
-	Details   json.RawMessage `json:"details,omitempty"`
-	Transport string          `json:"transport,omitempty"`
+	RequestID string `json:"request_id,omitempty"`
+	ErrorCode string `json:"error_code"`
+	// LegacyErrorCode is deprecated: the pre-rename whatsapp_axi_* code.
+	LegacyErrorCode string          `json:"legacy_error_code,omitempty"`
+	Error           string          `json:"error"`
+	Help            string          `json:"help,omitempty"`
+	Details         json.RawMessage `json:"details,omitempty"`
+	Transport       string          `json:"transport,omitempty"`
 }
 
 // ToErrorJSON converts any error into the structured shape.
 func ToErrorJSON(err error) ErrorJSON {
 	var ce *contract.Error
 	if errors.As(err, &ce) {
-		return ErrorJSON{RequestID: ce.RequestID, ErrorCode: ce.Code, Error: ce.Message, Help: ce.Help, Details: ce.Details, Transport: ce.Transport}
+		return ErrorJSON{RequestID: ce.RequestID, ErrorCode: ce.Code, LegacyErrorCode: contract.LegacyCode(ce.Code), Error: ce.Message, Help: ce.Help, Details: ce.Details, Transport: ce.Transport}
 	}
 	return ErrorJSON{ErrorCode: contract.CodeInternal, Error: err.Error()}
 }
@@ -245,6 +247,9 @@ func ErrorWith(w io.Writer, err error, jsonMode bool, detail func(*Writer)) erro
 	o.write(0, "error: "+oneLine(e.Error))
 	if e.ErrorCode != "" && e.ErrorCode != contract.CodeUsage {
 		o.write(0, "code: "+oneLine(e.ErrorCode))
+	}
+	if e.LegacyErrorCode != "" {
+		o.write(0, "legacy_code: "+e.LegacyErrorCode)
 	}
 	if detail != nil {
 		detail(o)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gehariharan/wasync/axi/internal/buildinfo"
 	"github.com/gehariharan/wasync/axi/internal/testutil"
 )
 
@@ -18,6 +19,7 @@ func init() { testutil.MaybeRunFakeDoctor() }
 const testToken = "wsa_SECRETtoken0123456789"
 
 type doctorJSON struct {
+	OldVersion    string        `json:"whatsapp_axi_version"`
 	Transport     string        `json:"transport"`
 	TransportNote string        `json:"transport_note"`
 	Summary       doctorSummary `json:"summary"`
@@ -102,6 +104,9 @@ func TestDoctorAllPass(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	r.assertFixes(t)
+	if r.OldVersion != buildinfo.Version {
+		t.Fatalf("pre-rename whatsapp_axi_version key missing: %s", out)
+	}
 	if r.Transport != "api" || r.Summary.Result != statusPass || r.Summary.Fail != 0 || r.Summary.Warn != 0 {
 		t.Fatalf("%+v", r.Summary)
 	}

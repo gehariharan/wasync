@@ -235,3 +235,5 @@ See [Homebrew installation](../README.md#homebrew-installation) for the tap's
 custom remote and platform-specific installation commands.
 The [consolidation decision](architecture/ADR-002-monorepo.md) owns compatibility
 and historical repository retention requirements.
+
+TODO: once a release publishes `Formula/wasync-axi.rb` to the tap, switch the Codex plugin's server command (`plugins/whatsapp/mcp.json`) and its setup skill's Homebrew line to `wasync-axi`.

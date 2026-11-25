@@ -104,8 +104,10 @@ func errCode(err error) string {
 type compatJSON struct {
 	OK     bool   `json:"ok"`
 	Status string `json:"status"` // "ok", "unknown" or an error code such as wasync_too_old
-	Reason string `json:"reason,omitempty"`
-	Help   string `json:"help,omitempty"`
+	// LegacyStatus is deprecated: the pre-rename whatsapp_axi_* code.
+	LegacyStatus string `json:"legacy_status,omitempty"`
+	Reason       string `json:"reason,omitempty"`
+	Help         string `json:"help,omitempty"`
 }
 
 type wasyncJSON struct {
@@ -146,7 +148,7 @@ func (a *App) wasyncJSON(d detection) wasyncJSON {
 func compatOf(d detection) compatJSON {
 	if d.compatErr != nil {
 		e := output.ToErrorJSON(d.compatErr)
-		return compatJSON{Status: e.ErrorCode, Reason: e.Error, Help: e.Help}
+		return compatJSON{Status: e.ErrorCode, LegacyStatus: e.LegacyErrorCode, Reason: e.Error, Help: e.Help}
 	}
 	if d.sel.Version == nil {
 		return compatJSON{Status: "unknown", Reason: "wasync version not detected"}
@@ -191,6 +193,9 @@ func (a *App) writeWasync(o *output.Writer, d detection, detail bool) {
 	c := compatOf(d)
 	o.Object(0, "compatibility")
 	o.Field(1, "status", c.Status)
+	if c.LegacyStatus != "" {
+		o.Field(1, "legacy_status", c.LegacyStatus)
+	}
 	if c.Reason != "" {
 		o.Field(1, "reason", c.Reason)
 	}
@@ -314,7 +319,8 @@ func (a *App) runHome(ctx context.Context, inv invocation) error {
 	if inv.json {
 		out := map[string]any{
 			"bin": a.binPath(), "description": Description, "wasync_axi_version": buildinfo.Version,
-			"wasync": a.wasyncJSON(d), "compatibility": compatOf(d), "help": hints,
+			"whatsapp_axi_version": buildinfo.Version,
+			"wasync":               a.wasyncJSON(d), "compatibility": compatOf(d), "help": hints,
 		}
 		if chats != nil {
 			out["chats"] = homeChatsJSON{Total: len(chats.Items), Recent: append([]contract.Chat{}, recentChatList...)}
@@ -350,7 +356,9 @@ func (a *App) runVersion(ctx context.Context, inv invocation) error {
 	if inv.json {
 		return output.JSON(a.Out, map[string]any{
 			"wasync_axi_version": buildinfo.Version, "wasync_axi_commit": buildinfo.Commit,
-			"wasync_axi_date": buildinfo.Date, "api_version_supported": contract.APIVersion,
+			"wasync_axi_date":      buildinfo.Date,
+			"whatsapp_axi_version": buildinfo.Version, "whatsapp_axi_commit": buildinfo.Commit,
+			"whatsapp_axi_date": buildinfo.Date, "api_version_supported": contract.APIVersion,
 			"min_api": a.Compat.MinAPI, "wasync": a.wasyncJSON(d), "compatibility": compatOf(d),
 		})
 	}

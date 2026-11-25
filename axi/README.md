@@ -39,6 +39,7 @@ Settings, all optional:
 
 wasync-axi was called whatsapp-axi. The old command name, the `WHATSAPP_AXI_*` variables and a
 credential in `<user config dir>/whatsapp-axi` still work; `setup` moves old hooks and skills to the new name.
+The old `whatsapp_axi_*` JSON keys and the `whatsapp_axi_too_old` code (`legacy_error_code`, `legacy_status`) are deprecated.
 
 ## Security model
 

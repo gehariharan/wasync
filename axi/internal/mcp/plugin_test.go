@@ -41,8 +41,8 @@ func TestPluginLaunchesTheToolServerAndNothingElse(t *testing.T) {
 		t.Fatalf("expected one server, got %v", m.Servers)
 	}
 	s := m.Servers["whatsapp"]
-	if s.Type != "stdio" || s.Command != "wasync-axi" || len(s.Args) != 1 || s.Args[0] != "mcp" || s.URL != "" {
-		t.Fatalf("the plugin must launch `wasync-axi mcp` over stdio and open no network endpoint: %+v", s)
+	if s.Type != "stdio" || s.Command != "whatsapp-axi" || len(s.Args) != 1 || s.Args[0] != "mcp" || s.URL != "" {
+		t.Fatalf("the plugin must launch `whatsapp-axi mcp` over stdio and open no network endpoint: %+v", s)
 	}
 }
 

@@ -176,6 +176,7 @@ type doctorSummary struct {
 
 type doctorReport struct {
 	WasyncAXIVersion string        `json:"wasync_axi_version"`
+	LegacyVersion    string        `json:"whatsapp_axi_version"` // deprecated
 	Bin              string        `json:"bin"`
 	Transport        string        `json:"transport"`
 	TransportNote    string        `json:"transport_note,omitempty"`
@@ -266,7 +267,7 @@ func (a *App) fetchHealth(ctx context.Context, d detection, diag *diagnostics) *
 
 func (a *App) doctorReport(d detection, f facts) doctorReport {
 	r := doctorReport{
-		WasyncAXIVersion: buildinfo.Version, Bin: a.binPath(), Transport: f.transport,
+		WasyncAXIVersion: buildinfo.Version, LegacyVersion: buildinfo.Version, Bin: a.binPath(), Transport: f.transport,
 		Wasync: a.wasyncJSON(d), Compatibility: compatOf(d), Diagnostics: f.diag, Health: f.health,
 	}
 	switch f.transport {
