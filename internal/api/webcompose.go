@@ -1,7 +1,6 @@
 package api
 
 import (
-	"html/template"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,17 +18,10 @@ import (
 
 const composeFormLimit = 32 << 10
 
-type composeData struct {
-	uiData
-	CanSend bool
-}
-
+// composeNewPage is the chats page with a new message to a phone number open
+// in the right pane.
 func (h *handler) composeNewPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	d := &composeData{uiData: uiData{CSRF: sess.csrf, Title: "wasync new message", Wide: true}, CanSend: h.sender != nil}
-	if n, ok := notices[r.URL.Query().Get("n")]; ok {
-		d.Notice, d.NoticeOK = n.text, n.ok
-	}
-	h.webRender(w, composeTemplate, d)
+	h.chatsView(w, r, sess, true)
 }
 
 func (h *handler) composeSend(w http.ResponseWriter, r *http.Request, sess uiSession) {
@@ -88,17 +80,3 @@ func (h *handler) composeSend(w http.ResponseWriter, r *http.Request, sess uiSes
 	}
 	back("/ui/chats", url.Values{"c": {chat}}, notice)
 }
-
-var composeTemplate = template.Must(template.New("compose").Parse(uiHead + `{{template "head" .}}
-<h1>New message</h1>
-{{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
-{{if .CanSend}}
-<form method="post" action="/ui/chats/send">
-<input type="hidden" name="csrf" value="{{.CSRF}}">
-<p><label>Phone number, with its country code<br><input name="to" placeholder="+15551230000" autocomplete="off" required></label></p>
-<p><label>Message<br><textarea name="text" rows="5" maxlength="16000" required style="width:100%"></textarea></label></p>
-<p><button>Send</button> <span class="mut">It is sent once, as you. It shows in <a href="/ui/sent">Sent</a>. Nothing is kept if you leave without sending.</span></p>
-</form>
-{{else}}<p class="bad">wasync is not connected to WhatsApp, so nothing can be sent. Start it with <code>wasync serve</code> or <code>wasync tui</code> on a linked account.</p>{{end}}
-</main></body></html>
-`))

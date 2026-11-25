@@ -59,6 +59,7 @@ type chatsData struct {
 	Syncing, Total int
 	CanSend        bool
 	Picked         bool // a chat was asked for by name, so a phone shows it instead of the list
+	New            bool // the right pane is a new message to a phone number
 }
 
 type pickRow struct {
@@ -173,6 +174,12 @@ func (h *handler) webRender(w http.ResponseWriter, t *template.Template, data an
 }
 
 func (h *handler) chatsPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	h.chatsView(w, r, sess, false)
+}
+
+// chatsView renders the chats page; with newMessage the right pane is a new
+// message to a phone number instead of an open chat.
+func (h *handler) chatsView(w http.ResponseWriter, r *http.Request, sess uiSession, newMessage bool) {
 	d := &chatsData{uiData: uiData{CSRF: sess.csrf, Title: "wasync chats", Wide: true, Full: true}, CanSend: h.sender != nil}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		d.Notice, d.NoticeOK = n.text, n.ok
@@ -206,7 +213,8 @@ func (h *handler) chatsPage(w http.ResponseWriter, r *http.Request, sess uiSessi
 	agents := h.readingAgents()
 	d.All = r.URL.Query().Get("all") == "1"
 	want := r.URL.Query().Get("c")
-	d.Picked = want != ""
+	d.New = newMessage
+	d.Picked = want != "" || newMessage
 	names := map[string]string{}
 	d.Total = len(groups)
 	var cur *storage.Group
@@ -231,7 +239,7 @@ func (h *handler) chatsPage(w http.ResponseWriter, r *http.Request, sess uiSessi
 			row.Last = shortTime(*g.LastMessage)
 		}
 		d.Rows = append(d.Rows, row)
-		if cur == nil && want == "" && len(d.Rows) == 1 {
+		if cur == nil && want == "" && !newMessage && len(d.Rows) == 1 {
 			cur = g
 		}
 	}
@@ -520,6 +528,8 @@ main.full{max-width:none;height:100vh;height:100dvh;box-sizing:border-box;paddin
 .tabs{display:flex;gap:.4rem;flex-wrap:wrap;margin:.5rem 0}
 .tabs a{padding:.2rem .7rem;border:1px solid var(--line);border-radius:99px;text-decoration:none;color:var(--fg)}
 .tabs a[aria-current="true"]{background:var(--fg);color:var(--bg)}
+.newmsg{flex:1;min-height:0;display:flex;flex-direction:column}
+.to{display:flex;gap:.5rem;align-items:center;margin:0;padding:.5rem .9rem;border-bottom:1px solid var(--line)}.to input{flex:1;font:inherit;padding:.3rem .5rem}
 .compose{display:flex;gap:.5rem;padding:.6rem .9rem;border-top:1px solid var(--line)}.compose textarea{flex:1;font:inherit}
 .sent{width:100%;border-collapse:collapse;background:var(--card)}.sent th,.sent td{border:1px solid var(--line);padding:.4rem .6rem;text-align:left;vertical-align:top;font-size:.9rem}.sent tr.problem td{background:rgba(164,38,44,.08)}
 .pickbox{border:1px solid var(--line);border-radius:10px;background:var(--card);max-height:60vh;overflow:auto}
@@ -537,6 +547,7 @@ var chatsTemplate = template.Must(template.New("chats").Parse(uiHead + `{{templa
 <a class="ic" href="/ui/chats/new" title="New message" aria-label="New message">✎</a>
 <span class="sub">{{.Syncing}} of {{.Total}} syncing</span>
 </div>
+{{if .New}}<a class="row" href="/ui/chats/new" aria-current="true"><span class="av">✎</span><span class="nm">New message</span><span></span></a>{{end}}
 {{range .Rows}}<a class="row" href="/ui/chats?c={{.ID}}{{if $.All}}&amp;all=1{{end}}"{{if .Selected}} aria-current="true"{{end}}>
 <span class="av">{{.Initials}}{{if .Agent}}<span class="bot" title="Agents can read this chat" aria-label="Agents can read this chat">🤖</span>{{end}}</span>
 <span><span class="nm" style="display:block">{{.Name}}</span><span class="sub">{{if .Syncing}}{{.Count}} messages{{else}}not syncing{{end}}</span></span>
@@ -545,7 +556,14 @@ var chatsTemplate = template.Must(template.New("chats").Parse(uiHead + `{{templa
 {{if .More}}<p class="sub" style="padding:.6rem .8rem">{{.More}} more chats are not listed.</p>{{end}}
 </div>
 <div class="pane">
-{{if .Cur}}
+{{if .New}}
+<div class="head"><span><a class="back" href="/ui/chats{{if .All}}?all=1{{end}}" aria-label="Back to chats">‹</a> <strong>New message</strong></span></div>
+{{if .CanSend}}<form class="newmsg" method="post" action="/ui/chats/send"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<label class="to">To <input name="to" placeholder="+15551230000" aria-label="Phone number, with its country code" autocomplete="off" required autofocus></label>
+<div class="thread"><p class="mut">Sent once, as you; it shows in <a href="/ui/sent">Sent</a>.</p></div>
+<div class="compose"><textarea name="text" rows="2" maxlength="16000" required placeholder="Message" aria-label="Message"></textarea><button>Send</button></div></form>
+{{else}}<p class="bad" style="padding:1rem">wasync is not connected to WhatsApp, so nothing can be sent. Start it with <code>wasync serve</code> or <code>wasync tui</code> on a linked account.</p>{{end}}
+{{else if .Cur}}
 <div class="head"><span><a class="back" href="/ui/chats{{if .All}}?all=1{{end}}" aria-label="Back to chats">‹</a> <strong>{{.Cur.Name}}</strong> <span class="sub">{{if .Cur.Syncing}}syncing{{else}}not syncing{{end}}{{if .Cur.Agent}} · 🤖 agents can read this chat{{end}}</span></span>
 {{if not .Cur.Syncing}}<a href="/ui/chats/pick">Choose chats to sync</a>{{end}}</div>
 <div class="thread" aria-label="Messages in {{.Cur.Name}}"><div class="msgs">

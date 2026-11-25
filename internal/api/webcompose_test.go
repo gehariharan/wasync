@@ -49,6 +49,19 @@ func TestComposerShowsOnlyWhereSendingIsPossible(t *testing.T) {
 	}
 }
 
+func TestNewMessageOpensInTheChatsPane(t *testing.T) {
+	_, c, _ := composeFixture(t, &sendRecorder{})
+	_, page, _ := c.get("/ui/chats/new")
+	for _, want := range []string{`<div class="app picked">`, `class="list"`, `<span class="nm">New message</span>`, `name="to"`, `action="/ui/chats/send"`} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("new message pane lacks %q:\n%s", want, page)
+		}
+	}
+	if strings.Contains(page, `name="chat"`) {
+		t.Fatalf("a chat was opened beside the new message:\n%s", page)
+	}
+}
+
 func TestComposerSendsToAChatOnceAndRecordsIt(t *testing.T) {
 	rec := &sendRecorder{}
 	f, c, csrf := composeFixture(t, rec)
