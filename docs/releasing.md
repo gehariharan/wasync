@@ -139,7 +139,7 @@ Linux executables use the build platform's libc, so the workflow uses Ubuntu
 22.04 (glibc 2.35). macOS builds target macOS 15 or later.
 
 For AXI's cross-platform archive packaging, see [its packaging helpers](../axi/docs/releasing.md).
-For Windows core packaging, see the [Windows installer guide](../README.md#windows-installer-preview).
+For Windows core packaging, see the [Windows guide](windows.md).
 The coordinated workflow and publication safeguards are described above.
 
 The release job uses its temporary `GITHUB_TOKEN` to publish assets and update
