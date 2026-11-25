@@ -8,6 +8,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
@@ -48,16 +49,16 @@ type openView struct {
 
 // listRow is one approved recipient list.
 type listRow struct {
-	Agent                         string
-	Numbers, NotMessaged, Stopped int
-	Until                         string
-	Gone                          bool // its agent is no longer active
+	Agent                                  string
+	Numbers, NotMessaged, Stopped, PerHour int
+	Until                                  string
+	Gone                                   bool // its agent is no longer active
 }
 
 type listsView struct {
 	Rows    []listRow
 	Senders []string // agents that may be given a list
-	MaxNew  int
+	Paces   []int    // the new-numbers-an-hour choices
 }
 
 type agentsData struct {
@@ -98,7 +99,9 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 			d.Lists.Senders = append(d.Lists.Senders, row.Name)
 		}
 	}
-	d.Lists.MaxNew = sendlist.MaxNewNumbers
+	for n := sendlist.MinPerHour; n <= sendlist.MaxPerHour; n += 5 {
+		d.Lists.Paces = append(d.Lists.Paces, n)
+	}
 	_ = h.dropStopped(r.Context(), now)
 	if lists, err := sendlist.Load(h.dataDir); err == nil {
 		active := map[string]bool{}
@@ -106,7 +109,7 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 			active[c.ID] = c.Status(now) == "active"
 		}
 		for _, l := range lists {
-			row := listRow{Agent: humancheck.Clean(l.Agent, 40), Numbers: len(l.Numbers), NotMessaged: l.NotMessaged(), Stopped: l.Stopped, Until: "no end", Gone: !active[l.AgentID]}
+			row := listRow{Agent: humancheck.Clean(l.Agent, 40), Numbers: len(l.Numbers), NotMessaged: l.NotMessaged(), Stopped: l.Stopped, PerHour: l.NewPerHour(), Until: "no end", Gone: !active[l.AgentID]}
 			if l.Until != nil {
 				row.Until = l.Until.Local().Format("2 Jan 15:04")
 				if !l.Active(now) {
@@ -315,7 +318,8 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 		return
 	}
 	end, ok := listEnds[r.PostForm.Get("ends")]
-	if agentauth.ValidName(name) != nil || !ok {
+	perHour, err := strconv.Atoi(r.PostForm.Get("rate"))
+	if agentauth.ValidName(name) != nil || !ok || err != nil || !sendlist.ValidPerHour(perHour) {
 		back("invalid")
 		return
 	}
@@ -356,7 +360,7 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 		back("needsend")
 		return
 	}
-	list := sendlist.List{AgentID: target.ID, Agent: target.Name, GrantedAt: now.UTC()}
+	list := sendlist.List{AgentID: target.ID, Agent: target.Name, GrantedAt: now.UTC(), PerHour: perHour}
 	ends := "until you remove it"
 	if end > 0 {
 		until := now.Add(end).UTC().Truncate(time.Second)
@@ -374,7 +378,7 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 		}
 		examples += sendlist.Shown(c)
 	}
-	prompt := fmt.Sprintf("Approve: let the agent %s message these %d number(s), and no others, %s: %s. At most %d new numbers an hour, one message each until they reply.", agentauth.QuotedName(name), len(chats), ends, examples, sendlist.MaxNewNumbers)
+	prompt := fmt.Sprintf("Approve: let the agent %s message these %d number(s), and no others, %s: %s. At most %d new numbers an hour, spaced at random, one message each until they reply.", agentauth.QuotedName(name), len(chats), ends, examples, perHour)
 	if err = h.confirmError(r.Context(), prompt); err != nil {
 		back(noticeFor(err))
 		return
@@ -409,15 +413,16 @@ var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{temp
 </tbody></table>{{end}}
 
 <h2>Approved numbers</h2>
-<p>An agent may message the numbers you approve for it here, and no others: {{.Lists.MaxNew}} new numbers an hour, one message each until they reply. A number that replies STOP is removed.</p>
-{{if .Lists.Rows}}<table class="sent"><thead><tr><th>Agent</th><th>Numbers</th><th>Ends</th><th></th></tr></thead><tbody>
-{{range .Lists.Rows}}<tr><td>🤖 {{.Agent}}{{if .Gone}} <span class="mut">(no longer active)</span>{{end}}</td><td>{{.Numbers}} <span class="mut">({{.NotMessaged}} not messaged yet{{if .Stopped}}, {{.Stopped}} removed after STOP{{end}})</span></td><td>{{.Until}}</td>
+<p>An agent may message the numbers you approve for it here, and no others: as many new numbers an hour as you choose, spaced at random, one message each until they reply. A number that replies STOP is removed.</p>
+{{if .Lists.Rows}}<table class="sent"><thead><tr><th>Agent</th><th>Numbers</th><th>New an hour</th><th>Ends</th><th></th></tr></thead><tbody>
+{{range .Lists.Rows}}<tr><td>🤖 {{.Agent}}{{if .Gone}} <span class="mut">(no longer active)</span>{{end}}</td><td>{{.Numbers}} <span class="mut">({{.NotMessaged}} not messaged yet{{if .Stopped}}, {{.Stopped}} removed after STOP{{end}})</span></td><td>{{.PerHour}}</td><td>{{.Until}}</td>
 <td><form method="post" action="/ui/agents" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="listoff"><input type="hidden" name="agent" value="{{.Agent}}"><button>Remove list</button></form></td></tr>
 {{end}}</tbody></table>{{end}}
 {{if .Open.Gate}}{{if .Lists.Senders}}<form method="post" action="/ui/agents" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="liston">
 <p><label>Agent <select name="agent">{{range .Lists.Senders}}<option>{{.}}</option>{{end}}</select></label></p>
 <p><label>Numbers, one per line, with country code<br><textarea name="numbers" rows="4" cols="40" placeholder="+15551230000"></textarea></label></p>
 <p><label>Or a file (.txt or .csv) <input type="file" name="file" accept=".txt,.csv,text/plain,text/csv"></label></p>
+<p><label>New numbers an hour <select name="rate">{{range .Lists.Paces}}<option>{{.}}</option>{{end}}</select></label> <span class="mut">Spaced at random through the hour.</span></p>
 <p><label>Ends <select name="ends"><option value="1d">in 1 day</option><option value="7d" selected>in 7 days</option><option value="30d">in 30 days</option><option value="none">never (until removed)</option></select></label></p>
 <p><button>Approve list…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}. Approving again replaces the agent's list.</span></p></form>
 {{else}}<p class="mut">Allow sending for an agent first.</p>{{end}}{{end}}

@@ -1,8 +1,9 @@
 // Package sendlist holds the owner's approved recipient lists. The owner gives
 // one agent a fixed list of phone numbers, once, after the system confirmation;
 // that agent may then message those numbers, and only those, without the owner
-// approving each chat or switching on open sending. wasync still paces it: a
-// few new numbers an hour, and one message per number until that number
+// approving each chat or switching on open sending. wasync still paces it: the
+// owner picks how many new numbers an hour (5 to 20), first messages are
+// spaced at random intervals, and each number gets one message until it
 // replies. A number that answers STOP is dropped from the list.
 //
 // The lists are a private file next to agents.json. A missing file means no
@@ -32,13 +33,18 @@ const (
 	FileName = "send-lists.json"
 	// MaxNumbers is the most numbers one list may hold.
 	MaxNumbers = 1000
-	// Window is the period the two caps below are counted over.
+	// Window is the period the hourly caps are counted over.
 	Window = opensend.Window
-	// MaxNewNumbers is how many numbers from its list one agent may message
-	// for the first time per Window: the same cap as open sending.
-	MaxNewNumbers = opensend.MaxNewNumbers
-	// MaxMessages is how many list messages one agent may send per Window.
-	MaxMessages = opensend.MaxMessages
+	// MinPerHour and MaxPerHour bound how many numbers from its list the
+	// owner may let one agent message for the first time per Window.
+	// DefaultPerHour, the same cap as open sending, applies to a list saved
+	// without a choice.
+	MinPerHour     = opensend.MaxNewNumbers
+	MaxPerHour     = 20
+	DefaultPerHour = MinPerHour
+	// MessagesPerNew is how many list messages, replies to replies included,
+	// one agent may send per Window for each new number it may start.
+	MessagesPerNew = 3
 
 	maxFileBytes = 1 << 20
 )
@@ -55,13 +61,37 @@ type List struct {
 	AgentID   string     `json:"agent_id"`
 	Agent     string     `json:"agent"`
 	GrantedAt time.Time  `json:"granted_at"`
-	Until     *time.Time `json:"until,omitempty"` // nil: until removed
+	Until     *time.Time `json:"until,omitempty"`    // nil: until removed
+	PerHour   int        `json:"per_hour,omitempty"` // new numbers an hour; 0 means DefaultPerHour
+	NextAt    *time.Time `json:"next_at,omitempty"`  // no first message before this
 	Numbers   []Number   `json:"numbers"`
 	Stopped   int        `json:"stopped,omitempty"` // numbers dropped after they replied STOP
 }
 
 // Active reports whether the list may be used at now.
 func (l List) Active(now time.Time) bool { return l.Until == nil || now.Before(*l.Until) }
+
+// NewPerHour is how many numbers the agent may message for the first time per Window.
+func (l List) NewPerHour() int {
+	if l.PerHour == 0 {
+		return DefaultPerHour
+	}
+	return l.PerHour
+}
+
+// MessagesPerHour is how many list messages the agent may send per Window.
+func (l List) MessagesPerHour() int { return MessagesPerNew * l.NewPerHour() }
+
+// Gap is the wait after a first message before the next one may go: on
+// average an hour divided by perHour, drawn between half and one and a half
+// times that so the messages do not go out like clockwork. r is in [0, 1).
+func Gap(perHour int, r float64) time.Duration {
+	avg := Window / time.Duration(perHour)
+	return avg/2 + time.Duration(r*float64(avg))
+}
+
+// ValidPerHour reports whether n is a pace the owner may choose.
+func ValidPerHour(n int) bool { return n >= MinPerHour && n <= MaxPerHour }
 
 // Find returns the entry for chat, or nil.
 func (l *List) Find(chat string) *Number {
@@ -144,8 +174,8 @@ func load(dir string) ([]List, error) {
 		return nil, fmt.Errorf("invalid %s: %w", FileName, err)
 	}
 	for _, l := range v.Lists {
-		if l.AgentID == "" || len(l.Numbers) > MaxNumbers {
-			return nil, fmt.Errorf("invalid %s: a list has no agent or too many numbers", FileName)
+		if l.AgentID == "" || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
+			return nil, fmt.Errorf("invalid %s: a list has no agent, too many numbers or an invalid pace", FileName)
 		}
 		for _, x := range l.Numbers {
 			if _, ok := NumberChat(strings.TrimSuffix(x.Chat, "@s.whatsapp.net")); !ok || !strings.HasSuffix(x.Chat, "@s.whatsapp.net") {
@@ -175,8 +205,8 @@ func For(dir, agentID string, now time.Time) (List, bool) {
 // earlier list already messaged keep that history, so approving a list again
 // never lets a number be messaged twice without a reply.
 func Put(dir string, l List) error {
-	if l.AgentID == "" || len(l.Numbers) == 0 || len(l.Numbers) > MaxNumbers {
-		return fmt.Errorf("a list needs an agent and 1 to %d numbers", MaxNumbers)
+	if l.AgentID == "" || len(l.Numbers) == 0 || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
+		return fmt.Errorf("a list needs an agent, 1 to %d numbers and a pace of %d to %d an hour", MaxNumbers, MinPerHour, MaxPerHour)
 	}
 	mu.Lock()
 	defer mu.Unlock()
@@ -196,6 +226,9 @@ func Put(dir string, l List) error {
 			}
 		}
 		l.Stopped += old.Stopped
+		if old.NextAt != nil && (l.NextAt == nil || old.NextAt.After(*l.NextAt)) {
+			l.NextAt = old.NextAt
+		}
 	}
 	return save(dir, append(out, l))
 }

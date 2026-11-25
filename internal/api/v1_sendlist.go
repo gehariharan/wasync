@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand/v2"
 	"net/http"
 	"strconv"
 	"time"
@@ -30,13 +31,13 @@ func init() {
 // sendListView is the agent-facing state of its list.
 type sendListView struct {
 	Active         bool       `json:"active"`
-	CanSend        bool       `json:"can_send"`         // holds the send scope
-	Numbers        int        `json:"numbers"`          // on the list now
-	NotMessaged    int        `json:"not_messaged"`     // never messaged yet
-	Stopped        int        `json:"stopped"`          // removed after they replied STOP
-	NewNumbersLeft int        `json:"new_numbers_left"` // first messages left this hour
-	MessagesLeft   int        `json:"messages_left"`    // list messages left this hour
-	NextNewAt      *time.Time `json:"next_new_at,omitempty"`
+	CanSend        bool       `json:"can_send"`              // holds the send scope
+	Numbers        int        `json:"numbers"`               // on the list now
+	NotMessaged    int        `json:"not_messaged"`          // never messaged yet
+	Stopped        int        `json:"stopped"`               // removed after they replied STOP
+	NewNumbersLeft int        `json:"new_numbers_left"`      // first messages left this hour
+	MessagesLeft   int        `json:"messages_left"`         // list messages left this hour
+	NextNewAt      *time.Time `json:"next_new_at,omitempty"` // no new number before this
 	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
 	NewPerHour     int        `json:"new_numbers_per_hour"`
 	MessagesHour   int        `json:"messages_per_hour"`
@@ -58,18 +59,22 @@ func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) 
 	}
 	now := time.Now()
 	_ = h.dropStopped(r.Context(), now)
-	view := sendListView{CanSend: c.HasScope(agentauth.ScopeSend), NewPerHour: sendlist.MaxNewNumbers, MessagesHour: sendlist.MaxMessages}
+	view := sendListView{CanSend: c.HasScope(agentauth.ScopeSend)}
 	if list, ok := sendlist.For(h.dataDir, c.ID, now); ok {
 		view.Active, view.Numbers, view.NotMessaged, view.Stopped, view.ExpiresAt = true, len(list.Numbers), list.NotMessaged(), list.Stopped, list.Until
+		view.NewPerHour, view.MessagesHour = list.NewPerHour(), list.MessagesPerHour()
 		pace, err := h.listPace(c.Name, now)
 		if err != nil {
 			v1Fail(w, id, 503, query.CodeInternal, "the sent log cannot be read", "check the permissions of the wasync data directory")
 			return
 		}
-		view.MessagesLeft = max(0, sendlist.MaxMessages-pace.messages)
-		view.NewNumbersLeft = max(0, sendlist.MaxNewNumbers-pace.fresh)
-		if view.NewNumbersLeft == 0 {
+		view.MessagesLeft = max(0, list.MessagesPerHour()-pace.messages)
+		view.NewNumbersLeft = max(0, list.NewPerHour()-pace.fresh)
+		switch {
+		case view.NewNumbersLeft == 0:
 			view.NextNewAt = &pace.nextFresh
+		case list.NextAt != nil && list.NextAt.After(now):
+			view.NextNewAt = list.NextAt
 		}
 	}
 	v1OK(w, id, view, nil)
@@ -183,19 +188,24 @@ func (h *handler) listSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 		v1Fail(w, id, 503, query.CodeInternal, "the sent log cannot be read, so the send is refused", "check the permissions of the wasync data directory")
 		return false
 	}
-	if pace.messages >= sendlist.MaxMessages {
-		retryLater(w, id, pace.nextMessage, fmt.Sprintf("your approved list allows %d messages an hour and they are used up", sendlist.MaxMessages), "Wait for the hour to pass.")
+	if pace.messages >= list.MessagesPerHour() {
+		retryLater(w, id, pace.nextMessage, fmt.Sprintf("your approved list allows %d messages an hour and they are used up", list.MessagesPerHour()), "Wait for the hour to pass.")
 		return false
 	}
-	if number.FirstSentAt == nil && pace.fresh >= sendlist.MaxNewNumbers {
-		retryLater(w, id, pace.nextFresh, fmt.Sprintf("your approved list allows %d new numbers an hour and they are used up", sendlist.MaxNewNumbers), "Wait for the hour to pass.")
+	if number.FirstSentAt == nil && pace.fresh >= list.NewPerHour() {
+		retryLater(w, id, pace.nextFresh, fmt.Sprintf("your approved list allows %d new numbers an hour and they are used up", list.NewPerHour()), "Wait for the hour to pass.")
+		return false
+	}
+	if number.FirstSentAt == nil && list.NextAt != nil && now.Before(*list.NextAt) {
+		retryLater(w, id, *list.NextAt, "your approved list spaces first messages at random intervals and the next one is not due yet", "Send it then.")
 		return false
 	}
 	entry.List, entry.NewNumber = true, number.FirstSentAt == nil
 	return true
 }
 
-// listSent notes that the number was messaged, and makes sure its chat is
+// listSent notes that the number was messaged, picks when the next first
+// message may go, and makes sure its chat is
 // archived from now on so a reply, or a STOP, can be seen. Both are best
 // effort: the message is already on its way.
 func (h *handler) listSent(ctx context.Context, agentID, chat string) {
@@ -204,6 +214,8 @@ func (h *handler) listSent(ctx context.Context, agentID, chat string) {
 		if n := l.Find(chat); n != nil {
 			if n.FirstSentAt == nil {
 				n.FirstSentAt = &now
+				next := now.Add(sendlist.Gap(l.NewPerHour(), rand.Float64()))
+				l.NextAt = &next
 			}
 			n.LastSentAt = &now
 		}

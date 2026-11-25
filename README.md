@@ -1067,10 +1067,11 @@ switched on open sending.
 
 To let one agent message a set of phone numbers without approving each chat, approve a list for
 it under Approved numbers on the Agents page: paste the numbers or choose a .txt or .csv file, one
-number with its country code per line, and pick when the list ends. wasync asks you to confirm,
-showing the count and the first numbers. The agent may then message those numbers only, at most 5
-new numbers and 15 messages an hour, and one message per number until that number replies; a
-number that replies STOP is removed. wasync archives those chats from then on so it can see the
+number with its country code per line, and pick how many new numbers an hour (5 to 20) and when
+the list ends. wasync asks you to confirm, showing the count and the first numbers. The agent may
+then message those numbers only: first messages are spaced at random through the hour, up to the
+pace you picked (and three times that in messages), and one message per number until that number
+replies; a number that replies STOP is removed. wasync archives those chats from then on so it can see the
 replies. Removing a list needs no confirmation.
 
 Open sending is on the web app's Agents page (`wasync web`, then Agents). Switching it on asks

@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -45,6 +46,15 @@ func (f fixture) incoming(t *testing.T, chat, id, text string) {
 	m := storage.Message{GroupID: chat, MessageID: id, SenderID: chat, Timestamp: time.Now().Add(time.Second), Type: "text", Text: text}
 	if res, err := f.store.Apply(context.Background(), f.account, []storage.Message{m}); err != nil || res.Stored != 1 {
 		t.Fatalf("store reply: %+v %v", res, err)
+	}
+}
+
+// dueNow lifts the random spacing so the next first message may go at once.
+func (f fixture) dueNow(t *testing.T, name string) {
+	t.Helper()
+	c, _ := agentauth.ActiveByName(f.dir, name)
+	if err := sendlist.Update(f.dir, c.ID, time.Now(), func(l *sendlist.List) error { l.NextAt = nil; return nil }); err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -127,17 +137,19 @@ func TestAListAllowsFiveNewNumbersAnHourPerAgent(t *testing.T) {
 	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
 	second := f.grantWriter(t, "second", []string{agentauth.ScopeSend}, 0, "one@g.us")
 	var numbers []string
-	for i := 0; i <= sendlist.MaxNewNumbers; i++ {
+	for i := 0; i <= sendlist.DefaultPerHour; i++ {
 		numbers = append(numbers, fmt.Sprintf("1555123%04d", i))
 	}
 	f.approveList(t, "poster", nil, numbers...)
 	f.approveList(t, "second", nil, "15559990000")
-	for i := 0; i < sendlist.MaxNewNumbers; i++ {
+	for i := 0; i < sendlist.DefaultPerHour; i++ {
+		f.dueNow(t, "poster")
 		if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"`+numbers[i]+`","text":"x"}`); status != 200 {
 			t.Fatalf("number %d: %d %s", i, status, body)
 		}
 	}
-	req, _ := http.NewRequest("POST", f.server.URL+"/api/v1/messages", strings.NewReader(`{"to":"`+numbers[sendlist.MaxNewNumbers]+`","text":"x"}`))
+	f.dueNow(t, "poster")
+	req, _ := http.NewRequest("POST", f.server.URL+"/api/v1/messages", strings.NewReader(`{"to":"`+numbers[sendlist.DefaultPerHour]+`","text":"x"}`))
 	req.Header.Set("Authorization", "Bearer "+agent)
 	req.Header.Set("Content-Type", "application/json")
 	res, err := http.DefaultClient.Do(req)
@@ -152,7 +164,7 @@ func TestAListAllowsFiveNewNumbersAnHourPerAgent(t *testing.T) {
 	if status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15559990000","text":"x"}`); status != 200 {
 		t.Fatalf("another agent's list: %d %s", status, body)
 	}
-	if rec.count() != sendlist.MaxNewNumbers+1 {
+	if rec.count() != sendlist.DefaultPerHour+1 {
 		t.Fatalf("messages sent: %d", rec.count())
 	}
 }
@@ -248,7 +260,7 @@ func TestSendListStatusReportsTheAllowanceLeft(t *testing.T) {
 	f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`)
 	f.incoming(t, listed, "R1", "STOP")
 	v := read(agent)
-	if !v.Active || v.Numbers != 2 || v.NotMessaged != 2 || v.Stopped != 1 || v.NewNumbersLeft != sendlist.MaxNewNumbers-1 || v.MessagesLeft != sendlist.MaxMessages-1 || v.ExpiresAt == nil {
+	if !v.Active || v.Numbers != 2 || v.NotMessaged != 2 || v.Stopped != 1 || v.NewNumbersLeft != sendlist.DefaultPerHour-1 || v.MessagesLeft != sendlist.MessagesPerNew*sendlist.DefaultPerHour-1 || v.ExpiresAt == nil || v.NextNewAt == nil || v.NewPerHour != sendlist.DefaultPerHour {
 		t.Fatalf("status: %+v", v)
 	}
 	if v := read(f.agent); v.Active || v.CanSend {
@@ -295,7 +307,7 @@ func TestApprovingAListNeedsTheSystemConfirmationAndRemovingItDoesNot(t *testing
 		t.Fatalf("the list form should offer agents that can send:\n%s", page)
 	}
 	form := func(numbers, file, agent string) string {
-		_, _, hd := c.postList(t, map[string]string{"csrf": csrf, "action": "liston", "agent": agent, "numbers": numbers, "ends": "7d"}, file)
+		_, _, hd := c.postList(t, map[string]string{"csrf": csrf, "action": "liston", "agent": agent, "numbers": numbers, "ends": "7d", "rate": "10"}, file)
 		return notice(hd)
 	}
 	if got := form("+15551230000\n15551230001", "", "helper"); got != "declined" {
@@ -316,15 +328,18 @@ func TestApprovingAListNeedsTheSystemConfirmationAndRemovingItDoesNot(t *testing
 		}
 	}
 	before := len(stub.seen())
+	if _, _, hd := c.postList(t, map[string]string{"csrf": csrf, "action": "liston", "agent": "helper", "numbers": "+15551230000", "ends": "7d", "rate": "25"}, ""); notice(hd) != "invalid" {
+		t.Fatalf("a pace above the maximum: %q", notice(hd))
+	}
 	if got := form("+1 555 123 0000\n+15551230001", "15551230002\r\n15551230003,15551230004\n15551230001\n", "helper"); got != "liston" {
 		t.Fatalf("a confirmed list gave %q", got)
 	}
 	prompts := stub.seen()
-	if len(prompts) != before+1 || !strings.Contains(prompts[len(prompts)-1], `"helper"`) || !strings.Contains(prompts[len(prompts)-1], "these 5 number(s)") || !strings.Contains(prompts[len(prompts)-1], "+15551230000, +15551230001, +15551230002 and 2 more") {
+	if len(prompts) != before+1 || !strings.Contains(prompts[len(prompts)-1], `"helper"`) || !strings.Contains(prompts[len(prompts)-1], "these 5 number(s)") || !strings.Contains(prompts[len(prompts)-1], "+15551230000, +15551230001, +15551230002 and 2 more") || !strings.Contains(prompts[len(prompts)-1], "10 new numbers an hour, spaced at random") {
 		t.Fatalf("the prompt must name the agent, the count and some numbers: %q", prompts)
 	}
 	l := listOf(t, fixture{dir: f.dir}, "helper")
-	if len(l.Numbers) != 5 || l.Until == nil || l.Until.Before(time.Now().Add(6*24*time.Hour)) {
+	if len(l.Numbers) != 5 || l.PerHour != 10 || l.Until == nil || l.Until.Before(time.Now().Add(6*24*time.Hour)) {
 		t.Fatalf("saved list: %+v", l)
 	}
 	_, page, _ = c.get("/ui/agents")
@@ -362,5 +377,51 @@ func TestAListCannotBeApprovedWithoutASystemConfirmation(t *testing.T) {
 	}
 	if lists, _ := sendlist.Load(f.dir); len(lists) != 0 {
 		t.Fatal("a list was saved with no system confirmation")
+	}
+}
+
+func TestAListSpacesFirstMessagesAtRandomIntervals(t *testing.T) {
+	for _, perHour := range []int{sendlist.MinPerHour, sendlist.MaxPerHour} {
+		rec := &sendRecorder{}
+		f := setupSend(t, rec)
+		agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+		f.approveList(t, "poster", nil, "15551230000", "15551230001")
+		c, _ := agentauth.ActiveByName(f.dir, "poster")
+		if err := sendlist.Update(f.dir, c.ID, time.Now(), func(l *sendlist.List) error { l.PerHour = perHour; return nil }); err != nil {
+			t.Fatal(err)
+		}
+		if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`); status != 200 {
+			t.Fatalf("first: %d %s", status, body)
+		}
+		req, _ := http.NewRequest("POST", f.server.URL+"/api/v1/messages", strings.NewReader(`{"to":"15551230001","text":"x"}`))
+		req.Header.Set("Authorization", "Bearer "+agent)
+		req.Header.Set("Content-Type", "application/json")
+		res, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		wait, _ := strconv.Atoi(res.Header.Get("Retry-After"))
+		avg := int(time.Hour.Seconds()) / perHour
+		if res.StatusCode != 429 || wait < avg/2-2 || wait > avg*3/2+2 {
+			t.Fatalf("%d an hour: the next new number should wait 0.5 to 1.5 of %ds: %d, Retry-After %d", perHour, avg, res.StatusCode, wait)
+		}
+		// A reply in a conversation is not held back by the spacing.
+		f.incoming(t, listed, "R1", "ok")
+		if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`); status != 200 {
+			t.Fatalf("answer to a reply: %d %s", status, body)
+		}
+		if rec.count() != 2 {
+			t.Fatalf("sent: %d", rec.count())
+		}
+	}
+}
+
+func TestGapStaysWithinHalfToOneAndAHalfOfTheAverage(t *testing.T) {
+	for _, n := range []int{5, 20} {
+		avg := time.Hour / time.Duration(n)
+		if lo, hi := sendlist.Gap(n, 0), sendlist.Gap(n, 0.9999); lo != avg/2 || hi > avg*3/2 || hi < avg*3/2-time.Second {
+			t.Fatalf("%d: %v %v", n, lo, hi)
+		}
 	}
 }

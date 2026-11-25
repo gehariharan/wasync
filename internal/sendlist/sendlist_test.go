@@ -79,7 +79,7 @@ func TestAnExpiredOrDamagedListIsNotInForce(t *testing.T) {
 	if _, ok := For(dir, "a1", time.Now()); ok {
 		t.Fatal("an expired list is in force")
 	}
-	for _, content := range []string{`not json`, `{"lists":[{"agent_id":"a1","numbers":[{"chat":"one@g.us"}]}]}`, `{"lists":[],"extra":1}`} {
+	for _, content := range []string{`not json`, `{"lists":[{"agent_id":"a1","numbers":[{"chat":"one@g.us"}]}]}`, `{"lists":[],"extra":1}`, `{"lists":[{"agent_id":"a1","per_hour":50,"numbers":[{"chat":"15551230000@s.whatsapp.net"}]}]}`} {
 		if err := os.WriteFile(filepath.Join(dir, FileName), []byte(content), 0o600); err != nil {
 			t.Fatal(err)
 		}
