@@ -197,6 +197,9 @@ func (c *Client) captureEvent(evt any) error {
 			return err
 		}
 		enabled, err := p.store.IsEnabled(p.ctx, account, e.Info.Chat.String())
+		if err == nil && !enabled {
+			enabled, err = p.followNumber(account, e)
+		}
 		if err != nil {
 			return err
 		}
@@ -315,6 +318,22 @@ func (c *Client) captureEvent(evt any) error {
 	}
 	return nil
 }
+
+// followNumber turns on capture for a hidden-address direct chat when the
+// person writing in it is known by a phone number whose own chat is captured,
+// so their reply is archived wherever WhatsApp delivers it.
+func (p *capture) followNumber(account int64, e *events.Message) (bool, error) {
+	alt := e.Info.SenderAlt
+	if e.Info.IsFromMe || e.Info.Chat.Server != types.HiddenUserServer || alt.Server != types.DefaultUserServer {
+		return false, nil
+	}
+	on, err := p.store.IsEnabled(p.ctx, account, alt.ToNonAD().String())
+	if err != nil || !on {
+		return false, err
+	}
+	return true, p.store.EnableCapture(p.ctx, account, e.Info.Chat.String(), false)
+}
+
 func (c *Client) Status() CaptureStatus {
 	status := CaptureStatus{Connection: "offline", Observation: c.Observation()}
 	if v := c.connection.Load(); v != nil {

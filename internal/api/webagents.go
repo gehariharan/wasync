@@ -102,7 +102,7 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 	for n := sendlist.MinPerHour; n <= sendlist.MaxPerHour; n += 5 {
 		d.Lists.Paces = append(d.Lists.Paces, n)
 	}
-	_ = h.dropStopped(r.Context(), now)
+	_ = h.dropStopped(r.Context(), now, "")
 	if lists, err := sendlist.Load(h.dataDir); err == nil {
 		active := map[string]bool{}
 		for _, c := range clients {

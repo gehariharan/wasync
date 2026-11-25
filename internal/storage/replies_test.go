@@ -38,9 +38,13 @@ func TestRepliesAndStopsAreReadFromDirectChatsOnly(t *testing.T) {
 	if _, err = s.Apply(ctx, account, msgs); err != nil {
 		t.Fatal(err)
 	}
-	stops, err := s.StopSenders(ctx, account)
+	listed := []string{pn, "15551230001@s.whatsapp.net", "15551230002@s.whatsapp.net"}
+	stops, err := s.StopSenders(ctx, account, listed)
 	if err != nil || len(stops) != 1 || !stops["15551230002@s.whatsapp.net"] {
 		t.Fatalf("stops: %v %v", stops, err)
+	}
+	if stops, err = s.StopSenders(ctx, account, listed[:2]); err != nil || len(stops) != 0 {
+		t.Fatalf("a STOP from a number that was not asked about: %v %v", stops, err)
 	}
 	if last, err := s.LastIncoming(ctx, account, pn); err != nil || !last.Equal(at) {
 		t.Fatalf("last reply: %v %v", last, err)

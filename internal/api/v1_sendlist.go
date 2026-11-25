@@ -58,7 +58,7 @@ func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) 
 		return
 	}
 	now := time.Now()
-	_ = h.dropStopped(r.Context(), now)
+	_ = h.dropStopped(r.Context(), now, c.ID)
 	view := sendListView{CanSend: c.HasScope(agentauth.ScopeSend)}
 	if list, ok := sendlist.For(h.dataDir, c.ID, now); ok {
 		view.Active, view.Numbers, view.NotMessaged, view.Stopped, view.ExpiresAt = true, len(list.Numbers), list.NotMessaged(), list.Stopped, list.Until
@@ -70,11 +70,17 @@ func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) 
 		}
 		view.MessagesLeft = max(0, list.MessagesPerHour()-pace.messages)
 		view.NewNumbersLeft = max(0, list.NewPerHour()-pace.fresh)
-		switch {
-		case view.NewNumbersLeft == 0:
-			view.NextNewAt = &pace.nextFresh
-		case list.NextAt != nil && list.NextAt.After(now):
-			view.NextNewAt = list.NextAt
+		if view.NotMessaged > 0 {
+			next := now
+			if view.NewNumbersLeft == 0 && pace.nextFresh.After(next) {
+				next = pace.nextFresh
+			}
+			if list.NextAt != nil && list.NextAt.After(next) {
+				next = *list.NextAt
+			}
+			if next.After(now) {
+				view.NextNewAt = &next
+			}
 		}
 	}
 	v1OK(w, id, view, nil)
@@ -112,17 +118,30 @@ func (h *handler) listPace(agent string, now time.Time) (listPace, error) {
 	return p, nil
 }
 
-// dropStopped removes from every list the numbers that replied STOP.
-func (h *handler) dropStopped(ctx context.Context, now time.Time) error {
+// dropStopped removes the numbers that replied STOP from the active list of
+// agentID, or from every active list when agentID is empty. Only those
+// numbers are looked up.
+func (h *handler) dropStopped(ctx context.Context, now time.Time, agentID string) error {
 	lists, err := sendlist.Load(h.dataDir)
-	if err != nil || len(lists) == 0 {
+	if err != nil {
 		return err
+	}
+	var chats []string
+	for _, l := range lists {
+		if l.Active(now) && (agentID == "" || l.AgentID == agentID) {
+			for _, x := range l.Numbers {
+				chats = append(chats, x.Chat)
+			}
+		}
+	}
+	if len(chats) == 0 {
+		return nil
 	}
 	account, err := h.store.Account(ctx)
 	if err != nil || account == nil {
 		return err
 	}
-	stops, err := h.store.StopSenders(ctx, account.ID)
+	stops, err := h.store.StopSenders(ctx, account.ID, chats)
 	if err != nil || len(stops) == 0 {
 		return err
 	}
@@ -158,7 +177,7 @@ func retryLater(w http.ResponseWriter, id string, at time.Time, message, help st
 // answers the refusal itself.
 func (h *handler) listSendRoom(w http.ResponseWriter, r *http.Request, id, chat string, entry *sentlog.Entry) bool {
 	c, now := v1Client(r), time.Now()
-	if err := h.dropStopped(r.Context(), now); err != nil {
+	if err := h.dropStopped(r.Context(), now, c.ID); err != nil {
 		v1Fail(w, id, 503, query.CodeInternal, "replies cannot be checked, so the send is refused", "check the wasync archive and data directory")
 		return false
 	}

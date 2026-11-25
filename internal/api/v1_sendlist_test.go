@@ -274,6 +274,53 @@ func TestSendListStatusReportsTheAllowanceLeft(t *testing.T) {
 	}
 }
 
+func TestSendListNextNewAtIsTheLaterOfTheHourlyResetAndTheSpacing(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	read := func() sendListView {
+		t.Helper()
+		status, body := f.send(t, "GET", "/api/v1/send-list", agent, "")
+		var got struct {
+			Data sendListView `json:"data"`
+		}
+		if status != 200 || json.Unmarshal(body, &got) != nil {
+			t.Fatalf("send-list: %d %s", status, body)
+		}
+		return got.Data
+	}
+	var numbers []string
+	for i := 0; i <= sendlist.DefaultPerHour; i++ {
+		numbers = append(numbers, fmt.Sprintf("1555123%04d", i))
+	}
+	f.approveList(t, "poster", nil, numbers...)
+	start := time.Now()
+	for i := 0; i < sendlist.DefaultPerHour; i++ {
+		f.dueNow(t, "poster")
+		if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"`+numbers[i]+`","text":"x"}`); status != 200 {
+			t.Fatalf("number %d: %d %s", i, status, body)
+		}
+	}
+	// The hour's new numbers are used up: the first one counts until an hour after it went.
+	if v := read(); v.NewNumbersLeft != 0 || v.NextNewAt == nil || v.NextNewAt.Before(start.Add(sendlist.Window-time.Minute)) || v.NextNewAt.After(time.Now().Add(sendlist.Window)) {
+		t.Fatalf("next new number after the hourly reset: %+v", v)
+	}
+	// A spacing gap that ends later than the reset is the real time.
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	later := time.Now().Add(2 * time.Hour).UTC().Truncate(time.Second)
+	if err := sendlist.Update(f.dir, c.ID, time.Now(), func(l *sendlist.List) error { l.NextAt = &later; return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if v := read(); v.NextNewAt == nil || !v.NextNewAt.Equal(later) {
+		t.Fatalf("next new number after the spacing gap %v: %+v", later, v)
+	}
+	// With every number messaged there is no next new number.
+	f.approveList(t, "poster", nil, numbers[0])
+	if v := read(); v.NotMessaged != 0 || v.NextNewAt != nil {
+		t.Fatalf("nothing left to start: %+v", v)
+	}
+}
+
 // postList sends the Agents page's list form as a browser would.
 func (c *pageClient) postList(t *testing.T, fields map[string]string, file string) (int, string, http.Header) {
 	t.Helper()
