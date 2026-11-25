@@ -1072,8 +1072,8 @@ the list ends. wasync asks you to confirm, showing the count and the first numbe
 then message those numbers only: first messages are spaced at random through the hour, up to the
 pace you picked (and three times that in messages), and one message per number until that number
 replies; a number that replies STOP is removed. wasync archives those chats from then on so it can see the
-replies, including a listed contact's replies that WhatsApp delivers under their hidden ID, unless
-you already chose to stop archiving that chat. Removing a list needs no confirmation.
+replies, including a listed contact's replies that WhatsApp delivers in a separate hidden-ID
+chat, unless you already turned archiving of that hidden-ID chat on or off yourself. Removing a list needs no confirmation.
 
 Open sending is on the web app's Agents page (`wasync web`, then Agents). Switching it on asks
 you to confirm with Touch ID, your password or Windows Hello, and lasts one hour: any agent that
