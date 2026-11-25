@@ -115,7 +115,7 @@ func TestTailnetRequestsWithTheWrongHostOrLoginAreRefused(t *testing.T) {
 		"missing login":      func(c *tailnetClient) { c.login = "" },
 		"unknown login":      func(c *tailnetClient) { c.login = "someone@example.com" },
 		"login case":         func(c *tailnetClient) { c.login = strings.ToUpper(tailnetLogin) },
-		"two logins":         func(c *tailnetClient) { c.headers[tailnet.LoginHeader] = []string{"someone@example.com"} },
+		"two logins":         func(c *tailnetClient) { c.headers[tailnet.LoginHeader] = []string{tailnetLogin, "someone@example.com"} },
 		"through funnel":     func(c *tailnetClient) { c.headers.Set(tailnet.FunnelHeader, "?1") },
 		"wrong port in host": func(c *tailnetClient) { c.host = tailnetHost + ":8443" },
 		"https port origin":  func(c *tailnetClient) { c.headers.Set("Origin", "https://"+tailnetHost+":8443") },
