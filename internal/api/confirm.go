@@ -32,6 +32,10 @@ func failWith(w http.ResponseWriter, err error) {
 // session with no screen), the typed confirmation in the terminal stays the
 // only check; the owner says so when it starts.
 func (h *handler) confirmError(ctx context.Context, prompt string) error {
+	if remoteFrom(ctx) != "" {
+		// The prompt would appear on this computer, not the remote browser's.
+		return statusError{http.StatusForbidden, "confirm on the computer running wasync; nothing changed"}
+	}
 	if !h.human.Enabled() {
 		return nil
 	}

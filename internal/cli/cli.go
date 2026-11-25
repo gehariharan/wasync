@@ -118,6 +118,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   actions approve REQUEST_ID                 Interactive typed approval, no --yes
   approvals                                  Open the approval page in your browser
   web                                        Open the web app (chats) in your browser
+  tailnet allow|off|status                   Open the web app from your other computers via tailscale serve
   actions status REQUEST_ID                  Inspect a pending/completed request
   media policy --chat ID [--mode auto|manual|inherit]  Saved per-chat media setting
   media download --chat ID --message-id ID    One-time attachment download (live owner)
@@ -191,6 +192,10 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	// Webhook management is file-based too; delivery runs inside the owner.
 	if len(args) > 0 && args[0] == "webhooks" {
 		return a.runWebhooks(parent, cfg, args[1:])
+	}
+	// The tailnet opt-in is a file too; a running owner reads it on each request.
+	if len(args) > 0 && args[0] == "tailnet" {
+		return a.runTailnet(parent, cfg, args[1:])
 	}
 	if *showVersion {
 		if len(args) != 0 {

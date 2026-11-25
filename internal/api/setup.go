@@ -45,8 +45,8 @@ func (h *handler) axiCredentialPath() (string, error) {
 }
 
 func (h *handler) setupHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	d := &setupData{uiData: uiData{CSRF: sess.csrf, Gate: h.human.Name(), Title: "wasync setup"}}
-	if !h.human.Enabled() {
+	d := &setupData{uiData: uiData{CSRF: sess.csrf, Gate: h.human.Name(), Title: "wasync setup", Remote: remoteLogin(r) != ""}}
+	if !h.gate(r).Enabled() {
 		d.Gate = ""
 	}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
@@ -120,8 +120,8 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.uiBack(w, r, "unpaired")
 		return
 	}
-	if !h.human.Enabled() {
-		h.uiBack(w, r, "nogate")
+	if !h.gate(r).Enabled() {
+		h.uiBack(w, r, noGate(r))
 		return
 	}
 	name := strings.TrimSpace(r.PostForm.Get("name"))
@@ -194,8 +194,8 @@ func (h *handler) setupService(w http.ResponseWriter, r *http.Request, sess uiSe
 	}
 	switch r.PostForm.Get("action") {
 	case "install":
-		if !h.human.Enabled() {
-			h.uiBack(w, r, "nogate")
+		if !h.gate(r).Enabled() {
+			h.uiBack(w, r, noGate(r))
 			return
 		}
 		if err := h.confirmError(r.Context(), "Approve: start wasync by itself every time you log in, and keep it running in the background"); err != nil {
@@ -251,6 +251,7 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 {{if .HasSavedCred}}<label><input type="checkbox" name="replace" value="yes"> Replace the credential wasync-axi already has saved</label>{{end}}
 <button class="go">Connect…</button> <span class="mut">Asks you to confirm on this computer.</span>
 </form>
+{{else if .Remote}}<p class="bad">Connect agents on the computer running wasync.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page. Run <code>wasync agents grant wasync-axi --on-demand</code> in a terminal.</p>{{end}}
 </section>
 {{end}}
@@ -262,6 +263,7 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 <form method="post" action="/ui/setup/service"><input type="hidden" name="csrf" value="{{.CSRF}}">
 {{if .ServiceInstalled}}<p class="ok"><strong>On.</strong></p><button name="action" value="remove">Turn off</button>
 {{else}}{{if .Gate}}<button class="go" name="action" value="install">Turn on…</button> <span class="mut">Asks you to confirm on this computer.</span>
+{{else if .Remote}}<p class="bad">Turn this on from the computer running wasync.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so run <code>wasync service install</code> in a terminal.</p>{{end}}{{end}}
 </form></section>
 {{end}}

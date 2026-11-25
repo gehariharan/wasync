@@ -128,6 +128,9 @@ prompt names exactly what you are approving. Stopping things never needs confirm
 shows message text, so open it only on a computer you trust. Details:
 [docs/agents.md](docs/agents.md).
 
+To open it from your other computers on your Tailscale network, turn on `wasync tailnet allow`
+and share it with `tailscale serve`: see [docs/tailscale.md](docs/tailscale.md).
+
 ## Running in the background
 
 `wasync setup` and `wasync serve` keep wasync running without a window: capturing chats, serving
@@ -294,6 +297,7 @@ our public GitHub issue tracker; do not post private messages or credentials the
 - [Agents: access, approvals and sending](docs/agents.md) and [using wasync from Codex](docs/codex.md)
 - [The command line](docs/cli.md)
 - [Local API](docs/api.md) and [webhooks](docs/webhooks.md)
+- [Opening the web app from your other computers](docs/tailscale.md) with Tailscale
 - [History and capture](docs/history.md): what is stored, older messages and their limits
 - [Media and attachments](docs/media.md)
 - [Cleanup and deletion](docs/cleanup-and-deletion.md)
