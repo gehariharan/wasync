@@ -4,7 +4,8 @@
 // approving each chat or switching on open sending. wasync still paces it: the
 // owner picks how many new numbers an hour (5 to 20), first messages are
 // spaced at random intervals, and each number gets one message until it
-// replies. A number that answers STOP is dropped from the list.
+// replies. A number that answers STOP is dropped from every list and never
+// listed again.
 //
 // The lists are a private file next to agents.json. A missing file means no
 // lists; a damaged one means no lists too, so sends are refused rather than
@@ -150,8 +151,9 @@ func (l *List) Drop(stop map[string]bool) int {
 }
 
 type file struct {
-	Lists []List `json:"lists"`
-	Sent  []sent `json:"sent,omitempty"` // removed lists' send history
+	Lists    []List   `json:"lists"`
+	Sent     []sent   `json:"sent,omitempty"`      // removed lists' send history
+	OptedOut []string `json:"opted_out,omitempty"` // numbers that replied STOP, kept for good
 }
 
 // mu serializes changes within the one wasync owner process that writes the file.
@@ -210,6 +212,11 @@ func load(dir string) (file, error) {
 			return file{}, fmt.Errorf("invalid %s: a remembered number has no agent or is not a phone number address", FileName)
 		}
 	}
+	for _, chat := range v.OptedOut {
+		if !numberAddress(chat) {
+			return file{}, fmt.Errorf("invalid %s: %q is not a phone number address", FileName, chat)
+		}
+	}
 	v.Sent = recent(v.Sent)
 	return v, nil
 }
@@ -266,7 +273,8 @@ func Listed(dir, chat string, now time.Time) bool {
 // earlier list, or a list removed in the last HistoryKept, already messaged
 // keep that history, so approving a list again never lets a number be
 // messaged twice without a reply. Numbers the earlier list messaged that l
-// leaves out are remembered as if removed.
+// leaves out are remembered as if removed. Numbers that ever replied STOP are
+// left out of l and counted in its Stopped.
 func Put(dir string, l List) error {
 	if l.AgentID == "" || len(l.Numbers) == 0 || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
 		return fmt.Errorf("a list needs an agent, 1 to %d numbers and a pace of %d to %d an hour", MaxNumbers, MinPerHour, MaxPerHour)
@@ -285,7 +293,6 @@ func Put(dir string, l List) error {
 			continue
 		}
 		v.Sent = append(v.Sent, messaged(old, now)...)
-		l.Stopped += old.Stopped
 		if old.NextAt != nil && (l.NextAt == nil || old.NextAt.After(*l.NextAt)) {
 			l.NextAt = old.NextAt
 		}
@@ -303,7 +310,71 @@ func Put(dir string, l List) error {
 		}
 		kept = append(kept, x)
 	}
+	l.Stopped = 0
+	l.Drop(chatSet(v.OptedOut))
 	v.Lists, v.Sent = append(out, l), kept
+	return save(dir, v)
+}
+
+func chatSet(chats []string) map[string]bool {
+	out := make(map[string]bool, len(chats))
+	for _, c := range chats {
+		out[c] = true
+	}
+	return out
+}
+
+// FirstSent returns, for every number any list sent to that is still listed
+// or remembered, the earliest first message to it from any agent.
+func FirstSent(dir string) (map[string]time.Time, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	v, err := load(dir)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string]time.Time{}
+	add := func(x Number) {
+		if at, seen := out[x.Chat]; x.FirstSentAt != nil && (!seen || x.FirstSentAt.Before(at)) {
+			out[x.Chat] = *x.FirstSentAt
+		}
+	}
+	for _, l := range v.Lists {
+		for _, x := range l.Numbers {
+			add(x)
+		}
+	}
+	for _, x := range v.Sent {
+		add(x.Number)
+	}
+	return out, nil
+}
+
+// OptOut remembers for good that the numbers in stop replied STOP and drops
+// them from every list, counting them in that list's Stopped. No list may
+// hold them again.
+func OptOut(dir string, stop map[string]bool) error {
+	mu.Lock()
+	defer mu.Unlock()
+	v, err := load(dir)
+	if err != nil {
+		return err
+	}
+	known, changed := chatSet(v.OptedOut), false
+	for chat := range stop {
+		if stop[chat] && !known[chat] {
+			v.OptedOut, changed = append(v.OptedOut, chat), true
+		}
+	}
+	for i := range v.Lists {
+		if v.Lists[i].Drop(stop) > 0 {
+			changed = true
+		}
+	}
+	if !changed {
+		return nil
+	}
+	sort.Strings(v.OptedOut)
 	return save(dir, v)
 }
 
@@ -363,7 +434,6 @@ func Pause(dir, agentID string, pause bool, now time.Time) error {
 var ErrNoList = errors.New("no approved list for this agent")
 
 // Update changes the agent's list in force under the file lock and saves it.
-// A messaged number the change takes off the list is remembered as if removed.
 func Update(dir, agentID string, now time.Time, change func(*List) error) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -373,14 +443,8 @@ func Update(dir, agentID string, now time.Time, change func(*List) error) error 
 	}
 	for i := range v.Lists {
 		if v.Lists[i].AgentID == agentID && v.Lists[i].Active(now) {
-			before := messaged(v.Lists[i], now.UTC())
 			if err = change(&v.Lists[i]); err != nil {
 				return err
-			}
-			for _, x := range before {
-				if v.Lists[i].Find(x.Chat) == nil {
-					v.Sent = append(v.Sent, x)
-				}
 			}
 			return save(dir, v)
 		}

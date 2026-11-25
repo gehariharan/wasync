@@ -172,8 +172,9 @@ when the list ends (in 1, 7 or 30 days, or never). wasync asks you to confirm, s
 and the first numbers. Approving again replaces that agent's list. The agent may then message
 those numbers only: first messages are spaced at random through the hour, up to the pace you
 picked (and three times that in messages), and one message per number until that number
-replies; a number that asks to stop is removed. Only replies that arrive after wasync's first
-message to that number count, so older chat with that person never removes it. That counts any reply with the word "stop",
+replies; a number that asks to stop is removed from every agent's list and is never listed again,
+even if you approve it later. Only replies that arrive after wasync's first list message to that
+number count, so older chat with that person never removes it. That counts any reply with the word "stop",
 "unsubscribe", "opt out", "remove me" or "take me off", in any case and with any punctuation
 ("Stop.", "STOP!", "please stop", "stop messaging me"), and a reply that is only "cancel",
 "end", "quit" or "revoke". A word that merely contains "stop", such as "nonstop", does not count. wasync archives those chats from then on so it

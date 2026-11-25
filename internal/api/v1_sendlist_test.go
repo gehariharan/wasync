@@ -219,6 +219,37 @@ func TestOnlyAStopAfterTheFirstListMessageDropsTheNumber(t *testing.T) {
 	}
 }
 
+// A STOP belongs to the number: no other agent may message it after, and
+// approving the same numbers again neither brings it back nor counts it twice.
+func TestAStopToOneAgentKeepsTheNumberOffEveryList(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	f.incoming(t, listed, "R1", "stop")
+	status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	f.approveList(t, "other", nil, "15551230000", "15551230001")
+	status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if l := listOf(t, f, "other"); l.Find(listed) != nil || l.Stopped != 1 || len(l.Numbers) != 1 {
+		t.Fatalf("another agent's list holds the number that said STOP: %+v", l)
+	}
+	for range 2 {
+		f.approveList(t, "poster", nil, "15551230000", "15551230001")
+		if l := listOf(t, f, "poster"); l.Find(listed) != nil || l.Stopped != 1 {
+			t.Fatalf("approving again changed the STOP count or listed the number: %+v", l)
+		}
+	}
+	if rec.count() != 1 {
+		t.Fatalf("a number that said STOP was messaged again: %d", rec.count())
+	}
+}
+
 func TestAListEndsWhenItExpiresIsRemovedOrTheAgentCannotSend(t *testing.T) {
 	rec := &sendRecorder{}
 	f := setupSend(t, rec)

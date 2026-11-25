@@ -127,21 +127,18 @@ func (h *handler) listPace(agent string, now time.Time) (listPace, error) {
 	return p, nil
 }
 
-// dropStopped removes the numbers that replied STOP after their first list
-// message from the active list of agentID, or from every active list when
-// agentID is empty. Only those numbers are looked up.
+// dropStopped removes the numbers on the active list of agentID, or on every
+// active list when agentID is empty, that replied STOP after any agent's first
+// list message to them, from every list for good. Only those numbers are
+// looked up.
 func (h *handler) dropStopped(ctx context.Context, now time.Time, agentID string) error {
-	lists, err := sendlist.Load(h.dataDir)
+	first, err := sendlist.FirstSent(h.dataDir)
 	if err != nil {
 		return err
 	}
-	first := map[string]time.Time{}
-	for _, l := range lists {
-		for _, x := range l.Numbers {
-			if at, seen := first[x.Chat]; l.Active(now) && x.FirstSentAt != nil && (!seen || x.FirstSentAt.Before(at)) {
-				first[x.Chat] = *x.FirstSentAt
-			}
-		}
+	lists, err := sendlist.Load(h.dataDir)
+	if err != nil {
+		return err
 	}
 	since := map[string]time.Time{}
 	for _, l := range lists {
@@ -164,23 +161,7 @@ func (h *handler) dropStopped(ctx context.Context, now time.Time, agentID string
 	if err != nil || len(stops) == 0 {
 		return err
 	}
-	for _, l := range lists {
-		hit := false
-		for _, x := range l.Numbers {
-			hit = hit || stops[x.Chat]
-		}
-		if !hit {
-			continue
-		}
-		err = errors.Join(err, sendlist.Update(h.dataDir, l.AgentID, now, func(l *sendlist.List) error {
-			l.Drop(stops)
-			return nil
-		}))
-	}
-	if errors.Is(err, sendlist.ErrNoList) {
-		return nil // it expired or was removed meanwhile
-	}
-	return err
+	return sendlist.OptOut(h.dataDir, stops)
 }
 
 // retryLater answers 429 with a Retry-After when the time is known.

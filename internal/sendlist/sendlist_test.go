@@ -160,6 +160,49 @@ func TestRemovedListHistoryIsForgottenAfterThirtyDays(t *testing.T) {
 	}
 }
 
+// A number that replied STOP stays off every list after its send history is
+// forgotten, and is counted once however often it is approved again.
+func TestAStopOutlivesTheSendHistory(t *testing.T) {
+	dir := privateDir(t)
+	x, y := "15551230000@s.whatsapp.net", "15551230001@s.whatsapp.net"
+	old := time.Now().Add(-HistoryKept - time.Hour).UTC().Format(time.RFC3339)
+	content := `{"lists":[],"sent":[{"agent_id":"a1","chat":"` + x + `","first_sent_at":"` + old + `","removed_at":"` + old + `"}],"opted_out":["` + x + `"]}`
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, agent := range []string{"a1", "b2", "a1"} {
+		if err := Put(dir, List{AgentID: agent, Agent: agent, Numbers: []Number{{Chat: x}, {Chat: y}}}); err != nil {
+			t.Fatal(err)
+		}
+		if got, ok := For(dir, agent, time.Now()); !ok || got.Find(x) != nil || got.Find(y) == nil || got.Stopped != 1 {
+			t.Fatalf("%s: %+v", agent, got)
+		}
+	}
+	if first, err := FirstSent(dir); err != nil || len(first) != 0 {
+		t.Fatalf("forgotten history is still used: %v %v", first, err)
+	}
+}
+
+func TestOptOutDropsTheNumberFromEveryListOnce(t *testing.T) {
+	dir := privateDir(t)
+	x, y := "15551230000@s.whatsapp.net", "15551230001@s.whatsapp.net"
+	for _, agent := range []string{"a1", "b2"} {
+		if err := Put(dir, List{AgentID: agent, Agent: agent, Numbers: []Number{{Chat: x}, {Chat: y}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		if err := OptOut(dir, map[string]bool{x: true}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, agent := range []string{"a1", "b2"} {
+		if got, _ := For(dir, agent, time.Now()); got.Find(x) != nil || got.Stopped != 1 || len(got.Numbers) != 1 {
+			t.Fatalf("%s: %+v", agent, got)
+		}
+	}
+}
+
 func TestAPausedListStaysInForceAndResumes(t *testing.T) {
 	dir := privateDir(t)
 	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: "15551230000@s.whatsapp.net"}}}); err != nil {
@@ -195,6 +238,10 @@ func TestAPausedListStaysInForceAndResumes(t *testing.T) {
 // over maxFileBytes, which would stop every list. The oldest history goes first.
 func TestHistoryNeverGrowsTheFilePastWhatLoadReads(t *testing.T) {
 	dir := privateDir(t)
+	stopped := "15559990000@s.whatsapp.net"
+	if err := OptOut(dir, map[string]bool{stopped: true}); err != nil {
+		t.Fatal(err)
+	}
 	at := time.Now().UTC().Add(-time.Hour)
 	full := func(i int) List {
 		l := List{AgentID: fmt.Sprintf("a%d", i), Agent: fmt.Sprintf("agent %d", i), GrantedAt: at}
@@ -224,5 +271,11 @@ func TestHistoryNeverGrowsTheFilePastWhatLoadReads(t *testing.T) {
 	}
 	if got, _ := For(dir, "a2", time.Now()); got.NotMessaged() != 0 {
 		t.Fatalf("the newest history was forgotten: %+v", got)
+	}
+	if err := Put(dir, List{AgentID: "a5", Agent: "agent 5", Numbers: []Number{{Chat: stopped}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := For(dir, "a5", time.Now()); got.Find(stopped) != nil {
+		t.Fatalf("trimming the history forgot a STOP: %+v", got)
 	}
 }
