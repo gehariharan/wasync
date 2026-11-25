@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/sendlist"
 	"github.com/gehariharan/wasync/internal/storage"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
@@ -197,6 +198,9 @@ func (c *Client) captureEvent(evt any) error {
 			return err
 		}
 		enabled, err := p.store.IsEnabled(p.ctx, account, e.Info.Chat.String())
+		if err == nil && !enabled {
+			enabled, err = c.followNumber(account, e)
+		}
 		if err != nil {
 			return err
 		}
@@ -315,6 +319,31 @@ func (c *Client) captureEvent(evt any) error {
 	}
 	return nil
 }
+
+// ConfigureLists sets the data directory holding the approved recipient
+// lists, so a listed number's replies are archived wherever WhatsApp delivers
+// them. Without it no hidden-address chat is followed.
+func (c *Client) ConfigureLists(dir string) { c.listDir = dir }
+
+// followNumber turns on capture for a hidden-address direct chat when the
+// person writing in it is known by a phone number on an active approved list
+// and the owner never chose whether to capture that chat.
+func (c *Client) followNumber(account int64, e *events.Message) (bool, error) {
+	p, alt := c.capture, e.Info.SenderAlt
+	if c.listDir == "" || e.Info.IsFromMe || e.Info.Chat.Server != types.HiddenUserServer || alt.Server != types.DefaultUserServer {
+		return false, nil
+	}
+	if !sendlist.Listed(c.listDir, alt.ToNonAD().String(), time.Now()) {
+		return false, nil
+	}
+	chat := e.Info.Chat.String()
+	never, err := p.store.NeverCaptured(p.ctx, account, chat)
+	if err != nil || !never {
+		return false, err
+	}
+	return true, p.store.EnableCapture(p.ctx, account, chat, false)
+}
+
 func (c *Client) Status() CaptureStatus {
 	status := CaptureStatus{Connection: "offline", Observation: c.Observation()}
 	if v := c.connection.Load(); v != nil {

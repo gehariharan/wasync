@@ -42,6 +42,23 @@ type Message struct {
 	ReceivedAt string          `json:"received_at"`
 }
 
+// SendList is the data of GET /api/v1/send-list: whether the person approved
+// a list of phone numbers this credential may message, and how much of this
+// hour's allowance is left. It never names the numbers.
+type SendList struct {
+	Active            bool    `json:"active"`
+	CanSend           bool    `json:"can_send"`
+	Numbers           int     `json:"numbers"`
+	NotMessaged       int     `json:"not_messaged"`
+	Stopped           int     `json:"stopped"`
+	NewNumbersLeft    int     `json:"new_numbers_left"`
+	MessagesLeft      int     `json:"messages_left"`
+	NextNewAt         *string `json:"next_new_at,omitempty"`
+	ExpiresAt         *string `json:"expires_at,omitempty"`
+	NewNumbersPerHour int     `json:"new_numbers_per_hour"`
+	MessagesPerHour   int     `json:"messages_per_hour"`
+}
+
 // WriteResult is the data of a write: WhatsApp's acknowledgement of a reply,
 // reaction or edit. A server acknowledgement is not proof of delivery.
 type WriteResult struct {

@@ -286,7 +286,7 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_send", description: "Send a new message to a chat or a phone number. It sends once and is never retried. wasync refuses unless the person granted the send scope and approved this chat; a number or chat you were not given is refused unless the person has switched on open sending, so ask them to allow it rather than trying another route.",
+		name: "whatsapp_send", description: "Send a new message to a chat or a phone number. It sends once and is never retried. wasync refuses unless the person granted the send scope and approved this chat; a number or chat you were not given is refused unless it is on the list of numbers the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message per number until it replies) or they have switched on open sending, so ask them to allow it rather than trying another route.",
 		props:    map[string]any{"chat": str("The chat JID, as listed by whatsapp_list_chats. Give this or to."), "to": str("A phone number with its country code, such as +15551230000. Give this or chat."), "text": str("The message text (up to 16000 bytes).")},
 		required: []string{"text"}, ann: hints("Send on WhatsApp", annotations{OpenWorldHint: true}),
 		build: func(a map[string]any) ([]string, error) {

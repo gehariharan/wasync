@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/url"
 	"strconv"
@@ -725,6 +726,35 @@ func (a *App) homeChats(ctx context.Context, d detection) (*contract.ChatList, e
 		return nil, err
 	}
 	return &list, nil
+}
+
+// homeSendList fetches the agent's approved recipient list for the home view.
+// It returns nil when there is none to show or it cannot be read: the list is
+// a convenience here, and `send` reports any refusal itself.
+func (a *App) homeSendList(ctx context.Context, d detection) *contract.SendList {
+	if d.sel.Name() != transport.NameAPI || d.cred == nil || d.sel.Version == nil || a.Compat.Check("send.list", *d.sel.Version) != nil {
+		return nil
+	}
+	var list contract.SendList
+	if _, err := get(ctx, d.sel.Transport, "/send-list", nil, &list); err != nil || !list.Active {
+		return nil
+	}
+	return &list
+}
+
+// sendListLine is the home view's one-line summary of an approved list.
+func sendListLine(l *contract.SendList) string {
+	s := fmt.Sprintf("%d of %d new numbers and %d of %d messages left this hour; %d numbers, %d not messaged yet", l.NewNumbersLeft, l.NewNumbersPerHour, l.MessagesLeft, l.MessagesPerHour, l.Numbers, l.NotMessaged)
+	if l.Stopped > 0 {
+		s += fmt.Sprintf(", %d removed after STOP", l.Stopped)
+	}
+	if l.NextNewAt != nil {
+		s += "; next new number at " + *l.NextNewAt
+	}
+	if l.ExpiresAt != nil {
+		s += "; ends " + *l.ExpiresAt
+	}
+	return s
 }
 
 // compactJSON returns raw JSON on one line, or "" when it is empty.

@@ -41,6 +41,7 @@ type Client struct {
 	mediaRequestMu  sync.Mutex
 	mediaPending    map[string]bool
 	mediaRoot       string
+	listDir         string
 	mediaEnabled    bool
 	mediaQueue      chan mediaJob
 	mediaCancel     context.CancelFunc

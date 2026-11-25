@@ -99,8 +99,18 @@ func without(list []string, drop string) []string {
 // unrevoked credential; it consumes one rate-limit token like any other
 // request, and the attempt is audited either way.
 func (a *Authorizer) AuthorizeOpenSend(c *Client, chatJID, requestID string) error {
+	return a.authorizeWideSend(c, chatJID, requestID, "send_open")
+}
+
+// AuthorizeListSend is AuthorizeOpenSend for a number on the approved
+// recipient list the person gave this agent; it is audited as send_list.
+func (a *Authorizer) AuthorizeListSend(c *Client, chatJID, requestID string) error {
+	return a.authorizeWideSend(c, chatJID, requestID, "send_list")
+}
+
+func (a *Authorizer) authorizeWideSend(c *Client, chatJID, requestID, event string) error {
 	err := a.checkOpenSend(c, chatJID)
-	entry := AuditEntry{Event: "send_open", Scope: ScopeSend, Chat: chatJID, RequestID: requestID, Outcome: OutcomeAllowed}
+	entry := AuditEntry{Event: event, Scope: ScopeSend, Chat: chatJID, RequestID: requestID, Outcome: OutcomeAllowed}
 	if c != nil {
 		entry.ClientID, entry.ClientName = c.ID, c.Name
 	}

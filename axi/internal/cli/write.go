@@ -147,10 +147,10 @@ const sendUsage = "wasync-axi send (--chat CHAT_JID | --to PHONE_NUMBER) --text 
 var sendCommand = &command{
 	name:        "send",
 	usage:       sendUsage,
-	description: "Send a new message to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number only while they have switched on open sending); sends once, never retries",
+	description: "Send a new message to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number on the list they approved for you or while open sending is on); sends once, never retries",
 	flags: []flagSpec{
 		{name: "--chat", value: "CHAT_JID", description: "the chat to send to, as listed by `chats`; it must be one the person approved for sending, unless open sending is on"},
-		{name: "--to", value: "PHONE_NUMBER", description: "a phone number with its country code, such as +15551230000; wasync refuses it unless the person has switched on open sending"},
+		{name: "--to", value: "PHONE_NUMBER", description: "a phone number with its country code, such as +15551230000; wasync refuses it unless it is on the list the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message until it replies) or open sending is on"},
 		{name: "--text", value: "TEXT", description: "the message text; WhatsApp text, at most 16000 bytes"},
 		jsonFlag,
 	},
@@ -159,8 +159,9 @@ var sendCommand = &command{
 }
 
 // runSend posts one new message. It is not a quoted reply: it needs no earlier
-// message to anchor on. The chat must be one the person approved, or open
-// sending must be on; wasync refuses anything else and says why.
+// message to anchor on. The chat must be one the person approved, the number
+// on the list they approved for this agent, or open sending must be on; wasync
+// refuses anything else and says why.
 func (a *App) runSend(ctx context.Context, inv invocation) error {
 	chat, hasChat := inv.flag("--chat")
 	to, hasTo := inv.flag("--to")
