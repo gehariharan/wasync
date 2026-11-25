@@ -56,3 +56,45 @@ func TestRepliesAndStopsAreReadFromDirectChatsOnly(t *testing.T) {
 		t.Fatalf("a group message is not a reply: %v %v", last, err)
 	}
 }
+
+func TestReplyLookupsReadOnlyTheHiddenChatsOfTheAskedNumbers(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "archive.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	account, err := s.UseAccount(ctx, "me@s.whatsapp.net")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed, mine, theirs, quiet := "15551230000@s.whatsapp.net", "111@lid", "222@lid", "333@lid"
+	if err = s.SaveGroups(ctx, account, []Group{{ID: mine, Name: "A"}, {ID: theirs, Name: "B"}, {ID: quiet, Name: "C"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetEnabled(ctx, account, []string{mine, theirs, quiet}, true); err != nil {
+		t.Fatal(err)
+	}
+	at := time.Now().Add(-time.Minute).UTC().Truncate(time.Millisecond)
+	msgs := []Message{
+		// An older STOP without an alternate sender still belongs to the person of that chat.
+		{GroupID: mine, MessageID: "m1", SenderID: mine, Timestamp: at, Type: "text", Text: "STOP"},
+		{GroupID: mine, MessageID: "m2", SenderID: mine, SenderAlt: "15551230000:2@s.whatsapp.net", Timestamp: at.Add(time.Second), Type: "text", Text: "hello"},
+		{GroupID: theirs, MessageID: "m3", SenderID: theirs, SenderAlt: "15559990000@s.whatsapp.net", Timestamp: at.Add(2 * time.Second), Type: "text", Text: "STOP"},
+		{GroupID: quiet, MessageID: "m4", SenderID: quiet, Timestamp: at, Type: "text", Text: "hi"},
+	}
+	if _, err = s.Apply(ctx, account, msgs); err != nil {
+		t.Fatal(err)
+	}
+	person, err := s.personChats(ctx, account, []string{listed})
+	if err != nil || len(person) != 2 || person[listed] != listed || person[mine] != listed {
+		t.Fatalf("only the listed number's own chats are read: %v %v", person, err)
+	}
+	stops, err := s.StopSenders(ctx, account, []string{listed})
+	if err != nil || len(stops) != 1 || !stops[listed] {
+		t.Fatalf("stops: %v %v", stops, err)
+	}
+	if last, err := s.LastIncoming(ctx, account, listed); err != nil || !last.Equal(at.Add(time.Second)) {
+		t.Fatalf("last reply is the listed person's, not another hidden chat's: %v %v", last, err)
+	}
+}
