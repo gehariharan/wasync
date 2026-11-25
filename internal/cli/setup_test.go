@@ -507,3 +507,15 @@ func TestServiceRestartNeedsAnInstalledLoginItem(t *testing.T) {
 		t.Fatalf("restart without a login item: %v", err)
 	}
 }
+
+func TestOnlyMacOSPointsAtTheServiceLog(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	if got := startedLine("darwin", dir); !strings.Contains(got, filepath.Join(dir, "service.log")) {
+		t.Fatalf("macOS writes service.log, so the line names it: %q", got)
+	}
+	for _, goos := range []string{"windows", "linux"} {
+		if got := startedLine(goos, dir); strings.Contains(got, "service.log") || !strings.HasPrefix(got, "Started.") {
+			t.Fatalf("%s writes no service.log: %q", goos, got)
+		}
+	}
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/gehariharan/wasync/internal/config"
@@ -151,6 +152,15 @@ func (a *App) serviceStart(ctx context.Context, cfg config.Config, mgr service.M
 	if err = service.Start(mgr, spec); err != nil {
 		return fmt.Errorf("could not start wasync in the background: %w; it starts at your next login", err)
 	}
-	_, err = fmt.Fprintf(a.Out, "Started. wasync runs in the background now (log: %s).\n", filepath.Join(spec.DataDir, "service.log"))
+	_, err = fmt.Fprintln(a.Out, startedLine(runtime.GOOS, spec.DataDir))
 	return err
+}
+
+// startedLine reports a started login item. Only the macOS LaunchAgent writes
+// service.log, so only there does it say where the log is.
+func startedLine(goos, dataDir string) string {
+	if goos == "darwin" {
+		return fmt.Sprintf("Started. wasync runs in the background now (log: %s).", filepath.Join(dataDir, "service.log"))
+	}
+	return "Started. wasync runs in the background now."
 }
