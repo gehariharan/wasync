@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"testing"
 	"time"
@@ -33,7 +34,7 @@ func TestRepliesAndStopsAreReadFromDirectChatsOnly(t *testing.T) {
 		{GroupID: pn, MessageID: "m1", SenderID: "me@s.whatsapp.net", Timestamp: at.Add(time.Second), Type: "text", Text: "STOP", FromMe: true},
 		{GroupID: group, MessageID: "m2", SenderID: "15551230001@s.whatsapp.net", Timestamp: at, Type: "text", Text: "stop"},
 		{GroupID: lid, MessageID: "m3", SenderID: lid, SenderAlt: "15551230002:3@s.whatsapp.net", Timestamp: at, Type: "text", Text: " Stop\n"},
-		{GroupID: pn, MessageID: "m4", SenderID: pn, Timestamp: at, Type: "text", Text: "please stop sending"},
+		{GroupID: pn, MessageID: "m4", SenderID: pn, Timestamp: at, Type: "text", Text: "nonstop deals?"},
 	}
 	if _, err = s.Apply(ctx, account, msgs); err != nil {
 		t.Fatal(err)
@@ -96,5 +97,67 @@ func TestReplyLookupsReadOnlyTheHiddenChatsOfTheAskedNumbers(t *testing.T) {
 	}
 	if last, err := s.LastIncoming(ctx, account, listed); err != nil || !last.Equal(at.Add(time.Second)) {
 		t.Fatalf("last reply is the listed person's, not another hidden chat's: %v %v", last, err)
+	}
+}
+
+func TestOptOutRepliesAreCaughtInEveryUsualWording(t *testing.T) {
+	stop := []string{"stop", "STOP", "Stop.", "STOP!", " stop\n", "please stop", "Stop please 🙏", "stop messaging me", "STOP ALL", "stopall",
+		"unsubscribe", "Unsubscribe me", "opt out", "opt-out", "OPTOUT", "please remove me from this list", "take me off your list",
+		"Cancel", "end.", "QUIT", "pls stop!!!", "I said STOP", "Don\u2019t message me, stop"}
+	for _, text := range stop {
+		if !IsOptOut(text) {
+			t.Errorf("%q is an opt-out", text)
+		}
+	}
+	keep := []string{"", "hi", "nonstop", "unstoppable", "I stopped by yesterday", "stops", "cancel my 3pm, see you at 4", "the end of the week works",
+		"option outdoors?", "removed", "sounds good", "remember me?"}
+	for _, text := range keep {
+		if IsOptOut(text) {
+			t.Errorf("%q is an ordinary reply", text)
+		}
+	}
+}
+
+func TestOptOutWordingsAreFoundInTheArchive(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "archive.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	account, err := s.UseAccount(ctx, "me@s.whatsapp.net")
+	if err != nil {
+		t.Fatal(err)
+	}
+	texts := []string{"STOP!", "please stop messaging me", "Unsubscribe", "opt-out please", "quit", "take me off your list, thanks", "nonstop", "a long ordinary reply that talks about many things but never asks to leave"}
+	var chats []string
+	var msgs []Message
+	for i, text := range texts {
+		chat := fmt.Sprintf("1555123%04d@s.whatsapp.net", i)
+		chats = append(chats, chat)
+		msgs = append(msgs, Message{GroupID: chat, MessageID: fmt.Sprintf("m%d", i), SenderID: chat, Timestamp: time.Now().UTC(), Type: "text", Text: text})
+	}
+	if err = s.SaveGroups(ctx, account, func() (g []Group) {
+		for _, c := range chats {
+			g = append(g, Group{ID: c, Name: c})
+		}
+		return
+	}()); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetEnabled(ctx, account, chats, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.Apply(ctx, account, msgs); err != nil {
+		t.Fatal(err)
+	}
+	stops, err := s.StopSenders(ctx, account, chats)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, c := range chats {
+		if want := i < 6; stops[c] != want {
+			t.Errorf("%q: stopped=%v, want %v", texts[i], stops[c], want)
+		}
 	}
 }

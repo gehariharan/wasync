@@ -329,7 +329,7 @@ func (a *App) doctorReport(d detection, f facts) doctorReport {
 		r.Help = append(r.Help, "Run each fix for fail checks first, then warn checks, and rerun `wasync-axi doctor`")
 	}
 	if f.transport == transport.NameQuery {
-		r.Help = append(r.Help, "Ask the user to start wasync (the TUI or `wasync serve`) for live, scoped reads; wasync-axi never starts it")
+		r.Help = append(r.Help, startWasyncHint)
 	}
 	return r
 }

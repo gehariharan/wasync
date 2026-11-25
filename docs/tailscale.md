@@ -44,7 +44,7 @@ https://machine.example.ts.net/ui/
 ```
 
 There is no link to copy: the page signs you in because Tailscale says who you are. A session
-lasts 30 minutes; after that, opening any page signs you in again.
+lasts 30 minutes after the page you last opened; after that, opening any page signs you in again.
 
 ## What works remotely
 

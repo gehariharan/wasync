@@ -312,22 +312,40 @@ func (a *App) runStop(ctx context.Context, cfg config.Config, args []string) err
 	if len(args) != 0 {
 		return fmt.Errorf("usage: wasync stop")
 	}
+	owner, stopped, err := a.stopOwner(ctx, cfg)
+	if err != nil || !stopped {
+		return err
+	}
+	if owner.StartedBy == "login item" {
+		fmt.Fprintln(a.Out, "It was started by the login item. Start it again with: wasync service restart (or it starts at your next login; remove that with: wasync service uninstall)")
+	}
+	return nil
+}
+
+// stopOwner stops the wasync that owns the data directory and waits until the
+// directory is free. stopped is false when nothing needed stopping, or the
+// owner is a short command that finishes by itself (still running).
+func (a *App) stopOwner(ctx context.Context, cfg config.Config) (owner processlock.Owner, stopped bool, err error) {
 	held, err := processlock.Held(filepath.Join(cfg.DataDir, "device.lock"))
 	if err != nil {
-		return err
+		return owner, false, err
 	}
 	if !held {
 		fmt.Fprintf(a.Out, "No wasync is running for the data directory %s.\n", cfg.DataDir)
-		return nil
+		return owner, false, nil
 	}
 	owner, ok := processlock.ReadOwner(cfg.DataDir)
 	if !ok {
-		return unknownOwner(cfg, "stop it")
+		return owner, false, unknownOwner(cfg, "stop it")
 	}
 	if !owner.LongLived() {
 		fmt.Fprintf(a.Out, "%s is running right now and finishes by itself; try again in a moment.\n", describeOwner(owner))
-		return nil
+		return owner, false, nil
 	}
+	return owner, true, a.stopLongLived(ctx, cfg, owner)
+}
+
+func (a *App) stopLongLived(ctx context.Context, cfg config.Config, owner processlock.Owner) (err error) {
 	fmt.Fprintf(a.Out, "Stopping %s.\n", describeOwner(owner))
 	stopped := false
 	var apiFailure error
@@ -369,8 +387,5 @@ func (a *App) runStop(ctx context.Context, cfg config.Config, args []string) err
 		return fmt.Errorf("asked %s to stop, but it still holds the data directory after %s; it may be finishing work, so run %q again in a moment", describeOwner(owner), ownerStopWait, commandFor(cfg, "stop"))
 	}
 	fmt.Fprintln(a.Out, "Stopped. The data directory is free.")
-	if owner.StartedBy == "login item" {
-		fmt.Fprintln(a.Out, "It was started by the login item, so it starts again at your next login; remove that with: wasync service uninstall")
-	}
 	return nil
 }

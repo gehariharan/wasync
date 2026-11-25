@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -99,5 +100,92 @@ func TestDropCountsStoppedNumbers(t *testing.T) {
 	l := List{Numbers: []Number{{Chat: "1@s.whatsapp.net"}, {Chat: "2@s.whatsapp.net"}, {Chat: "3@s.whatsapp.net"}}}
 	if n := l.Drop(map[string]bool{"2@s.whatsapp.net": true, "9@s.whatsapp.net": true}); n != 1 || l.Stopped != 1 || len(l.Numbers) != 2 || l.Find("2@s.whatsapp.net") != nil {
 		t.Fatalf("drop: %d %+v", n, l)
+	}
+}
+
+func TestARemovedListsSendHistoryComesBackWhenTheSameNumbersAreApprovedAgain(t *testing.T) {
+	dir := privateDir(t)
+	at := time.Now().UTC().Add(-time.Hour).Truncate(time.Second)
+	sent, fresh := "15551230000@s.whatsapp.net", "15551230001@s.whatsapp.net"
+	l := List{AgentID: "a1", Agent: "helper", GrantedAt: at, Numbers: []Number{{Chat: sent, FirstSentAt: &at, LastSentAt: &at}, {Chat: fresh}}}
+	if err := Put(dir, l); err != nil {
+		t.Fatal(err)
+	}
+	if err := Remove(dir, "a1"); err != nil {
+		t.Fatal(err)
+	}
+	// Another agent's list does not inherit it.
+	if err := Put(dir, List{AgentID: "b2", Agent: "other", Numbers: []Number{{Chat: sent}}}); err != nil {
+		t.Fatal(err)
+	}
+	if o, _ := For(dir, "b2", time.Now()); o.NotMessaged() != 1 {
+		t.Fatalf("another agent inherited the history: %+v", o)
+	}
+	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: sent}, {Chat: fresh}}}); err != nil {
+		t.Fatal(err)
+	}
+	got, ok := For(dir, "a1", time.Now())
+	if n := got.Find(sent); !ok || n == nil || n.FirstSentAt == nil || !n.FirstSentAt.Equal(at) || !n.LastSentAt.Equal(at) || got.NotMessaged() != 1 {
+		t.Fatalf("approving again after removing forgot who was messaged: %+v", got)
+	}
+	// A number the new list leaves out is remembered for the next approval.
+	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: fresh}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: sent}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ = For(dir, "a1", time.Now()); got.NotMessaged() != 0 {
+		t.Fatalf("a number left out of one approval lost its history: %+v", got)
+	}
+}
+
+func TestRemovedListHistoryIsForgottenAfterThirtyDays(t *testing.T) {
+	dir := privateDir(t)
+	old := time.Now().Add(-HistoryKept - time.Hour).UTC().Format(time.RFC3339)
+	content := `{"lists":[],"sent":[{"agent_id":"a1","chat":"15551230000@s.whatsapp.net","first_sent_at":"` + old + `","last_sent_at":"` + old + `","removed_at":"` + old + `"}]}`
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: "15551230000@s.whatsapp.net"}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := For(dir, "a1", time.Now()); got.NotMessaged() != 1 {
+		t.Fatalf("history older than %v was used: %+v", HistoryKept, got)
+	}
+	data, _ := os.ReadFile(filepath.Join(dir, FileName))
+	if strings.Contains(string(data), `"sent"`) {
+		t.Fatalf("old history was kept in the file:\n%s", data)
+	}
+}
+
+func TestAPausedListStaysInForceAndResumes(t *testing.T) {
+	dir := privateDir(t)
+	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: "15551230000@s.whatsapp.net"}}}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err := Pause(dir, "a1", true, now); err != nil {
+		t.Fatal(err)
+	}
+	l, ok := For(dir, "a1", now)
+	if !ok || !l.Paused() || !Listed(dir, "15551230000@s.whatsapp.net", now) {
+		t.Fatalf("a paused list must stay in force, listed and marked paused: %+v %v", l, ok)
+	}
+	first := *l.PausedAt
+	if err := Pause(dir, "a1", true, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if l, _ = For(dir, "a1", now); !l.PausedAt.Equal(first) {
+		t.Fatalf("pausing again moved the pause time: %v", l.PausedAt)
+	}
+	if err := Pause(dir, "a1", false, now); err != nil {
+		t.Fatal(err)
+	}
+	if l, _ = For(dir, "a1", now); l.Paused() {
+		t.Fatal("the list did not resume")
+	}
+	if err := Pause(dir, "nobody", true, now); err != ErrNoList {
+		t.Fatalf("pausing a missing list: %v", err)
 	}
 }

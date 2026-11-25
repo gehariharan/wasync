@@ -38,7 +38,7 @@ encrypt data at rest.
 | `agents.json` | Agent credentials (hashes only), their scopes and approved chats |
 | `access-mode.json` | Whether agents' chat requests are asked each time or synced all |
 | `pending-approvals.json` | Requests waiting for a person, so a restart does not lose them |
-| `send-lists.json` | Approved phone-number lists for agents and their pacing |
+| `send-lists.json` | Approved phone-number lists for agents, their pacing, and for 30 days who a removed list already messaged |
 | `open-sending.json` | Whether open sending is on, and until when |
 | `tailnet.json` | The tailnet name and Tailscale login allowed to open the web app from other devices ([Tailscale](tailscale.md)); absent when off |
 | `sent-log.jsonl` | Every send by you or an agent: who, which chat, when, message ID and outcome, never the text |
@@ -120,8 +120,10 @@ Do not treat a protected directory or a separate session database as encryption.
 
 The web app (`wasync web`, `wasync setup`, `wasync approvals`) is served by your running wasync
 on its loopback address. It opens through a one-time link that works for two minutes and is
-never printed. The page shows message text, so open
-it only on a computer you trust.
+never printed. A signed-in page stays signed in while you use it (30 minutes after the last
+page, at most 12 hours); after that, or after wasync restarts, **Sign in** on the page asks your
+computer to confirm (Touch ID, your password or Windows Hello), or run `wasync web` again. The
+page shows message text, so open it only on a computer you trust.
 
 If you turn it on, your other devices on your Tailscale network can open it too, through
 `tailscale serve`; see [Opening the web app from your other computers](tailscale.md).

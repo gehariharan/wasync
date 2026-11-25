@@ -2,7 +2,10 @@
 
 package service
 
-import "os"
+import (
+	"os"
+	"time"
+)
 
 // System is the current user's macOS login item.
 func System() Manager {
@@ -10,5 +13,5 @@ func System() Manager {
 	if err != nil {
 		return unsupported{}
 	}
-	return launchAgent{Home: home, Run: runCommand}
+	return launchAgent{Home: home, Run: runCommand, Wait: time.Sleep}
 }

@@ -8,7 +8,9 @@
 //
 // The lists are a private file next to agents.json. A missing file means no
 // lists; a damaged one means no lists too, so sends are refused rather than
-// guessed. Removing a list needs no confirmation, because stopping is safe.
+// guessed. Pausing or removing a list needs no confirmation, because stopping
+// is safe. A removed list's send history is kept for HistoryKept, so approving
+// the same numbers again never sends anyone a second first message.
 package sendlist
 
 import (
@@ -45,6 +47,11 @@ const (
 	// MessagesPerNew is how many list messages, replies to replies included,
 	// one agent may send per Window for each new number it may start.
 	MessagesPerNew = 3
+	// HistoryKept is how long a removed list's send history is remembered.
+	HistoryKept = 30 * 24 * time.Hour
+	// maxHistory bounds the remembered numbers so the file stays readable;
+	// the oldest go first.
+	maxHistory = 3000
 
 	maxFileBytes = 1 << 20
 )
@@ -65,11 +72,24 @@ type List struct {
 	PerHour   int        `json:"per_hour,omitempty"` // new numbers an hour; 0 means DefaultPerHour
 	NextAt    *time.Time `json:"next_at,omitempty"`  // no first message before this
 	Numbers   []Number   `json:"numbers"`
-	Stopped   int        `json:"stopped,omitempty"` // numbers dropped after they replied STOP
+	Stopped   int        `json:"stopped,omitempty"`   // numbers dropped after they replied STOP
+	PausedAt  *time.Time `json:"paused_at,omitempty"` // no sends while set
 }
 
-// Active reports whether the list may be used at now.
+// Active reports whether the list is in force at now. A paused list is in
+// force (its numbers stay listed and replies are still read) but allows no
+// sends.
 func (l List) Active(now time.Time) bool { return l.Until == nil || now.Before(*l.Until) }
+
+// Paused reports whether the owner paused the list.
+func (l List) Paused() bool { return l.PausedAt != nil }
+
+// sent is one messaged number of a removed list, remembered for HistoryKept.
+type sent struct {
+	AgentID string `json:"agent_id"`
+	Number
+	RemovedAt time.Time `json:"removed_at"`
+}
 
 // NewPerHour is how many numbers the agent may message for the first time per Window.
 func (l List) NewPerHour() int {
@@ -131,6 +151,7 @@ func (l *List) Drop(stop map[string]bool) int {
 
 type file struct {
 	Lists []List `json:"lists"`
+	Sent  []sent `json:"sent,omitempty"` // removed lists' send history
 }
 
 // mu serializes changes within the one wasync owner process that writes the file.
@@ -141,49 +162,75 @@ var mu sync.Mutex
 func Load(dir string) ([]List, error) {
 	mu.Lock()
 	defer mu.Unlock()
-	return load(dir)
+	v, err := load(dir)
+	return v.Lists, err
 }
 
-func load(dir string) ([]List, error) {
+func load(dir string) (file, error) {
 	if dir == "" {
-		return nil, nil
+		return file{}, nil
 	}
 	path := filepath.Join(dir, FileName)
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return file{}, nil
 	}
 	if err := localfs.CheckPrivateFile(path); err != nil {
-		return nil, fmt.Errorf("%s must be a regular private file: %w", FileName, err)
+		return file{}, fmt.Errorf("%s must be a regular private file: %w", FileName, err)
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return file{}, err
 	}
 	defer f.Close()
 	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
 	if err != nil {
-		return nil, err
+		return file{}, err
 	}
 	if len(data) > maxFileBytes {
-		return nil, fmt.Errorf("%s is too large", FileName)
+		return file{}, fmt.Errorf("%s is too large", FileName)
 	}
 	var v file
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
 	if err = dec.Decode(&v); err != nil {
-		return nil, fmt.Errorf("invalid %s: %w", FileName, err)
+		return file{}, fmt.Errorf("invalid %s: %w", FileName, err)
 	}
 	for _, l := range v.Lists {
 		if l.AgentID == "" || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
-			return nil, fmt.Errorf("invalid %s: a list has no agent, too many numbers or an invalid pace", FileName)
+			return file{}, fmt.Errorf("invalid %s: a list has no agent, too many numbers or an invalid pace", FileName)
 		}
 		for _, x := range l.Numbers {
-			if _, ok := NumberChat(strings.TrimSuffix(x.Chat, "@s.whatsapp.net")); !ok || !strings.HasSuffix(x.Chat, "@s.whatsapp.net") {
-				return nil, fmt.Errorf("invalid %s: %q is not a phone number address", FileName, x.Chat)
+			if !numberAddress(x.Chat) {
+				return file{}, fmt.Errorf("invalid %s: %q is not a phone number address", FileName, x.Chat)
 			}
 		}
 	}
-	return v.Lists, nil
+	for _, x := range v.Sent {
+		if x.AgentID == "" || !numberAddress(x.Chat) {
+			return file{}, fmt.Errorf("invalid %s: a remembered number has no agent or is not a phone number address", FileName)
+		}
+	}
+	v.Sent = recent(v.Sent)
+	return v, nil
+}
+
+// recent keeps the history removed in the last HistoryKept, newest first, at
+// most maxHistory of it.
+func recent(all []sent) []sent {
+	forget := time.Now().Add(-HistoryKept)
+	kept := all[:0]
+	for _, x := range all {
+		if x.RemovedAt.After(forget) {
+			kept = append(kept, x)
+		}
+	}
+	sort.SliceStable(kept, func(i, j int) bool { return kept[i].RemovedAt.After(kept[j].RemovedAt) })
+	return kept[:min(len(kept), maxHistory)]
+}
+
+func numberAddress(chat string) bool {
+	_, ok := NumberChat(strings.TrimSuffix(chat, "@s.whatsapp.net"))
+	return ok && strings.HasSuffix(chat, "@s.whatsapp.net")
 }
 
 // For returns the agent's list when it has one in force at now. Any problem
@@ -216,55 +263,100 @@ func Listed(dir, chat string, now time.Time) bool {
 }
 
 // Put saves l as the agent's list, replacing any earlier one. Numbers the
-// earlier list already messaged keep that history, so approving a list again
-// never lets a number be messaged twice without a reply.
+// earlier list, or a list removed in the last HistoryKept, already messaged
+// keep that history, so approving a list again never lets a number be
+// messaged twice without a reply. Numbers the earlier list messaged that l
+// leaves out are remembered as if removed.
 func Put(dir string, l List) error {
 	if l.AgentID == "" || len(l.Numbers) == 0 || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
 		return fmt.Errorf("a list needs an agent, 1 to %d numbers and a pace of %d to %d an hour", MaxNumbers, MinPerHour, MaxPerHour)
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	lists, err := load(dir)
+	v, err := load(dir)
 	if err != nil {
 		return err
 	}
-	out := lists[:0]
-	for _, old := range lists {
+	now := time.Now().UTC()
+	out := v.Lists[:0]
+	for _, old := range v.Lists {
 		if old.AgentID != l.AgentID {
 			out = append(out, old)
 			continue
 		}
-		for i := range l.Numbers {
-			if prev := old.Find(l.Numbers[i].Chat); prev != nil {
-				l.Numbers[i].FirstSentAt, l.Numbers[i].LastSentAt = prev.FirstSentAt, prev.LastSentAt
-			}
-		}
+		v.Sent = append(v.Sent, messaged(old, now)...)
 		l.Stopped += old.Stopped
 		if old.NextAt != nil && (l.NextAt == nil || old.NextAt.After(*l.NextAt)) {
 			l.NextAt = old.NextAt
 		}
 	}
-	return save(dir, append(out, l))
+	kept := v.Sent[:0]
+	for _, x := range v.Sent {
+		if n := l.Find(x.Chat); x.AgentID == l.AgentID && n != nil {
+			if n.FirstSentAt == nil || x.FirstSentAt != nil && x.FirstSentAt.Before(*n.FirstSentAt) {
+				n.FirstSentAt = x.FirstSentAt
+			}
+			if n.LastSentAt == nil || x.LastSentAt != nil && x.LastSentAt.After(*n.LastSentAt) {
+				n.LastSentAt = x.LastSentAt
+			}
+			continue
+		}
+		kept = append(kept, x)
+	}
+	v.Lists, v.Sent = append(out, l), kept
+	return save(dir, v)
 }
 
-// Remove deletes the agent's list. Removing a list that is not there is harmless.
+// messaged is what l sent, to remember once it is gone.
+func messaged(l List, now time.Time) []sent {
+	var out []sent
+	for _, x := range l.Numbers {
+		if x.FirstSentAt != nil || x.LastSentAt != nil {
+			out = append(out, sent{AgentID: l.AgentID, Number: x, RemovedAt: now})
+		}
+	}
+	return out
+}
+
+// Remove deletes the agent's list and remembers what it sent for HistoryKept.
+// Removing a list that is not there is harmless.
 func Remove(dir, agentID string) error {
 	mu.Lock()
 	defer mu.Unlock()
-	lists, err := load(dir)
+	v, err := load(dir)
 	if err != nil {
 		return err
 	}
-	out := lists[:0]
-	for _, l := range lists {
+	now := time.Now().UTC()
+	out := v.Lists[:0]
+	for _, l := range v.Lists {
 		if l.AgentID != agentID {
 			out = append(out, l)
+			continue
 		}
+		v.Sent = append(v.Sent, messaged(l, now)...)
 	}
-	if len(out) == len(lists) {
+	if len(out) == len(v.Lists) {
 		return nil
 	}
-	return save(dir, out)
+	v.Lists = out
+	return save(dir, v)
+}
+
+// Pause stops the agent's list from sending, keeping everything else, or
+// resumes it when pause is false. Pausing a paused list, or resuming a running
+// one, changes nothing.
+func Pause(dir, agentID string, pause bool, now time.Time) error {
+	return Update(dir, agentID, now, func(l *List) error {
+		switch {
+		case pause && l.PausedAt == nil:
+			at := now.UTC()
+			l.PausedAt = &at
+		case !pause:
+			l.PausedAt = nil
+		}
+		return nil
+	})
 }
 
 // ErrNoList means the agent has no list in force.
@@ -274,30 +366,31 @@ var ErrNoList = errors.New("no approved list for this agent")
 func Update(dir, agentID string, now time.Time, change func(*List) error) error {
 	mu.Lock()
 	defer mu.Unlock()
-	lists, err := load(dir)
+	v, err := load(dir)
 	if err != nil {
 		return err
 	}
-	for i := range lists {
-		if lists[i].AgentID == agentID && lists[i].Active(now) {
-			if err = change(&lists[i]); err != nil {
+	for i := range v.Lists {
+		if v.Lists[i].AgentID == agentID && v.Lists[i].Active(now) {
+			if err = change(&v.Lists[i]); err != nil {
 				return err
 			}
-			return save(dir, lists)
+			return save(dir, v)
 		}
 	}
 	return ErrNoList
 }
 
-func save(dir string, lists []List) (result error) {
+func save(dir string, v file) (result error) {
 	if err := localfs.EnsureDir(dir); err != nil {
 		return err
 	}
-	if lists == nil {
-		lists = []List{}
+	if v.Lists == nil {
+		v.Lists = []List{}
 	}
-	sort.SliceStable(lists, func(i, j int) bool { return lists[i].Agent < lists[j].Agent })
-	data, err := json.MarshalIndent(file{Lists: lists}, "", "  ")
+	sort.SliceStable(v.Lists, func(i, j int) bool { return v.Lists[i].Agent < v.Lists[j].Agent })
+	v.Sent = recent(v.Sent)
+	data, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}

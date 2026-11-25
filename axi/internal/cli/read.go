@@ -744,6 +744,9 @@ func (a *App) homeSendList(ctx context.Context, d detection) *contract.SendList 
 
 // sendListLine is the home view's one-line summary of an approved list.
 func sendListLine(l *contract.SendList) string {
+	if l.Paused {
+		return fmt.Sprintf("paused by the user, so no list sends until they resume it; %d numbers, %d not messaged yet", l.Numbers, l.NotMessaged)
+	}
 	s := fmt.Sprintf("%d of %d new numbers and %d of %d messages left this hour; %d numbers, %d not messaged yet", l.NewNumbersLeft, l.NewNumbersPerHour, l.MessagesLeft, l.MessagesPerHour, l.Numbers, l.NotMessaged)
 	if l.Stopped > 0 {
 		s += fmt.Sprintf(", %d removed after STOP", l.Stopped)

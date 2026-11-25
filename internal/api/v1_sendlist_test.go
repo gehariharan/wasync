@@ -508,3 +508,116 @@ func TestGapStaysWithinHalfToOneAndAHalfOfTheAverage(t *testing.T) {
 		}
 	}
 }
+
+func TestAPausedListSendsNothingUntilItIsResumed(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Pause(f.dir, c.ID, true, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if !strings.Contains(string(body), "paused") {
+		t.Fatalf("the refusal should say the list is paused: %s", body)
+	}
+	status, body = f.send(t, "GET", "/api/v1/send-list", agent, "")
+	var got struct {
+		Data sendListView `json:"data"`
+	}
+	if status != 200 || json.Unmarshal(body, &got) != nil || !got.Data.Active || !got.Data.Paused || got.Data.NewNumbersLeft != 0 || got.Data.MessagesLeft != 0 || got.Data.NextNewAt != nil || got.Data.Numbers != 2 {
+		t.Fatalf("send-list while paused: %d %s", status, body)
+	}
+	if err := sendlist.Pause(f.dir, c.ID, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if status, body = f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("after resuming: %d %s", status, body)
+	}
+	if rec.count() != 1 {
+		t.Fatalf("sends: %d", rec.count())
+	}
+}
+
+func TestRemovingAndApprovingAListAgainNeverSendsASecondFirstMessage(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Remove(f.dir, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi again"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if !strings.Contains(string(body), "has not replied") || rec.count() != 1 {
+		t.Fatalf("a removed and re-approved number got a second first message: %d %s", rec.count(), body)
+	}
+	if l := listOf(t, f, "poster"); l.NotMessaged() != 1 {
+		t.Fatalf("the re-approved list forgot who was messaged: %+v", l)
+	}
+}
+
+func TestPausingAListNeedsNoConfirmationAndResumingDoes(t *testing.T) {
+	stub := &promptStub{}
+	f, c, csrf := agentsFixture(t, stub)
+	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fixture{dir: f.dir}.approveList(t, "helper", nil, "15551230000", "15551230001")
+	_, page, _ := c.get("/ui/agents")
+	if !strings.Contains(page, `value="listpause">Pause</button>`) || strings.Contains(page, "Resume") {
+		t.Fatalf("a running list should offer Pause:\n%s", page)
+	}
+	post := func(action string) string {
+		_, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {action}, "agent": {"helper"}})
+		return notice(hd)
+	}
+	if got := post("listpause"); got != "listpause" || len(stub.seen()) != 0 || !listOf(t, fixture{dir: f.dir}, "helper").Paused() {
+		t.Fatalf("pausing must work without a prompt: %q %d", got, len(stub.seen()))
+	}
+	_, page, _ = c.get("/ui/agents")
+	if !strings.Contains(page, "Paused</strong>") || !strings.Contains(page, `value="listresume">Resume…</button>`) || strings.Contains(page, `value="listpause"`) {
+		t.Fatalf("a paused list should say so and offer Resume:\n%s", page)
+	}
+	if got := post("listresume"); got != "declined" || !listOf(t, fixture{dir: f.dir}, "helper").Paused() {
+		t.Fatalf("a declined prompt resumed the list: %q", got)
+	}
+	stub.set(true)
+	if got := post("listresume"); got != "listresume" || listOf(t, fixture{dir: f.dir}, "helper").Paused() {
+		t.Fatalf("a confirmed prompt did not resume the list: %q", got)
+	}
+	if p := stub.seen(); len(p) != 2 || !strings.Contains(p[1], `"helper"`) || !strings.Contains(p[1], "2 number(s)") {
+		t.Fatalf("the prompt must name the agent and the count: %q", p)
+	}
+	if got := post("listresume"); got != "failed" {
+		t.Fatalf("resuming a running list: %q", got)
+	}
+	if audit := auditText(t, f.dir); !strings.Contains(audit, `"event":"send_list_pause"`) || !strings.Contains(audit, `"event":"send_list_resume"`) {
+		t.Fatalf("pause and resume were not audited: %s", audit)
+	}
+}
+
+func TestAPausedListCannotBeResumedWithoutASystemConfirmation(t *testing.T) {
+	f, c, csrf := agentsFixture(t, nil)
+	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fixture{dir: f.dir}.approveList(t, "helper", nil, "15551230000")
+	if _, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"listpause"}, "agent": {"helper"}}); notice(hd) != "listpause" {
+		t.Fatalf("pausing on a computer with no confirmation: %q", notice(hd))
+	}
+	_, page, _ := c.get("/ui/agents")
+	if strings.Contains(page, "Resume") {
+		t.Fatalf("a computer with no confirmation was offered Resume:\n%s", page)
+	}
+	if _, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"listresume"}, "agent": {"helper"}}); notice(hd) != "nogate" || !listOf(t, fixture{dir: f.dir}, "helper").Paused() {
+		t.Fatalf("resumed with no confirmation: %q", notice(hd))
+	}
+}

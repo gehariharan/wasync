@@ -31,6 +31,7 @@ func init() {
 // sendListView is the agent-facing state of its list.
 type sendListView struct {
 	Active         bool       `json:"active"`
+	Paused         bool       `json:"paused"`                // the person paused it: no sends until they resume it
 	CanSend        bool       `json:"can_send"`              // holds the send scope
 	Numbers        int        `json:"numbers"`               // on the list now
 	NotMessaged    int        `json:"not_messaged"`          // never messaged yet
@@ -63,6 +64,11 @@ func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) 
 	if list, ok := sendlist.For(h.dataDir, c.ID, now); ok {
 		view.Active, view.Numbers, view.NotMessaged, view.Stopped, view.ExpiresAt = true, len(list.Numbers), list.NotMessaged(), list.Stopped, list.Until
 		view.NewPerHour, view.MessagesHour = list.NewPerHour(), list.MessagesPerHour()
+		if list.Paused() {
+			view.Paused = true
+			v1OK(w, id, view, nil)
+			return
+		}
 		pace, err := h.listPace(c.Name, now)
 		if err != nil {
 			v1Fail(w, id, 503, query.CodeInternal, "the sent log cannot be read", "check the permissions of the wasync data directory")
@@ -188,6 +194,10 @@ func (h *handler) listSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 	number := list.Find(chat)
 	if !ok || number == nil {
 		v1Fail(w, id, 403, query.CodeForbidden, "this number is not on your approved list (it was removed, it replied STOP, or the list ended)", "do not message it; ask the person if you need it approved again")
+		return false
+	}
+	if list.Paused() {
+		v1Fail(w, id, 403, query.CodeForbidden, "the person paused your approved list", "do not send until they resume it; GET /api/v1/send-list shows paused: false then")
 		return false
 	}
 	if number.LastSentAt != nil {

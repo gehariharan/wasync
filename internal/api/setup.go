@@ -103,6 +103,7 @@ func (h *handler) setupHome(w http.ResponseWriter, r *http.Request, sess uiSessi
 }
 
 func (h *handler) setupRender(w http.ResponseWriter, d *setupData) {
+	h.warnBackground(d)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := setupTemplate.Execute(w, d); err != nil {
 		http.Error(w, "page error", http.StatusInternalServerError)
@@ -257,11 +258,11 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 {{end}}
 
 {{if .ServiceAvailable}}
-<h2>{{if .Paired}}4{{else}}2{{end}}. Start wasync when you log in</h2>
+<h2 id="login">{{if .Paired}}4{{else}}2{{end}}. Start wasync when you log in</h2>
 <section class="card">
-<p class="mut">Keeps capture and approvals working without opening a terminal. It is {{.Service}} for your account only and needs no administrator rights. It takes effect the next time you log in.</p>
+<p class="mut">Keeps wasync running without a terminal. It is {{.Service}} for your account only.</p>
 <form method="post" action="/ui/setup/service"><input type="hidden" name="csrf" value="{{.CSRF}}">
-{{if .ServiceInstalled}}<p class="ok"><strong>On.</strong></p><button name="action" value="remove">Turn off</button>
+{{if .ServiceInstalled}}<p class="ok"><strong>On.</strong>{{if .Warn}} <span class="mut">To move this copy to the background, run <code>wasync service restart</code>.</span>{{end}}</p><button name="action" value="remove">Turn off</button>
 {{else}}{{if .Gate}}<button class="go" name="action" value="install">Turn on…</button> <span class="mut">Asks you to confirm on this computer.</span>
 {{else if .Remote}}<p class="bad">Turn this on from the computer running wasync.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so run <code>wasync service install</code> in a terminal.</p>{{end}}{{end}}

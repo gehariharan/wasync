@@ -109,7 +109,8 @@ wasync web
 ```
 
 With wasync running, `wasync web` opens the web app in your browser through a one-time link
-that works for two minutes and is never printed. It has five pages:
+that works for two minutes and is never printed. It stays signed in while you use it; if a page
+signs you out, press **Sign in** and confirm. It has five pages:
 
 - **Chats**: your synced chats and their messages, side by side. A small robot marks chats an
   agent can read. Write to an open chat from the box under its messages, or start a message to
@@ -139,7 +140,8 @@ every other command works through it.
 
 ```sh
 wasync serve                 # run in the foreground until Ctrl-C (needs a linked phone)
-wasync service install       # start wasync serve when you log in (macOS, Windows)
+wasync service install       # run wasync in the background now and at every login (macOS, Windows)
+wasync service restart       # start it again after wasync stop or an upgrade
 wasync service status
 wasync status                # pairing state and chats, from the running wasync
 wasync stop                  # stop the running wasync cleanly

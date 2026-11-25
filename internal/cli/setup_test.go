@@ -18,6 +18,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/humancheck"
+	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/service"
 	"github.com/gehariharan/wasync/internal/storage"
 )
@@ -26,7 +27,20 @@ type loginItem struct {
 	mu        sync.Mutex
 	installed bool
 	spec      service.Spec
+	started   []service.Spec
+	// heldWhenStarted reports whether the data directory was still held when Start ran.
+	heldWhenStarted []bool
 }
+
+func (l *loginItem) Start(s service.Spec) error {
+	held, _ := processlock.Held(filepath.Join(s.DataDir, "device.lock"))
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.started, l.heldWhenStarted = append(l.started, s), append(l.heldWhenStarted, held)
+	return nil
+}
+
+func (l *loginItem) starts() int { l.mu.Lock(); defer l.mu.Unlock(); return len(l.started) }
 
 func (l *loginItem) Where() string { return "a test login item" }
 func (l *loginItem) Install(s service.Spec) error {
@@ -74,8 +88,11 @@ func TestServiceInstallIsAHumanChoice(t *testing.T) {
 	if err := run(app, "install"); err != nil || !item.installed {
 		t.Fatalf("confirmed install: %v", err)
 	}
-	if item.spec.DataDir != dir || !filepath.IsAbs(item.spec.Exe) || !strings.Contains(out.String(), "next time you log in") {
+	if item.spec.DataDir != dir || !filepath.IsAbs(item.spec.Exe) || !strings.Contains(out.String(), "every time you log in") || !strings.Contains(out.String(), "Started. wasync runs in the background now") {
 		t.Fatalf("spec %+v out %q", item.spec, out.String())
+	}
+	if item.starts() != 1 || item.started[0] != item.spec {
+		t.Fatalf("installing with nothing running must start it now: %+v", item.started)
 	}
 	app, out = build("", false)
 	if err := run(app, "status"); err != nil || !strings.Contains(out.String(), "installed") || strings.Contains(out.String(), "not installed") {
@@ -418,3 +435,42 @@ type simpleJarCLI struct{ cookies []*http.Cookie }
 
 func (j *simpleJarCLI) SetCookies(_ *url.URL, c []*http.Cookie) { j.cookies = append(j.cookies, c...) }
 func (j *simpleJarCLI) Cookies(*url.URL) []*http.Cookie         { return j.cookies }
+
+func TestServiceInstallLeavesATerminalWasyncRunningAndRestartTakesOver(t *testing.T) {
+	owner := startServeOwner(t)
+	item := &loginItem{}
+	app, out, _ := otherApp(t)
+	app.In, app.Interactive, app.Service, app.Human = &lineReader{[]string{"INSTALL"}}, true, item, humancheck.NewGate(&humanStub{confirm: true})
+	run := func(args ...string) error {
+		return app.Run(context.Background(), append([]string{"--data-dir", owner.dir, "service"}, args...))
+	}
+	if err := run("install"); err != nil {
+		t.Fatal(err)
+	}
+	if !item.installed || item.starts() != 0 || !owner.held() || !strings.Contains(out.String(), "left alone") || !strings.Contains(out.String(), "service restart") {
+		t.Fatalf("install must not stop or race the running wasync: starts=%d held=%v\n%s", item.starts(), owner.held(), out.String())
+	}
+	if err := run("status"); err != nil || !strings.Contains(out.String(), "running in the background: no") {
+		t.Fatalf("status: %v\n%s", err, out.String())
+	}
+	if err := run("restart"); err != nil {
+		t.Fatalf("restart: %v\n%s", err, out.String())
+	}
+	owner.wait(t, 15*time.Second)
+	if item.starts() != 1 || item.heldWhenStarted[0] || !strings.Contains(out.String(), "Stopped") || !strings.Contains(out.String(), "Started") {
+		t.Fatalf("restart must stop the running wasync, then start the login item: starts=%d held=%v\n%s", item.starts(), item.heldWhenStarted, out.String())
+	}
+	// With nothing running it just starts.
+	if err := run("restart"); err != nil || item.starts() != 2 {
+		t.Fatalf("restart with nothing running: %v %d", err, item.starts())
+	}
+}
+
+func TestServiceRestartNeedsAnInstalledLoginItem(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	item := &loginItem{}
+	app := &App{Out: io.Discard, Err: io.Discard, Service: item}
+	if err := app.Run(context.Background(), []string{"--data-dir", dir, "service", "restart"}); !errors.Is(err, service.ErrNotInstalled) || item.starts() != 0 {
+		t.Fatalf("restart without a login item: %v", err)
+	}
+}

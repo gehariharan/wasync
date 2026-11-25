@@ -47,6 +47,7 @@ type Message struct {
 // hour's allowance is left. It never names the numbers.
 type SendList struct {
 	Active            bool    `json:"active"`
+	Paused            bool    `json:"paused"`
 	CanSend           bool    `json:"can_send"`
 	Numbers           int     `json:"numbers"`
 	NotMessaged       int     `json:"not_messaged"`
