@@ -75,6 +75,9 @@ func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) 
 			if view.NewNumbersLeft == 0 && pace.nextFresh.After(next) {
 				next = pace.nextFresh
 			}
+			if view.MessagesLeft == 0 && pace.nextMessage.After(next) {
+				next = pace.nextMessage
+			}
 			if list.NextAt != nil && list.NextAt.After(next) {
 				next = *list.NextAt
 			}

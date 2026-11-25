@@ -321,6 +321,42 @@ func TestSendListNextNewAtIsTheLaterOfTheHourlyResetAndTheSpacing(t *testing.T) 
 	}
 }
 
+func TestSendListNextNewAtWaitsForTheHourlyMessageCap(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001", "15551230002")
+	start := time.Now()
+	send := func(to string) {
+		t.Helper()
+		if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"`+to+`","text":"x"}`); status != 200 {
+			t.Fatalf("send to %s: %d %s", to, status, body)
+		}
+	}
+	// Two new numbers, then replies back and forth until the hour's messages are used up.
+	send("15551230000")
+	f.dueNow(t, "poster")
+	send("15551230001")
+	for i := 2; i < sendlist.MessagesPerNew*sendlist.DefaultPerHour; i++ {
+		f.incoming(t, listed, fmt.Sprintf("R%d", i), "ok")
+		send("15551230000")
+	}
+	f.dueNow(t, "poster")
+	status, body := f.send(t, "GET", "/api/v1/send-list", agent, "")
+	var got struct {
+		Data sendListView `json:"data"`
+	}
+	if status != 200 || json.Unmarshal(body, &got) != nil {
+		t.Fatalf("send-list: %d %s", status, body)
+	}
+	v := got.Data
+	if v.MessagesLeft != 0 || v.NewNumbersLeft == 0 || v.NotMessaged != 1 || v.NextNewAt == nil || v.NextNewAt.Before(start.Add(sendlist.Window-time.Minute)) {
+		t.Fatalf("a new number must wait for the first message to stop counting: %+v", v)
+	}
+	status, body = f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230002","text":"x"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+}
+
 // postList sends the Agents page's list form as a browser would.
 func (c *pageClient) postList(t *testing.T, fields map[string]string, file string) (int, string, http.Header) {
 	t.Helper()

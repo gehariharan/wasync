@@ -62,6 +62,17 @@ func (s *Store) IsEnabled(ctx context.Context, account int64, group string) (boo
 	return enabled, err
 }
 
+// NeverCaptured reports whether chat is known and capture was never turned on
+// for it, so an owner's earlier choice to turn it off can be told apart.
+func (s *Store) NeverCaptured(ctx context.Context, account int64, chat string) (bool, error) {
+	var never bool
+	err := s.db.QueryRowContext(ctx, "SELECT sync_enabled=0 AND enabled_at IS NULL FROM groups WHERE account_id=? AND group_id=?", account, chat).Scan(&never)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	return never, err
+}
+
 // Apply rechecks consent in the write transaction. A disabled group cannot slip
 // through because an event was normalized before a user toggled its preference.
 func (s *Store) Apply(ctx context.Context, account int64, messages []Message) (WriteResult, error) {

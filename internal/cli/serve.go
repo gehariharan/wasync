@@ -145,6 +145,9 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 			if media, ok := client.(interface{ ConfigureMedia(string, bool) }); ok {
 				media.ConfigureMedia(filepath.Join(cfg.DataDir, "media"), cfg.DownloadMedia)
 			}
+			if lists, ok := client.(interface{ ConfigureLists(string) }); ok {
+				lists.ConfigureLists(cfg.DataDir)
+			}
 			if err = live.EnableCapture(ctx, store); err != nil {
 				return err
 			}

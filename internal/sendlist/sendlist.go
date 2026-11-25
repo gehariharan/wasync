@@ -201,6 +201,20 @@ func For(dir, agentID string, now time.Time) (List, bool) {
 	return List{}, false
 }
 
+// Listed reports whether chat is on any active list.
+func Listed(dir, chat string, now time.Time) bool {
+	lists, err := Load(dir)
+	if err != nil {
+		return false
+	}
+	for i := range lists {
+		if lists[i].Active(now) && lists[i].Find(chat) != nil {
+			return true
+		}
+	}
+	return false
+}
+
 // Put saves l as the agent's list, replacing any earlier one. Numbers the
 // earlier list already messaged keep that history, so approving a list again
 // never lets a number be messaged twice without a reply.
