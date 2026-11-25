@@ -114,7 +114,8 @@ The `checksums.txt` release asset contains SHA-256 hashes of each download. On
 Linux use `sha256sum --ignore-missing -c checksums.txt` in the download directory;
 on macOS compare `shasum -a 256 FILE.pkg` with its line in `checksums.txt`.
 
-Stop wasync before upgrading (`wasync stop`). Installers only replace program files; archives,
+Stop wasync before upgrading (`wasync stop`), and start it again afterwards with
+`wasync service restart` if it runs at login. Installers only replace program files; archives,
 chat choices and pairing state remain in the per-user data directory
 (see [Data, files and security](data-and-security.md)).
 

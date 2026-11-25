@@ -226,7 +226,11 @@ func TestHomeOfflineUsesQuery(t *testing.T) {
 	if code != ExitOK {
 		t.Fatal(out)
 	}
-	mustContain(t, out, "state: offline", "transport: query", "version: 0.2.0-test", "status: ok", "not scoped", "wasync-axi never starts it")
+	mustContain(t, out, "state: offline", "transport: query", "version: 0.2.0-test", "status: ok", "not scoped", "wasync-axi never starts it",
+		`warning: "wasync is not running: nothing is captured, sent or approved`, "wasync service restart")
+	if json, _ := h.run(t, "--json"); !strings.Contains(json, `"warning":"wasync is not running`) {
+		t.Fatalf("the JSON home view does not warn:\n%s", json)
+	}
 	call := testutil.ReadFakeCalls(t, log)[0]
 	if strings.Join(call.Args, " ") != "--data-dir "+filepath.Join(home, "wasync-data")+" query version --v1 --json" {
 		t.Fatalf("args %v", call.Args)
@@ -385,6 +389,14 @@ func TestHomeShowsAnApprovedSendList(t *testing.T) {
 	mustContain(t, out, "send_list:", "3 of 5 new numbers and 12 of 15 messages left this hour", "40 numbers, 30 not messaged yet, 2 removed after STOP", "ends 2026-12-01T10:00:00Z", "approved a list of numbers for you")
 	out, _ = h.run(t, "--json")
 	mustContain(t, out, `"send_list":{"active":true`, `"new_numbers_left":3`)
+
+	// A paused list says so, and does not invite a send.
+	srv.Routes["/send-list"] = map[string]any{"request_id": "r-2", "data": map[string]any{"active": true, "paused": true, "can_send": true, "numbers": 40, "not_messaged": 30, "new_numbers_per_hour": 5, "messages_per_hour": 15}}
+	out, _ = h.run(t)
+	mustContain(t, out, "send_list:", "paused by the user", "40 numbers, 30 not messaged yet", "paused your approved list")
+	if strings.Contains(out, "messages one of them") || strings.Contains(out, "left this hour") {
+		t.Fatalf("a paused list invites a send:\n%s", out)
+	}
 
 	// No list, or a wasync without the feature: nothing is shown.
 	srv.Routes["/send-list"] = map[string]any{"request_id": "r-3", "data": map[string]any{"active": false}}

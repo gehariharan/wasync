@@ -101,7 +101,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   run                                        Start the TUI with capture
   serve [--offline]                          Headless capture and local API
   setup                                      Link WhatsApp and choose chats in your browser, no terminal
-  service install|uninstall|status           Start wasync by itself when you log in
+  service install|restart|uninstall|status   Run wasync in the background and at login
   keychain [prune [--apply]]                 List or remove leftover Keychain items (macOS)
   login [--select=true|false] [--observe 30s]  Pair or reuse session, then open the TUI
   logout                                     Unlink device; preserve cached groups

@@ -28,15 +28,19 @@ import (
 // prompt the page is read-only for approvals.
 
 const (
-	uiLinkPath   = "/api/ui/link"
-	uiCookie     = "wasync_ui"
-	uiLinkTTL    = 2 * time.Minute
+	uiLinkPath = "/api/ui/link"
+	uiCookie   = "wasync_ui"
+	uiLinkTTL  = 2 * time.Minute
+	// uiSessionTTL is how long a session lasts without a request; each request
+	// starts it again, up to uiSessionMax after signing in.
 	uiSessionTTL = 30 * time.Minute
+	uiSessionMax = 12 * time.Hour
 	uiMaxTokens  = 8
 )
 
 type uiSession struct {
 	csrf    string
+	started time.Time
 	expires time.Time
 	// login is the Tailscale login a remote session belongs to; "" for a
 	// session opened on this computer with a one-time link.
@@ -94,18 +98,18 @@ func (s *uiState) newLink() string {
 }
 
 // enter swaps a sign-in link for a session and returns its cookie value.
-func (s *uiState) enter(link string) (cookie string, ok bool) {
+func (s *uiState) enter(link string) (cookie string, sess uiSession, ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()
 	s.prune(now)
 	expiry, found := s.links[link]
 	if !found || now.After(expiry) {
-		return "", false
+		return "", uiSession{}, false
 	}
 	delete(s.links, link)
-	cookie, _ = s.add(now, "")
-	return cookie, true
+	cookie, sess = s.add(now, "")
+	return cookie, sess, true
 }
 
 // start opens a session for a remote browser whose Tailscale login was checked.
@@ -129,21 +133,44 @@ func (s *uiState) add(now time.Time, login string) (string, uiSession) {
 		}
 	}
 	cookie := token()
-	sess := uiSession{csrf: token(), expires: now.Add(uiSessionTTL), login: login}
+	sess := uiSession{csrf: token(), started: now, expires: now.Add(uiSessionTTL), login: login}
 	s.sessions[cookie] = sess
 	return cookie, sess
 }
 
-func (s *uiState) session(r *http.Request) (uiSession, bool) {
+// session finds the request's session and, since it is in use, extends it by
+// uiSessionTTL, never past uiSessionMax after it started. cookie is its value,
+// to send again with the new lifetime.
+func (s *uiState) session(r *http.Request) (sess uiSession, cookie string, ok bool) {
 	c, err := r.Cookie(uiCookie)
 	if err != nil {
-		return uiSession{}, false
+		return uiSession{}, "", false
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.prune(time.Now())
-	v, ok := s.sessions[c.Value]
-	return v, ok
+	now := time.Now()
+	s.prune(now)
+	sess, ok = s.sessions[c.Value]
+	if !ok {
+		return uiSession{}, "", false
+	}
+	sess.expires = now.Add(uiSessionTTL)
+	if limit := sess.started.Add(uiSessionMax); sess.expires.After(limit) {
+		sess.expires = limit
+	}
+	s.sessions[c.Value] = sess
+	return sess, c.Value, true
+}
+
+// setSessionCookie sends the session cookie, living as long as the session.
+// A session opened through the tailnet arrives over HTTPS, so its cookie is
+// marked Secure.
+func setSessionCookie(w http.ResponseWriter, cookie string, sess uiSession) {
+	life := int(time.Until(sess.expires) / time.Second)
+	if life < 1 {
+		life = 1
+	}
+	http.SetCookie(w, &http.Cookie{Name: uiCookie, Value: cookie, Path: "/ui/", HttpOnly: true, Secure: sess.login != "", SameSite: http.SameSiteStrictMode, MaxAge: life})
 }
 
 // uiURL is the one-time address for a page; only the pages listed here can be named.
@@ -175,44 +202,46 @@ var notices = map[string]struct {
 	text string
 	ok   bool
 }{
-	"approved":  {"Approved. The agent has the access you confirmed.", true},
-	"done":      {"Done.", true},
-	"rejected":  {"Rejected. Nothing was given.", true},
-	"declined":  {"Not confirmed on this computer, so nothing changed.", false},
-	"busy":      {"A confirmation prompt is already open on this computer. Answer it first.", false},
-	"locked":    {"Too many prompts went unconfirmed. Try again in a few minutes.", false},
-	"invalid":   {"That choice is not valid for this request, so nothing changed.", false},
-	"failed":    {"That did not work and nothing changed. The request may have expired.", false},
-	"nogate":    {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
-	"remote":    {"Do this on the computer running wasync.", false},
-	"saved":     {"Saved.", true},
-	"sentok":    {"Sent: WhatsApp accepted it. It shows in the chat once WhatsApp passes it back.", true},
-	"sendfail":  {"That was not sent, or WhatsApp did not confirm it. Check WhatsApp before sending it again.", false},
-	"offline":   {"wasync is not connected to WhatsApp, so nothing was sent.", false},
-	"notext":    {"Write a message first.", false},
-	"badto":     {"Enter the phone number with its country code, such as +15551230000.", false},
-	"dlqueued":  {"Downloading. Refresh in a moment to see it.", true},
-	"dlfail":    {"That could not be downloaded. WhatsApp may be disconnected or no longer have the file.", false},
-	"dlpolicy":  {"Saved. New attachments in this chat follow it.", true},
-	"sendon":    {"That agent may now send in the chats you approve for it.", true},
-	"sendoff":   {"That agent can no longer send.", true},
-	"openon":    {"Open sending is on for the next hour.", true},
-	"openoff":   {"Open sending is off.", true},
-	"liston":    {"Approved. That agent may now message the numbers on its list.", true},
-	"listoff":   {"The list is removed. That agent can no longer message those numbers.", true},
-	"badlist":   {"Every line must be one phone number with its country code, such as +15551230000. Nothing changed.", false},
-	"nolist":    {"Paste some numbers or choose a file first.", false},
-	"biglist":   {"A list can hold at most 1000 numbers. Nothing changed.", false},
-	"needsend":  {"Allow sending for that agent first.", false},
-	"agentall":  {"That agent reads every chat, so it cannot be given sending here. Set it up again in a terminal with a chat list.", false},
-	"unpaired":  {"Link WhatsApp first (step 1).", false},
-	"newcode":   {"Asking WhatsApp for a new code…", true},
-	"exists":    {"An agent with that name already exists. Choose another name, or revoke it first.", false},
-	"replace":   {"wasync-axi already has a different saved credential. Tick the box to replace it, or choose another place.", false},
-	"badname":   {"The name must be 1 to 32 characters: a to z, 0 to 9 and dashes.", false},
-	"connected": {"Connected. The credential was saved where wasync-axi reads it and is not shown anywhere.", true},
-	"loginon":   {"wasync will start by itself the next time you log in.", true},
-	"loginoff":  {"wasync will no longer start by itself when you log in.", true},
+	"approved":   {"Approved. The agent has the access you confirmed.", true},
+	"done":       {"Done.", true},
+	"rejected":   {"Rejected. Nothing was given.", true},
+	"declined":   {"Not confirmed on this computer, so nothing changed.", false},
+	"busy":       {"A confirmation prompt is already open on this computer. Answer it first.", false},
+	"locked":     {"Too many prompts went unconfirmed. Try again in a few minutes.", false},
+	"invalid":    {"That choice is not valid for this request, so nothing changed.", false},
+	"failed":     {"That did not work and nothing changed. The request may have expired.", false},
+	"nogate":     {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
+	"remote":     {"Do this on the computer running wasync.", false},
+	"saved":      {"Saved.", true},
+	"sentok":     {"Sent: WhatsApp accepted it. It shows in the chat once WhatsApp passes it back.", true},
+	"sendfail":   {"That was not sent, or WhatsApp did not confirm it. Check WhatsApp before sending it again.", false},
+	"offline":    {"wasync is not connected to WhatsApp, so nothing was sent.", false},
+	"notext":     {"Write a message first.", false},
+	"badto":      {"Enter the phone number with its country code, such as +15551230000.", false},
+	"dlqueued":   {"Downloading. Refresh in a moment to see it.", true},
+	"dlfail":     {"That could not be downloaded. WhatsApp may be disconnected or no longer have the file.", false},
+	"dlpolicy":   {"Saved. New attachments in this chat follow it.", true},
+	"sendon":     {"That agent may now send in the chats you approve for it.", true},
+	"sendoff":    {"That agent can no longer send.", true},
+	"openon":     {"Open sending is on for the next hour.", true},
+	"openoff":    {"Open sending is off.", true},
+	"liston":     {"Approved. That agent may now message the numbers on its list.", true},
+	"listoff":    {"The list is removed. That agent can no longer message those numbers.", true},
+	"listpause":  {"Paused. Nothing is sent until you resume it.", true},
+	"listresume": {"Resumed.", true},
+	"badlist":    {"Every line must be one phone number with its country code, such as +15551230000. Nothing changed.", false},
+	"nolist":     {"Paste some numbers or choose a file first.", false},
+	"biglist":    {"A list can hold at most 1000 numbers. Nothing changed.", false},
+	"needsend":   {"Allow sending for that agent first.", false},
+	"agentall":   {"That agent reads every chat, so it cannot be given sending here. Set it up again in a terminal with a chat list.", false},
+	"unpaired":   {"Link WhatsApp first (step 1).", false},
+	"newcode":    {"Asking WhatsApp for a new code…", true},
+	"exists":     {"An agent with that name already exists. Choose another name, or revoke it first.", false},
+	"replace":    {"wasync-axi already has a different saved credential. Tick the box to replace it, or choose another place.", false},
+	"badname":    {"The name must be 1 to 32 characters: a to z, 0 to 9 and dashes.", false},
+	"connected":  {"Connected. The credential was saved where wasync-axi reads it and is not shown anywhere.", true},
+	"loginon":    {"On. wasync starts at every login.", true},
+	"loginoff":   {"wasync will no longer start by itself when you log in.", true},
 }
 
 func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
@@ -228,22 +257,24 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/enter":
 		h.uiEnter(w, r)
 		return
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/signin" && login == "":
+		h.uiSignIn(w, r)
+		return
 	}
-	sess, ok := h.ui.session(r)
+	sess, cookie, ok := h.ui.session(r)
 	if ok && sess.login != login {
 		ok = false // a session belongs to the one place and login it was opened for
 	}
 	if !ok && login != "" && r.Method == http.MethodGet {
 		// The Tailscale login was checked on this request; it signs the browser in.
-		var cookie string
 		cookie, sess = h.ui.start(login)
-		http.SetCookie(w, &http.Cookie{Name: uiCookie, Value: cookie, Path: "/ui/", HttpOnly: true, Secure: true, SameSite: http.SameSiteStrictMode, MaxAge: int(uiSessionTTL / time.Second)})
 		ok = true
 	}
 	if !ok {
-		h.uiRender(w, http.StatusUnauthorized, &uiData{Signedout: true, Title: "wasync approvals", Remote: login != ""})
+		h.signedOut(w, r, "")
 		return
 	}
+	setSessionCookie(w, cookie, sess)
 	switch {
 	case r.Method == http.MethodGet && (r.URL.Path == "/ui/" || r.URL.Path == "/ui"):
 		h.uiHome(w, r, sess)
@@ -284,13 +315,61 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *handler) uiEnter(w http.ResponseWriter, r *http.Request) {
-	cookie, ok := h.ui.enter(r.URL.Query().Get("t"))
-	if !ok {
-		h.uiRender(w, http.StatusUnauthorized, &uiData{Signedout: true, Title: "wasync approvals"})
+// signInPages are the pages a sign-in may return to.
+var signInPages = map[string]bool{"/ui/": true, "/ui/chats": true, "/ui/sent": true, "/ui/agents": true, "/ui/setup": true}
+
+// signedOut answers a request with no session: the page says how to sign in
+// again, and on this computer offers to do it with the system confirmation.
+func (h *handler) signedOut(w http.ResponseWriter, r *http.Request, notice string) {
+	d := &uiData{Signedout: true, Title: "wasync", Remote: remoteLogin(r) != "", Next: "/ui/"}
+	if !d.Remote && h.gate(r).Enabled() {
+		d.Gate = h.human.Name()
+	}
+	if signInPages[r.URL.Path] {
+		d.Next = r.URL.Path
+	}
+	if n, ok := notices[notice]; ok {
+		d.Notice, d.NoticeOK = n.text, n.ok
+	}
+	h.uiRender(w, http.StatusUnauthorized, d)
+}
+
+// uiSignIn opens a session for this browser once the person confirms it with
+// the system prompt, so a signed-out page needs no terminal. Like an approval,
+// it cannot happen by itself: only the person at the computer can answer the
+// prompt, and it is never offered through the tailnet, where the Tailscale
+// login signs a browser in.
+func (h *handler) uiSignIn(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<10)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "invalid form", http.StatusBadRequest)
 		return
 	}
-	http.SetCookie(w, &http.Cookie{Name: uiCookie, Value: cookie, Path: "/ui/", HttpOnly: true, SameSite: http.SameSiteStrictMode, MaxAge: int(uiSessionTTL / time.Second)})
+	next := r.PostForm.Get("next")
+	if !signInPages[next] {
+		next = "/ui/"
+	}
+	r.URL.Path = next // the signed-out page returns to it
+	if !h.gate(r).Enabled() {
+		h.signedOut(w, r, "nogate")
+		return
+	}
+	if err := h.confirmError(r.Context(), "Approve: sign in to the wasync web app in this browser. It shows your chats and lets you manage agents."); err != nil {
+		h.signedOut(w, r, noticeFor(err))
+		return
+	}
+	cookie, sess := h.ui.start("")
+	setSessionCookie(w, cookie, sess)
+	http.Redirect(w, r, next, http.StatusSeeOther)
+}
+
+func (h *handler) uiEnter(w http.ResponseWriter, r *http.Request) {
+	cookie, sess, ok := h.ui.enter(r.URL.Query().Get("t"))
+	if !ok {
+		h.signedOut(w, r, "")
+		return
+	}
+	setSessionCookie(w, cookie, sess)
 	to := "/ui/"
 	switch r.URL.Query().Get("next") {
 	case "setup":
@@ -433,11 +512,40 @@ type uiData struct {
 	ModeAll      bool
 	ModeHistory  string
 	Signedout    bool
-	Remote       bool // opened from another computer through the tailnet
+	Next         string // where signing in again returns to
+	Remote       bool   // opened from another computer through the tailnet
 	Title        string
 	Refresh      int
 	Wide         bool // use the wide two-pane frame
 	Full         bool // with Wide, fill the whole browser window
+	// Warn is a short line on every page while wasync would stop with its
+	// terminal; WarnSetup links it to Start at login.
+	Warn      string
+	WarnSetup bool
+}
+
+func (d *uiData) frame() *uiData { return d }
+
+// framed is page data built on uiData.
+type framed interface{ frame() *uiData }
+
+// warnBackground fills the line every page shows while this wasync runs from
+// a terminal instead of in the background, so closing that terminal would
+// stop capture, approvals and list sends. A computer without a login item,
+// or a wasync whose start cannot be told and that has one, shows nothing.
+func (h *handler) warnBackground(data any) {
+	f, ok := data.(framed)
+	if !ok || f.frame().Signedout || h.service == nil || h.service.Where() == "" || h.info.StartedBy == "login item" {
+		return
+	}
+	d := f.frame()
+	switch installed, err := h.service.Installed(); {
+	case err != nil:
+	case !installed:
+		d.Warn, d.WarnSetup = "wasync stops when its terminal closes.", true
+	case h.info.StartedBy != "":
+		d.Warn = "Not in the background: wasync stops when its terminal closes. Run wasync service restart."
+	}
 }
 
 func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
@@ -489,6 +597,7 @@ func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession)
 }
 
 func (h *handler) uiRender(w http.ResponseWriter, code int, data *uiData) {
+	h.warnBackground(data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
 	_ = uiTemplate.Execute(w, data)
@@ -515,13 +624,17 @@ button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
 </style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
-<nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>{{end}}`
+<nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>
+{{if .Warn}}<p class="bad" role="status"><strong>{{.Warn}}</strong>{{if .WarnSetup}} <a href="/ui/setup#login">Start at login</a>{{end}}</p>{{end}}{{end}}`
 
 var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}
 <h1>wasync approvals</h1>
-{{if .Signedout}}{{if .Remote}}
+{{if .Signedout}}{{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}{{if .Remote}}
 <p>Signed out. Reload the page.</p>{{else}}
-<p>This page needs a fresh link. Run <code>wasync approvals</code> in a terminal and it opens the page for you.</p>{{end}}
+<p>Signed out.</p>
+{{if .Gate}}<form method="post" action="/ui/signin"><input type="hidden" name="next" value="{{.Next}}"><button class="go">Sign in…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></form>
+<p class="mut">Or run <code>wasync web</code> in a terminal.</p>{{else}}
+<p>Run <code>wasync web</code> in a terminal to sign in.</p>{{end}}{{end}}
 {{else}}
 {{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
 {{if .Gate}}<p class="mut">Every approval here asks you for {{.Gate}} on this computer, showing exactly what you are approving. This page cannot approve anything by itself.</p>

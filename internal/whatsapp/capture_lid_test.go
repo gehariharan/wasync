@@ -71,7 +71,7 @@ func TestOnlyAListedNumbersHiddenAddressRepliesAreFollowed(t *testing.T) {
 	if last, err := s.LastIncoming(ctx, account, listed); err != nil || last.IsZero() {
 		t.Fatalf("the listed number's reply under its hidden address was not archived: %v %v", last, err)
 	}
-	stops, err := s.StopSenders(ctx, account, []string{listed, other, refused})
+	stops, err := s.StopSenders(ctx, account, map[string]time.Time{listed: time.Now().Add(-time.Hour), other: time.Now().Add(-time.Hour), refused: time.Now().Add(-time.Hour)})
 	if err != nil || len(stops) != 1 || !stops[listed] {
 		t.Fatalf("stops: %v %v", stops, err)
 	}

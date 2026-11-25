@@ -40,7 +40,9 @@ started with a different `--api-addr`.
 the terminal UI or `run`) cleanly and waits until the data directory is free. It asks the owner
 through its local API, or, when the owner runs without the API, asks its process to shut down as
 Ctrl-C would (on Windows, end the process it names). It does not unlink the phone and does not
-remove the login item (`wasync service uninstall` does).
+remove the login item (`wasync service uninstall` does). Nothing restarts it by itself until
+your next login; `wasync service restart` starts the login item's wasync again at once, after a
+stop or an upgrade, and also moves a wasync running in a terminal to the background.
 
 To unlink from the CLI, run `wasync logout` from any folder. While an owner is running, logout
 goes through it: it says which owner it used, unlinks the device, and that owner then stops,

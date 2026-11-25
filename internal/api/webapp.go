@@ -170,6 +170,7 @@ func agentCanRead(agents []agentauth.Client, chat string) bool {
 }
 
 func (h *handler) webRender(w http.ResponseWriter, t *template.Template, data any) {
+	h.warnBackground(data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.Execute(w, data); err != nil {
 		http.Error(w, "page error", http.StatusInternalServerError)

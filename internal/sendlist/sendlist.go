@@ -4,11 +4,14 @@
 // approving each chat or switching on open sending. wasync still paces it: the
 // owner picks how many new numbers an hour (5 to 20), first messages are
 // spaced at random intervals, and each number gets one message until it
-// replies. A number that answers STOP is dropped from the list.
+// replies. A number that answers STOP is dropped from every list and never
+// listed again.
 //
 // The lists are a private file next to agents.json. A missing file means no
 // lists; a damaged one means no lists too, so sends are refused rather than
-// guessed. Removing a list needs no confirmation, because stopping is safe.
+// guessed. Pausing or removing a list needs no confirmation, because stopping
+// is safe. A removed list's send history is kept for HistoryKept, so approving
+// the same numbers again never sends anyone a second first message.
 package sendlist
 
 import (
@@ -45,8 +48,18 @@ const (
 	// MessagesPerNew is how many list messages, replies to replies included,
 	// one agent may send per Window for each new number it may start.
 	MessagesPerNew = 3
+	// HistoryKept is the longest a removed list's send history is remembered.
+	HistoryKept = 30 * 24 * time.Hour
+	// maxHistory bounds the remembered numbers, and so does maxFileBytes, so
+	// the file stays readable; the oldest go first.
+	maxHistory = 3000
 
 	maxFileBytes = 1 << 20
+
+	// RecordFileName is the private file that remembers, for good, when each
+	// number first and last got a list message and which numbers replied STOP.
+	RecordFileName = "send-record.json"
+	maxRecordBytes = 16 << 20
 )
 
 // Number is one approved recipient and what was sent to it.
@@ -65,11 +78,24 @@ type List struct {
 	PerHour   int        `json:"per_hour,omitempty"` // new numbers an hour; 0 means DefaultPerHour
 	NextAt    *time.Time `json:"next_at,omitempty"`  // no first message before this
 	Numbers   []Number   `json:"numbers"`
-	Stopped   int        `json:"stopped,omitempty"` // numbers dropped after they replied STOP
+	Stopped   int        `json:"stopped,omitempty"`   // numbers dropped after they replied STOP
+	PausedAt  *time.Time `json:"paused_at,omitempty"` // no sends while set
 }
 
-// Active reports whether the list may be used at now.
+// Active reports whether the list is in force at now. A paused list is in
+// force (its numbers stay listed and replies are still read) but allows no
+// sends.
 func (l List) Active(now time.Time) bool { return l.Until == nil || now.Before(*l.Until) }
+
+// Paused reports whether the owner paused the list.
+func (l List) Paused() bool { return l.PausedAt != nil }
+
+// sent is one messaged number of a removed list, remembered for HistoryKept.
+type sent struct {
+	AgentID string `json:"agent_id"`
+	Number
+	RemovedAt time.Time `json:"removed_at"`
+}
 
 // NewPerHour is how many numbers the agent may message for the first time per Window.
 func (l List) NewPerHour() int {
@@ -131,6 +157,15 @@ func (l *List) Drop(stop map[string]bool) int {
 
 type file struct {
 	Lists []List `json:"lists"`
+	Sent  []sent `json:"sent,omitempty"` // removed lists' send history
+}
+
+// record is kept for good, apart from the lists so it never makes them
+// unreadable: numbers and times only, never message text.
+type record struct {
+	FirstSent map[string]time.Time `json:"first_sent,omitempty"` // earliest first list message, by any agent
+	LastSent  map[string]time.Time `json:"last_sent,omitempty"`  // latest list message, by any agent
+	OptedOut  []string             `json:"opted_out,omitempty"`  // numbers that replied STOP
 }
 
 // mu serializes changes within the one wasync owner process that writes the file.
@@ -141,49 +176,151 @@ var mu sync.Mutex
 func Load(dir string) ([]List, error) {
 	mu.Lock()
 	defer mu.Unlock()
-	return load(dir)
+	v, err := load(dir)
+	return v.Lists, err
 }
 
-func load(dir string) ([]List, error) {
+// readPrivate decodes the private file name in dir into v. A missing file
+// leaves v as it is.
+func readPrivate(dir, name string, limit int, v any) error {
 	if dir == "" {
-		return nil, nil
+		return nil
 	}
-	path := filepath.Join(dir, FileName)
+	path := filepath.Join(dir, name)
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		return nil, nil
+		return nil
 	}
 	if err := localfs.CheckPrivateFile(path); err != nil {
-		return nil, fmt.Errorf("%s must be a regular private file: %w", FileName, err)
+		return fmt.Errorf("%s must be a regular private file: %w", name, err)
 	}
 	f, err := os.Open(path)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer f.Close()
-	data, err := io.ReadAll(io.LimitReader(f, maxFileBytes+1))
+	data, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
 	if err != nil {
-		return nil, err
+		return err
 	}
-	if len(data) > maxFileBytes {
-		return nil, fmt.Errorf("%s is too large", FileName)
+	if len(data) > limit {
+		return fmt.Errorf("%s is too large", name)
 	}
-	var v file
 	dec := json.NewDecoder(bytes.NewReader(data))
 	dec.DisallowUnknownFields()
-	if err = dec.Decode(&v); err != nil {
-		return nil, fmt.Errorf("invalid %s: %w", FileName, err)
+	if err = dec.Decode(v); err != nil {
+		return fmt.Errorf("invalid %s: %w", name, err)
+	}
+	return nil
+}
+
+// load reads the lists. A number any agent's list ever messaged counts as
+// messaged on every list, as of the latest list message to it by any agent,
+// so no agent sends it another message before it replies to that one.
+func load(dir string) (file, error) {
+	var v file
+	if err := readPrivate(dir, FileName, maxFileBytes, &v); err != nil {
+		return file{}, err
 	}
 	for _, l := range v.Lists {
 		if l.AgentID == "" || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
-			return nil, fmt.Errorf("invalid %s: a list has no agent, too many numbers or an invalid pace", FileName)
+			return file{}, fmt.Errorf("invalid %s: a list has no agent, too many numbers or an invalid pace", FileName)
 		}
 		for _, x := range l.Numbers {
-			if _, ok := NumberChat(strings.TrimSuffix(x.Chat, "@s.whatsapp.net")); !ok || !strings.HasSuffix(x.Chat, "@s.whatsapp.net") {
-				return nil, fmt.Errorf("invalid %s: %q is not a phone number address", FileName, x.Chat)
+			if !numberAddress(x.Chat) {
+				return file{}, fmt.Errorf("invalid %s: %q is not a phone number address", FileName, x.Chat)
 			}
 		}
 	}
-	return v.Lists, nil
+	for _, x := range v.Sent {
+		if x.AgentID == "" || !numberAddress(x.Chat) {
+			return file{}, fmt.Errorf("invalid %s: a remembered number has no agent or is not a phone number address", FileName)
+		}
+	}
+	v.Sent = recent(v.Sent)
+	r, err := loadRecord(dir)
+	if err != nil {
+		return file{}, err
+	}
+	for i := range v.Lists {
+		for j := range v.Lists[i].Numbers {
+			n := &v.Lists[i].Numbers[j]
+			if at, ok := r.FirstSent[n.Chat]; ok && n.FirstSentAt == nil {
+				n.FirstSentAt = &at
+			}
+			if at, ok := r.LastSent[n.Chat]; ok && (n.LastSentAt == nil || at.After(*n.LastSentAt)) {
+				n.LastSentAt = &at
+			}
+		}
+	}
+	return v, nil
+}
+
+func loadRecord(dir string) (record, error) {
+	var r record
+	if err := readPrivate(dir, RecordFileName, maxRecordBytes, &r); err != nil {
+		return record{}, err
+	}
+	for _, m := range []map[string]time.Time{r.FirstSent, r.LastSent} {
+		for chat := range m {
+			if !numberAddress(chat) {
+				return record{}, fmt.Errorf("invalid %s: %q is not a phone number address", RecordFileName, chat)
+			}
+		}
+	}
+	for _, chat := range r.OptedOut {
+		if !numberAddress(chat) {
+			return record{}, fmt.Errorf("invalid %s: %q is not a phone number address", RecordFileName, chat)
+		}
+	}
+	if r.FirstSent == nil {
+		r.FirstSent = map[string]time.Time{}
+	}
+	if r.LastSent == nil {
+		r.LastSent = map[string]time.Time{}
+	}
+	return r, nil
+}
+
+// note adds every first and latest message in v to r, and reports whether r
+// changed.
+func (r *record) note(v file) bool {
+	changed := false
+	add := func(x Number) {
+		if at, seen := r.FirstSent[x.Chat]; x.FirstSentAt != nil && (!seen || x.FirstSentAt.Before(at)) {
+			r.FirstSent[x.Chat], changed = x.FirstSentAt.UTC(), true
+		}
+		if at, seen := r.LastSent[x.Chat]; x.LastSentAt != nil && (!seen || x.LastSentAt.After(at)) {
+			r.LastSent[x.Chat], changed = x.LastSentAt.UTC(), true
+		}
+	}
+	for _, l := range v.Lists {
+		for _, x := range l.Numbers {
+			add(x)
+		}
+	}
+	for _, x := range v.Sent {
+		add(x.Number)
+	}
+	return changed
+}
+
+// recent keeps the history removed in the last HistoryKept, newest first, at
+// most maxHistory of it.
+func recent(all []sent) []sent {
+	forget := time.Now().Add(-HistoryKept)
+	kept := all[:0]
+	for _, x := range all {
+		if x.RemovedAt.After(forget) {
+			kept = append(kept, x)
+		}
+	}
+	sort.SliceStable(kept, func(i, j int) bool { return kept[i].RemovedAt.After(kept[j].RemovedAt) })
+	return kept[:min(len(kept), maxHistory)]
+}
+
+func numberAddress(chat string) bool {
+	_, ok := NumberChat(strings.TrimSuffix(chat, "@s.whatsapp.net"))
+	return ok && strings.HasSuffix(chat, "@s.whatsapp.net")
 }
 
 // For returns the agent's list when it has one in force at now. Any problem
@@ -216,55 +353,174 @@ func Listed(dir, chat string, now time.Time) bool {
 }
 
 // Put saves l as the agent's list, replacing any earlier one. Numbers the
-// earlier list already messaged keep that history, so approving a list again
-// never lets a number be messaged twice without a reply.
+// earlier list, or a list removed in the last HistoryKept, already messaged
+// keep that history, and numbers any agent's list ever messaged count as
+// messaged, so approving a list again never lets a number be messaged twice
+// without a reply. Numbers the earlier list messaged that l
+// leaves out are remembered as if removed. Numbers that ever replied STOP are
+// left out of l and counted in its Stopped.
 func Put(dir string, l List) error {
 	if l.AgentID == "" || len(l.Numbers) == 0 || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
 		return fmt.Errorf("a list needs an agent, 1 to %d numbers and a pace of %d to %d an hour", MaxNumbers, MinPerHour, MaxPerHour)
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	lists, err := load(dir)
+	v, err := load(dir)
 	if err != nil {
 		return err
 	}
-	out := lists[:0]
-	for _, old := range lists {
+	now := time.Now().UTC()
+	out := v.Lists[:0]
+	for _, old := range v.Lists {
 		if old.AgentID != l.AgentID {
 			out = append(out, old)
 			continue
 		}
-		for i := range l.Numbers {
-			if prev := old.Find(l.Numbers[i].Chat); prev != nil {
-				l.Numbers[i].FirstSentAt, l.Numbers[i].LastSentAt = prev.FirstSentAt, prev.LastSentAt
-			}
-		}
-		l.Stopped += old.Stopped
+		v.Sent = append(v.Sent, messaged(old, now)...)
 		if old.NextAt != nil && (l.NextAt == nil || old.NextAt.After(*l.NextAt)) {
 			l.NextAt = old.NextAt
 		}
 	}
-	return save(dir, append(out, l))
-}
-
-// Remove deletes the agent's list. Removing a list that is not there is harmless.
-func Remove(dir, agentID string) error {
-	mu.Lock()
-	defer mu.Unlock()
-	lists, err := load(dir)
+	kept := v.Sent[:0]
+	for _, x := range v.Sent {
+		if n := l.Find(x.Chat); x.AgentID == l.AgentID && n != nil {
+			if n.FirstSentAt == nil || x.FirstSentAt != nil && x.FirstSentAt.Before(*n.FirstSentAt) {
+				n.FirstSentAt = x.FirstSentAt
+			}
+			if n.LastSentAt == nil || x.LastSentAt != nil && x.LastSentAt.After(*n.LastSentAt) {
+				n.LastSentAt = x.LastSentAt
+			}
+			continue
+		}
+		kept = append(kept, x)
+	}
+	r, err := loadRecord(dir)
 	if err != nil {
 		return err
 	}
-	out := lists[:0]
-	for _, l := range lists {
-		if l.AgentID != agentID {
-			out = append(out, l)
+	l.Stopped = 0
+	l.Drop(chatSet(r.OptedOut))
+	v.Lists, v.Sent = append(out, l), kept
+	return save(dir, v)
+}
+
+func chatSet(chats []string) map[string]bool {
+	out := make(map[string]bool, len(chats))
+	for _, c := range chats {
+		out[c] = true
+	}
+	return out
+}
+
+// FirstSent returns, for every number a list ever messaged that has not
+// replied STOP, the earliest first list message to it from any agent. It is
+// kept for good, after the lists and their history are gone.
+func FirstSent(dir string) (map[string]time.Time, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	v, err := load(dir)
+	if err != nil {
+		return nil, err
+	}
+	r, err := loadRecord(dir)
+	if err != nil {
+		return nil, err
+	}
+	r.note(v)
+	for _, chat := range r.OptedOut {
+		delete(r.FirstSent, chat)
+	}
+	return r.FirstSent, nil
+}
+
+// OptOut remembers for good that the numbers in stop replied STOP and drops
+// them from every list, counting them in that list's Stopped. No list may
+// hold them again.
+func OptOut(dir string, stop map[string]bool) error {
+	mu.Lock()
+	defer mu.Unlock()
+	r, err := loadRecord(dir)
+	if err != nil {
+		return err
+	}
+	known := chatSet(r.OptedOut)
+	for chat := range stop {
+		if stop[chat] && !known[chat] {
+			r.OptedOut = append(r.OptedOut, chat)
 		}
 	}
-	if len(out) == len(lists) {
+	if len(r.OptedOut) > len(known) {
+		sort.Strings(r.OptedOut)
+		if err = saveRecord(dir, r); err != nil {
+			return err
+		}
+	}
+	v, err := load(dir)
+	if err != nil {
+		return err
+	}
+	changed := false
+	for i := range v.Lists {
+		if v.Lists[i].Drop(stop) > 0 {
+			changed = true
+		}
+	}
+	if !changed {
 		return nil
 	}
-	return save(dir, out)
+	return save(dir, v)
+}
+
+// messaged is what l sent, to remember once it is gone.
+func messaged(l List, now time.Time) []sent {
+	var out []sent
+	for _, x := range l.Numbers {
+		if x.FirstSentAt != nil || x.LastSentAt != nil {
+			out = append(out, sent{AgentID: l.AgentID, Number: x, RemovedAt: now})
+		}
+	}
+	return out
+}
+
+// Remove deletes the agent's list and remembers what it sent for HistoryKept.
+// Removing a list that is not there is harmless.
+func Remove(dir, agentID string) error {
+	mu.Lock()
+	defer mu.Unlock()
+	v, err := load(dir)
+	if err != nil {
+		return err
+	}
+	now := time.Now().UTC()
+	out := v.Lists[:0]
+	for _, l := range v.Lists {
+		if l.AgentID != agentID {
+			out = append(out, l)
+			continue
+		}
+		v.Sent = append(v.Sent, messaged(l, now)...)
+	}
+	if len(out) == len(v.Lists) {
+		return nil
+	}
+	v.Lists = out
+	return save(dir, v)
+}
+
+// Pause stops the agent's list from sending, keeping everything else, or
+// resumes it when pause is false. Pausing a paused list, or resuming a running
+// one, changes nothing.
+func Pause(dir, agentID string, pause bool, now time.Time) error {
+	return Update(dir, agentID, now, func(l *List) error {
+		switch {
+		case pause && l.PausedAt == nil:
+			at := now.UTC()
+			l.PausedAt = &at
+		case !pause:
+			l.PausedAt = nil
+		}
+		return nil
+	})
 }
 
 // ErrNoList means the agent has no list in force.
@@ -274,34 +530,68 @@ var ErrNoList = errors.New("no approved list for this agent")
 func Update(dir, agentID string, now time.Time, change func(*List) error) error {
 	mu.Lock()
 	defer mu.Unlock()
-	lists, err := load(dir)
+	v, err := load(dir)
 	if err != nil {
 		return err
 	}
-	for i := range lists {
-		if lists[i].AgentID == agentID && lists[i].Active(now) {
-			if err = change(&lists[i]); err != nil {
+	for i := range v.Lists {
+		if v.Lists[i].AgentID == agentID && v.Lists[i].Active(now) {
+			if err = change(&v.Lists[i]); err != nil {
 				return err
 			}
-			return save(dir, lists)
+			return save(dir, v)
 		}
 	}
 	return ErrNoList
 }
 
-func save(dir string, lists []List) (result error) {
-	if err := localfs.EnsureDir(dir); err != nil {
-		return err
-	}
-	if lists == nil {
-		lists = []List{}
-	}
-	sort.SliceStable(lists, func(i, j int) bool { return lists[i].Agent < lists[j].Agent })
-	data, err := json.MarshalIndent(file{Lists: lists}, "", "  ")
+// save writes the lists, after noting their first messages in the record.
+func save(dir string, v file) error {
+	r, err := loadRecord(dir)
 	if err != nil {
 		return err
 	}
-	tmp := filepath.Join(dir, "."+FileName+".tmp")
+	if r.note(v) {
+		if err = saveRecord(dir, r); err != nil {
+			return err
+		}
+	}
+	if v.Lists == nil {
+		v.Lists = []List{}
+	}
+	sort.SliceStable(v.Lists, func(i, j int) bool { return v.Lists[i].Agent < v.Lists[j].Agent })
+	v.Sent = recent(v.Sent)
+	data, err := json.MarshalIndent(v, "", "  ")
+	for err == nil && len(data)+1 > maxFileBytes && len(v.Sent) > 0 {
+		v.Sent = v.Sent[:len(v.Sent)-max(1, len(v.Sent)/10)]
+		data, err = json.MarshalIndent(v, "", "  ")
+	}
+	if err != nil {
+		return err
+	}
+	if len(data)+1 > maxFileBytes {
+		return fmt.Errorf("the approved lists are too large for %s; remove a list first", FileName)
+	}
+	return writePrivate(dir, FileName, data)
+}
+
+func saveRecord(dir string, r record) error {
+	data, err := json.Marshal(r)
+	if err != nil {
+		return err
+	}
+	if len(data)+1 > maxRecordBytes {
+		return fmt.Errorf("%s is full", RecordFileName)
+	}
+	return writePrivate(dir, RecordFileName, data)
+}
+
+// writePrivate replaces the private file name in dir with data, atomically.
+func writePrivate(dir, name string, data []byte) (result error) {
+	if err := localfs.EnsureDir(dir); err != nil {
+		return err
+	}
+	tmp := filepath.Join(dir, "."+name+".tmp")
 	f, err := localfs.OpenFile(tmp)
 	if err != nil {
 		return err
@@ -320,7 +610,7 @@ func save(dir string, lists []List) (result error) {
 	if err = errors.Join(err, f.Close()); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(dir, FileName))
+	return os.Rename(tmp, filepath.Join(dir, name))
 }
 
 // NumberChat turns a phone number in international form ("+1 555 123 0000",

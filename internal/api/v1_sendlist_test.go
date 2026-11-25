@@ -8,6 +8,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -190,6 +192,91 @@ func TestANumberThatRepliesStopIsDroppedFromTheList(t *testing.T) {
 	wantV1Error(t, status, body, 403, query.CodeForbidden)
 	if rec.count() != 1 {
 		t.Fatalf("a number that said STOP was messaged again: %d", rec.count())
+	}
+}
+
+// Older chat with a listed person never drops them, only a reply after the
+// list's first message to them does.
+func TestOnlyAStopAfterTheFirstListMessageDropsTheNumber(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	old := storage.Message{GroupID: listed, MessageID: "OLD", SenderID: listed, Timestamp: time.Now().Add(-48 * time.Hour), Type: "text", Text: "see you at the bus stop"}
+	if _, err := f.store.Apply(context.Background(), f.account, []storage.Message{old}); err != nil {
+		t.Fatal(err)
+	}
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000")
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	f.incoming(t, listed, "R1", "sure")
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("an old message dropped the number: %d %s", status, body)
+	}
+	f.incoming(t, listed, "R2", "stop")
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if l := listOf(t, f, "poster"); l.Find(listed) != nil || l.Stopped != 1 || rec.count() != 2 {
+		t.Fatalf("a STOP after the first message must drop it: %+v sends=%d", l, rec.count())
+	}
+}
+
+// A STOP belongs to the number: no other agent may message it after, and
+// approving the same numbers again neither brings it back nor counts it twice.
+func TestAStopToOneAgentKeepsTheNumberOffEveryList(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	f.incoming(t, listed, "R1", "stop")
+	status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	f.approveList(t, "other", nil, "15551230000", "15551230001")
+	status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if l := listOf(t, f, "other"); l.Find(listed) != nil || l.Stopped != 1 || len(l.Numbers) != 1 {
+		t.Fatalf("another agent's list holds the number that said STOP: %+v", l)
+	}
+	for range 2 {
+		f.approveList(t, "poster", nil, "15551230000", "15551230001")
+		if l := listOf(t, f, "poster"); l.Find(listed) != nil || l.Stopped != 1 {
+			t.Fatalf("approving again changed the STOP count or listed the number: %+v", l)
+		}
+	}
+	if rec.count() != 1 {
+		t.Fatalf("a number that said STOP was messaged again: %d", rec.count())
+	}
+}
+
+// A STOP that arrives after the list is gone, and after its send history is
+// forgotten, still keeps the number from any agent's first message.
+func TestAStopAfterTheListIsRemovedOutlivesTheHistory(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Remove(f.dir, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.incoming(t, listed, "R1", "stop")
+	// Day 35: the removed list's send history has been forgotten.
+	if err := os.WriteFile(filepath.Join(f.dir, sendlist.FileName), []byte(`{"lists":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.approveList(t, "other", nil, "15551230000")
+	status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if rec.count() != 1 {
+		t.Fatalf("a number that said STOP after its list was removed got a first message: %d", rec.count())
 	}
 }
 
@@ -506,5 +593,201 @@ func TestGapStaysWithinHalfToOneAndAHalfOfTheAverage(t *testing.T) {
 		if lo, hi := sendlist.Gap(n, 0), sendlist.Gap(n, 0.9999); lo != avg/2 || hi > avg*3/2 || hi < avg*3/2-time.Second {
 			t.Fatalf("%d: %v %v", n, lo, hi)
 		}
+	}
+}
+
+func TestAPausedListSendsNothingUntilItIsResumed(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Pause(f.dir, c.ID, true, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if !strings.Contains(string(body), "paused") {
+		t.Fatalf("the refusal should say the list is paused: %s", body)
+	}
+	status, body = f.send(t, "GET", "/api/v1/send-list", agent, "")
+	var got struct {
+		Data sendListView `json:"data"`
+	}
+	if status != 200 || json.Unmarshal(body, &got) != nil || !got.Data.Active || !got.Data.Paused || got.Data.NewNumbersLeft != 0 || got.Data.MessagesLeft != 0 || got.Data.NextNewAt != nil || got.Data.Numbers != 2 {
+		t.Fatalf("send-list while paused: %d %s", status, body)
+	}
+	if err := sendlist.Pause(f.dir, c.ID, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if status, body = f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("after resuming: %d %s", status, body)
+	}
+	if rec.count() != 1 {
+		t.Fatalf("sends: %d", rec.count())
+	}
+}
+
+func TestRemovingAndApprovingAListAgainNeverSendsASecondFirstMessage(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Remove(f.dir, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi again"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if !strings.Contains(string(body), "has not replied") || rec.count() != 1 {
+		t.Fatalf("a removed and re-approved number got a second first message: %d %s", rec.count(), body)
+	}
+	if l := listOf(t, f, "poster"); l.NotMessaged() != 1 {
+		t.Fatalf("the re-approved list forgot who was messaged: %+v", l)
+	}
+}
+
+// replyBetween stores a reply from the person at chat timed now, between the
+// list message before it and the one after it.
+func (f fixture) replyBetween(t *testing.T, chat, id, text string) {
+	t.Helper()
+	time.Sleep(10 * time.Millisecond)
+	m := storage.Message{GroupID: chat, MessageID: id, SenderID: chat, Timestamp: time.Now(), Type: "text", Text: text}
+	if res, err := f.store.Apply(context.Background(), f.account, []storage.Message{m}); err != nil || res.Stored != 1 {
+		t.Fatalf("store reply: %+v %v", res, err)
+	}
+	time.Sleep(10 * time.Millisecond)
+}
+
+// One message per number until it replies holds across every agent: while
+// two lists hold the same number, neither sends while the latest list message
+// to it, by either agent, is unanswered.
+func TestNoAgentMessagesANumberWhileAnotherAgentsMessageIsUnanswered(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "other", nil, "15551230000", "15551230001")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first message: %d %s", status, body)
+	}
+	status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if !strings.Contains(string(body), "has not replied") {
+		t.Fatalf("another agent sent a second first message: %s", body)
+	}
+	f.replyBetween(t, listed, "R1", "Yes, tell me more")
+	if status, body = f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"here it is"}`); status != 200 {
+		t.Fatalf("after a reply: %d %s", status, body)
+	}
+	status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if rec.count() != 2 {
+		t.Fatalf("a reply to the first message let another agent answer past the latest one: %d", rec.count())
+	}
+	f.incoming(t, listed, "R2", "Thanks")
+	if status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"anything else?"}`); status != 200 {
+		t.Fatalf("after a reply to the latest message: %d %s", status, body)
+	}
+	if entries := f.sentEntries(t); len(entries) != 3 || entries[0].NewNumber {
+		t.Fatalf("a number already messaged was counted as new: %+v", entries)
+	}
+}
+
+// The latest list message to a number is remembered for good, after a removed
+// list's send history is forgotten.
+func TestAnUnansweredListMessageOutlivesTheSendHistory(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	first := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first message: %d %s", status, body)
+	}
+	f.replyBetween(t, listed, "R1", "Yes, tell me more")
+	if status, body := f.send(t, "POST", "/api/v1/messages", first, `{"to":"15551230000","text":"here it is"}`); status != 200 {
+		t.Fatalf("after a reply: %d %s", status, body)
+	}
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Remove(f.dir, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	// Day 35: the removed list's send history has been forgotten.
+	if err := os.WriteFile(filepath.Join(f.dir, sendlist.FileName), []byte(`{"lists":[]}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	f.approveList(t, "other", nil, "15551230000", "15551230001")
+	status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if l := listOf(t, f, "other"); l.NotMessaged() != 1 || rec.count() != 2 {
+		t.Fatalf("another agent's list messaged a number with an unanswered message: %d %+v", rec.count(), l)
+	}
+	f.incoming(t, listed, "R2", "Thanks")
+	if status, body = f.send(t, "POST", "/api/v1/messages", second, `{"to":"15551230000","text":"anything else?"}`); status != 200 {
+		t.Fatalf("after a reply to the latest message: %d %s", status, body)
+	}
+}
+
+func TestPausingAListNeedsNoConfirmationAndResumingDoes(t *testing.T) {
+	stub := &promptStub{}
+	f, c, csrf := agentsFixture(t, stub)
+	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fixture{dir: f.dir}.approveList(t, "helper", nil, "15551230000", "15551230001")
+	_, page, _ := c.get("/ui/agents")
+	if !strings.Contains(page, `value="listpause">Pause</button>`) || strings.Contains(page, "Resume") {
+		t.Fatalf("a running list should offer Pause:\n%s", page)
+	}
+	post := func(action string) string {
+		_, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {action}, "agent": {"helper"}})
+		return notice(hd)
+	}
+	if got := post("listpause"); got != "listpause" || len(stub.seen()) != 0 || !listOf(t, fixture{dir: f.dir}, "helper").Paused() {
+		t.Fatalf("pausing must work without a prompt: %q %d", got, len(stub.seen()))
+	}
+	_, page, _ = c.get("/ui/agents")
+	if !strings.Contains(page, "Paused</strong>") || !strings.Contains(page, `value="listresume">Resume…</button>`) || strings.Contains(page, `value="listpause"`) {
+		t.Fatalf("a paused list should say so and offer Resume:\n%s", page)
+	}
+	if got := post("listresume"); got != "declined" || !listOf(t, fixture{dir: f.dir}, "helper").Paused() {
+		t.Fatalf("a declined prompt resumed the list: %q", got)
+	}
+	stub.set(true)
+	if got := post("listresume"); got != "listresume" || listOf(t, fixture{dir: f.dir}, "helper").Paused() {
+		t.Fatalf("a confirmed prompt did not resume the list: %q", got)
+	}
+	if p := stub.seen(); len(p) != 2 || !strings.Contains(p[1], `"helper"`) || !strings.Contains(p[1], "2 number(s)") {
+		t.Fatalf("the prompt must name the agent and the count: %q", p)
+	}
+	if got := post("listresume"); got != "failed" {
+		t.Fatalf("resuming a running list: %q", got)
+	}
+	if audit := auditText(t, f.dir); !strings.Contains(audit, `"event":"send_list_pause"`) || !strings.Contains(audit, `"event":"send_list_resume"`) {
+		t.Fatalf("pause and resume were not audited: %s", audit)
+	}
+}
+
+func TestAPausedListCannotBeResumedWithoutASystemConfirmation(t *testing.T) {
+	f, c, csrf := agentsFixture(t, nil)
+	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	fixture{dir: f.dir}.approveList(t, "helper", nil, "15551230000")
+	if _, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"listpause"}, "agent": {"helper"}}); notice(hd) != "listpause" {
+		t.Fatalf("pausing on a computer with no confirmation: %q", notice(hd))
+	}
+	_, page, _ := c.get("/ui/agents")
+	if strings.Contains(page, "Resume") {
+		t.Fatalf("a computer with no confirmation was offered Resume:\n%s", page)
+	}
+	if _, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"listresume"}, "agent": {"helper"}}); notice(hd) != "nogate" || !listOf(t, fixture{dir: f.dir}, "helper").Paused() {
+		t.Fatalf("resumed with no confirmation: %q", notice(hd))
 	}
 }

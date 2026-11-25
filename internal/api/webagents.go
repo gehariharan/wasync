@@ -22,9 +22,10 @@ import (
 // sending switch and the approved recipient lists. Widening what an agent may
 // do (letting it send, turning open sending on, approving a list) ends in the
 // operating system's confirmation prompt, like every other approval in the web
-// app, and is read-only on a computer that cannot show one. Narrowing
-// (stopping sending, turning open sending off, removing a list) needs no
-// prompt: stopping is always safe.
+// app, and is read-only on a computer that cannot show one. Resuming a paused
+// list widens it again, so it asks too. Narrowing (stopping sending, turning
+// open sending off, pausing or removing a list) needs no prompt: stopping is
+// always safe.
 
 type agentRow struct {
 	Name, Scopes string
@@ -53,6 +54,7 @@ type listRow struct {
 	Numbers, NotMessaged, Stopped, PerHour int
 	Until                                  string
 	Gone                                   bool // its agent is no longer active
+	Paused, Ended                          bool
 }
 
 type listsView struct {
@@ -109,11 +111,11 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 			active[c.ID] = c.Status(now) == "active"
 		}
 		for _, l := range lists {
-			row := listRow{Agent: humancheck.Clean(l.Agent, 40), Numbers: len(l.Numbers), NotMessaged: l.NotMessaged(), Stopped: l.Stopped, PerHour: l.NewPerHour(), Until: "no end", Gone: !active[l.AgentID]}
+			row := listRow{Agent: humancheck.Clean(l.Agent, 40), Numbers: len(l.Numbers), NotMessaged: l.NotMessaged(), Stopped: l.Stopped, PerHour: l.NewPerHour(), Until: "no end", Gone: !active[l.AgentID], Paused: l.Paused()}
 			if l.Until != nil {
 				row.Until = l.Until.Local().Format("2 Jan 15:04")
 				if !l.Active(now) {
-					row.Until = "ended " + row.Until
+					row.Until, row.Ended = "ended "+row.Until, true
 				}
 			}
 			d.Lists.Rows = append(d.Lists.Rows, row)
@@ -283,22 +285,36 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 		back("openon")
 	case "liston":
 		h.listOn(w, r, name, back, audit)
-	case "listoff":
+	case "listoff", "listpause":
 		lists, err := sendlist.Load(h.dataDir)
 		if err != nil {
 			back("failed")
 			return
 		}
+		pause := r.PostForm.Get("action") == "listpause"
 		for _, l := range lists {
-			if l.Agent == name {
-				if err = sendlist.Remove(h.dataDir, l.AgentID); err != nil {
-					back("failed")
-					return
-				}
+			if l.Agent != name {
+				continue
 			}
+			if pause {
+				err = sendlist.Pause(h.dataDir, l.AgentID, true, time.Now())
+			} else {
+				err = sendlist.Remove(h.dataDir, l.AgentID)
+			}
+			if err != nil {
+				back("failed")
+				return
+			}
+		}
+		if pause {
+			audit("send_list_pause", name)
+			back("listpause")
+			return
 		}
 		audit("send_list_off", name)
 		back("listoff")
+	case "listresume":
+		h.listResume(name, r, back, audit)
 	case "openoff":
 		if err := opensend.Stop(h.dataDir); err != nil {
 			back("failed")
@@ -394,6 +410,41 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 	back("liston")
 }
 
+// listResume lets a paused list send again after the system confirmation.
+func (h *handler) listResume(name string, r *http.Request, back func(string), audit func(string, string)) {
+	if !h.gate(r).Enabled() {
+		back(noGate(r))
+		return
+	}
+	now := time.Now()
+	lists, err := sendlist.Load(h.dataDir)
+	if err != nil {
+		back("failed")
+		return
+	}
+	var list *sendlist.List
+	for i := range lists {
+		if lists[i].Agent == name && lists[i].Active(now) && lists[i].Paused() {
+			list = &lists[i]
+		}
+	}
+	if list == nil {
+		back("failed")
+		return
+	}
+	prompt := fmt.Sprintf("Approve: let the agent %s message the %d number(s) on its list again (%d not messaged yet), at most %d new numbers an hour.", agentauth.QuotedName(name), len(list.Numbers), list.NotMessaged(), list.NewPerHour())
+	if err = h.confirmError(r.Context(), prompt); err != nil {
+		back(noticeFor(err))
+		return
+	}
+	if err = sendlist.Pause(h.dataDir, list.AgentID, false, now); err != nil {
+		back("failed")
+		return
+	}
+	audit("send_list_resume", name)
+	back("listresume")
+}
+
 var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{template "head" .}}
 <h1>Agents</h1>
 {{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
@@ -415,8 +466,8 @@ var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{temp
 <h2>Approved numbers</h2>
 <p>An agent may message the numbers you approve for it here, and no others: as many new numbers an hour as you choose, spaced at random, one message each until they reply. A number that replies STOP is removed.</p>
 {{if .Lists.Rows}}<table class="sent"><thead><tr><th>Agent</th><th>Numbers</th><th>New an hour</th><th>Ends</th><th></th></tr></thead><tbody>
-{{range .Lists.Rows}}<tr><td>🤖 {{.Agent}}{{if .Gone}} <span class="mut">(no longer active)</span>{{end}}</td><td>{{.Numbers}} <span class="mut">({{.NotMessaged}} not messaged yet{{if .Stopped}}, {{.Stopped}} removed after STOP{{end}})</span></td><td>{{.PerHour}}</td><td>{{.Until}}</td>
-<td><form method="post" action="/ui/agents" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="listoff"><input type="hidden" name="agent" value="{{.Agent}}"><button>Remove list</button></form></td></tr>
+{{range .Lists.Rows}}<tr><td>🤖 {{.Agent}}{{if .Gone}} <span class="mut">(no longer active)</span>{{end}}{{if .Paused}} <strong class="bad">Paused</strong>{{end}}</td><td>{{.Numbers}} <span class="mut">({{.NotMessaged}} not messaged yet{{if .Stopped}}, {{.Stopped}} removed after STOP{{end}})</span></td><td>{{.PerHour}}</td><td>{{.Until}}</td>
+<td><form method="post" action="/ui/agents" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Agent}}">{{if .Ended}}{{else if not .Paused}}<button name="action" value="listpause">Pause</button>{{else if $.Open.Gate}}<button name="action" value="listresume">Resume…</button>{{end}}<button name="action" value="listoff">Remove list</button></form></td></tr>
 {{end}}</tbody></table>{{end}}
 {{if .Open.Gate}}{{if .Lists.Senders}}<form method="post" action="/ui/agents" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="liston">
 <p><label>Agent <select name="agent">{{range .Lists.Senders}}<option>{{.}}</option>{{end}}</select></label></p>
@@ -424,7 +475,7 @@ var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{temp
 <p><label>Or a file (.txt or .csv) <input type="file" name="file" accept=".txt,.csv,text/plain,text/csv"></label></p>
 <p><label>New numbers an hour <select name="rate">{{range .Lists.Paces}}<option>{{.}}</option>{{end}}</select></label> <span class="mut">Spaced at random through the hour.</span></p>
 <p><label>Ends <select name="ends"><option value="1d">in 1 day</option><option value="7d" selected>in 7 days</option><option value="30d">in 30 days</option><option value="none">never (until removed)</option></select></label></p>
-<p><button>Approve list…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}. Approving again replaces the agent's list.</span></p></form>
+<p><button>Approve list…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}. Approving again replaces the agent's list and keeps who was messaged.</span></p></form>
 {{else}}<p class="mut">Allow sending for an agent first.</p>{{end}}{{end}}
 
 <h2>Agents</h2>

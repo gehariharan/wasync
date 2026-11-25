@@ -31,6 +31,7 @@ func init() {
 // sendListView is the agent-facing state of its list.
 type sendListView struct {
 	Active         bool       `json:"active"`
+	Paused         bool       `json:"paused"`                // the person paused it: no sends until they resume it
 	CanSend        bool       `json:"can_send"`              // holds the send scope
 	Numbers        int        `json:"numbers"`               // on the list now
 	NotMessaged    int        `json:"not_messaged"`          // never messaged yet
@@ -63,6 +64,11 @@ func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) 
 	if list, ok := sendlist.For(h.dataDir, c.ID, now); ok {
 		view.Active, view.Numbers, view.NotMessaged, view.Stopped, view.ExpiresAt = true, len(list.Numbers), list.NotMessaged(), list.Stopped, list.Until
 		view.NewPerHour, view.MessagesHour = list.NewPerHour(), list.MessagesPerHour()
+		if list.Paused() {
+			view.Paused = true
+			v1OK(w, id, view, nil)
+			return
+		}
 		pace, err := h.listPace(c.Name, now)
 		if err != nil {
 			v1Fail(w, id, 503, query.CodeInternal, "the sent log cannot be read", "check the permissions of the wasync data directory")
@@ -121,50 +127,37 @@ func (h *handler) listPace(agent string, now time.Time) (listPace, error) {
 	return p, nil
 }
 
-// dropStopped removes the numbers that replied STOP from the active list of
-// agentID, or from every active list when agentID is empty. Only those
-// numbers are looked up.
+// dropStopped finds the numbers that replied STOP after any agent's first
+// list message to them and keeps them off every list for good. It looks up
+// the numbers on the active list of agentID, or, when agentID is empty, every
+// number a list ever messaged, so a STOP after a list is gone still counts.
 func (h *handler) dropStopped(ctx context.Context, now time.Time, agentID string) error {
-	lists, err := sendlist.Load(h.dataDir)
+	first, err := sendlist.FirstSent(h.dataDir)
 	if err != nil {
 		return err
 	}
-	var chats []string
-	for _, l := range lists {
-		if l.Active(now) && (agentID == "" || l.AgentID == agentID) {
-			for _, x := range l.Numbers {
-				chats = append(chats, x.Chat)
+	since := first
+	if agentID != "" {
+		list, _ := sendlist.For(h.dataDir, agentID, now)
+		since = map[string]time.Time{}
+		for _, x := range list.Numbers {
+			if at, ok := first[x.Chat]; ok {
+				since[x.Chat] = at
 			}
 		}
 	}
-	if len(chats) == 0 {
+	if len(since) == 0 {
 		return nil
 	}
 	account, err := h.store.Account(ctx)
 	if err != nil || account == nil {
 		return err
 	}
-	stops, err := h.store.StopSenders(ctx, account.ID, chats)
+	stops, err := h.store.StopSenders(ctx, account.ID, since)
 	if err != nil || len(stops) == 0 {
 		return err
 	}
-	for _, l := range lists {
-		hit := false
-		for _, x := range l.Numbers {
-			hit = hit || stops[x.Chat]
-		}
-		if !hit {
-			continue
-		}
-		err = errors.Join(err, sendlist.Update(h.dataDir, l.AgentID, now, func(l *sendlist.List) error {
-			l.Drop(stops)
-			return nil
-		}))
-	}
-	if errors.Is(err, sendlist.ErrNoList) {
-		return nil // it expired or was removed meanwhile
-	}
-	return err
+	return sendlist.OptOut(h.dataDir, stops)
 }
 
 // retryLater answers 429 with a Retry-After when the time is known.
@@ -188,6 +181,10 @@ func (h *handler) listSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 	number := list.Find(chat)
 	if !ok || number == nil {
 		v1Fail(w, id, 403, query.CodeForbidden, "this number is not on your approved list (it was removed, it replied STOP, or the list ended)", "do not message it; ask the person if you need it approved again")
+		return false
+	}
+	if list.Paused() {
+		v1Fail(w, id, 403, query.CodeForbidden, "the person paused your approved list", "do not send until they resume it; GET /api/v1/send-list shows paused: false then")
 		return false
 	}
 	if number.LastSentAt != nil {

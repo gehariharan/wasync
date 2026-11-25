@@ -4,8 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
+	"unicode"
 )
 
 // Direct-chat replies, for the approved recipient lists: whether a person
@@ -91,10 +93,18 @@ func (s *Store) LastIncoming(ctx context.Context, account int64, chat string) (t
 	return time.UnixMilli(last.Int64).UTC(), nil
 }
 
-// StopSenders returns which of chats (phone-number addresses) ever sent the
-// whole message STOP (any case, surrounding spaces ignored) in a direct chat.
-func (s *Store) StopSenders(ctx context.Context, account int64, chats []string) (map[string]bool, error) {
+// StopSenders returns which of the phone-number addresses in since asked to
+// be left alone in a direct chat, by a reply IsOptOut accepts, at or after
+// the time since gives for that address. Earlier messages never count, and an
+// address with a zero time is not looked up.
+func (s *Store) StopSenders(ctx context.Context, account int64, since map[string]time.Time) (map[string]bool, error) {
 	out := map[string]bool{}
+	var chats []string
+	for c, at := range since {
+		if !at.IsZero() {
+			chats = append(chats, c)
+		}
+	}
 	if len(chats) == 0 {
 		return out, nil
 	}
@@ -102,19 +112,59 @@ func (s *Store) StopSenders(ctx context.Context, account int64, chats []string) 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.db.QueryContext(ctx, "SELECT group_id,text_content"+directIncoming+" AND length(text_content) BETWEEN 4 AND 64 AND lower(text_content) LIKE '%stop%'", account, in)
+	// A cheap filter before IsOptOut: every opt-out holds one of these
+	// letters in order, and a lone keyword is short.
+	rows, err := s.db.QueryContext(ctx, "SELECT group_id,timestamp,text_content"+directIncoming+` AND (length(text_content) <= 16 OR lower(text_content) LIKE '%stop%' OR lower(text_content) LIKE '%unsub%' OR lower(text_content) LIKE '%opt%out%' OR lower(text_content) LIKE '%remove%me%' OR lower(text_content) LIKE '%take%me%off%')`, account, in)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var chat, text string
-		if err = rows.Scan(&chat, &text); err != nil {
+		var at int64
+		if err = rows.Scan(&chat, &at, &text); err != nil {
 			return nil, err
 		}
-		if strings.EqualFold(strings.TrimSpace(text), "stop") {
+		if at >= since[person[chat]].UnixMilli() && IsOptOut(text) {
 			out[person[chat]] = true
 		}
 	}
 	return out, rows.Err()
+}
+
+// optOutWords stop a number wherever they stand in a reply, as whole words.
+var optOutWords = map[string]bool{"stop": true, "stopall": true, "unsubscribe": true, "unsub": true, "optout": true}
+
+// optOutPhrases stop a number wherever they stand in a reply, as whole words
+// in this order.
+var optOutPhrases = [][]string{{"opt", "out"}, {"remove", "me"}, {"take", "me", "off"}}
+
+// optOutAlone stop a number only when they are the whole reply, since they are
+// ordinary words otherwise.
+var optOutAlone = map[string]bool{"cancel": true, "end": true, "quit": true, "revoke": true}
+
+// IsOptOut reports whether a reply asks to be left alone. It errs toward
+// stopping: case, punctuation and emoji are ignored, and "stop",
+// "unsubscribe", "opt out", "remove me" or "take me off" anywhere in the reply
+// count ("Stop.", "STOP!", "please stop", "stop messaging me"). They count
+// only as whole words, so "nonstop" or "stopped" does not. "Cancel", "end",
+// "quit" and "revoke" count only as the whole reply.
+func IsOptOut(text string) bool {
+	words := strings.FieldsFunc(strings.ToLower(strings.NewReplacer("'", "", "\u2019", "").Replace(text)), func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
+	if len(words) == 1 && optOutAlone[words[0]] {
+		return true
+	}
+	for i, w := range words {
+		if optOutWords[w] {
+			return true
+		}
+		for _, p := range optOutPhrases {
+			if i+len(p) <= len(words) && slices.Equal(words[i:i+len(p)], p) {
+				return true
+			}
+		}
+	}
+	return false
 }

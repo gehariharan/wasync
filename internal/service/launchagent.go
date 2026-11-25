@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"time"
 )
 
 // Label is the macOS login item's name.
@@ -15,12 +16,14 @@ const Label = "com.wasync.serve"
 
 // launchAgent is a macOS per-user login item: a property list in
 // ~/Library/LaunchAgents that starts `wasync serve` at login. Installing only
-// writes the file; it starts at the next login, so it never collides with a
-// wasync the person is already running.
+// writes the file; Start loads it now, which the caller does only when no
+// other wasync holds the data directory.
 type launchAgent struct {
 	Home string
 	// Run runs a command; tests replace it.
 	Run func(name string, args ...string) error
+	// Wait pauses between tries to load the item; nil does not pause.
+	Wait func(time.Duration)
 }
 
 func (l launchAgent) Where() string { return "a macOS login item" }
@@ -94,6 +97,27 @@ func (l launchAgent) Uninstall() error {
 		return err
 	}
 	return nil
+}
+
+// Start loads the login item now, replacing a loaded copy, so launchd starts
+// wasync from the file as it is. Unloading a running copy stops it first, and
+// loading may fail for a moment until that copy is gone, so it is retried.
+func (l launchAgent) Start(Spec) error {
+	if l.Run == nil {
+		return ErrUnsupported
+	}
+	domain := "gui/" + strconv.Itoa(os.Getuid())
+	_ = l.Run("launchctl", "bootout", domain+"/"+Label) // it may not be loaded
+	var err error
+	for try := 0; try < 5; try++ {
+		if err = l.Run("launchctl", "bootstrap", domain, l.path()); err == nil {
+			return nil
+		}
+		if l.Wait != nil {
+			l.Wait(time.Second)
+		}
+	}
+	return err
 }
 
 func (l launchAgent) Installed() (bool, error) {

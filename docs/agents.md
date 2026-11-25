@@ -172,10 +172,19 @@ when the list ends (in 1, 7 or 30 days, or never). wasync asks you to confirm, s
 and the first numbers. Approving again replaces that agent's list. The agent may then message
 those numbers only: first messages are spaced at random through the hour, up to the pace you
 picked (and three times that in messages), and one message per number until that number
-replies; a number that replies STOP is removed. wasync archives those chats from then on so it
+replies; a number that asks to stop is removed from every agent's list and is never listed again,
+even if you approve it later. Only replies that arrive after wasync's first list message to that
+number count, so older chat with that person never removes it. That counts any reply with the word "stop",
+"unsubscribe", "opt out", "remove me" or "take me off", in any case and with any punctuation
+("Stop.", "STOP!", "please stop", "stop messaging me"), and a reply that is only "cancel",
+"end", "quit" or "revoke". A word that merely contains "stop", such as "nonstop", does not count. wasync archives those chats from then on so it
 can see the replies, including a listed contact's replies that WhatsApp delivers in a separate
 hidden-ID chat, unless you already turned archiving of that hidden-ID chat on or off yourself.
-Removing a list needs no confirmation.
+**Pause** stops a list's sends and keeps everything else; **Resume…** asks you to confirm.
+Removing a list needs no confirmation. The one-message-until-reply rule belongs to the number,
+not the agent: wasync remembers for good when any agent's list last messaged each number, so no
+list sends it another message until it replies to that one, even when two agents' lists hold the
+same number, after a list is removed, or when the same numbers are approved for another agent.
 
 ### Open sending
 

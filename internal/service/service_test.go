@@ -3,6 +3,7 @@ package service
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func spec(t *testing.T) Spec {
@@ -90,6 +92,36 @@ func TestLaunchAgentUninstallStopsAndRemoves(t *testing.T) {
 	}
 	if on, _ := l.Installed(); on {
 		t.Fatal("still installed")
+	}
+}
+
+func TestLaunchAgentStartReloadsTheItemNow(t *testing.T) {
+	home := t.TempDir()
+	var ran []string
+	fails := 2
+	l := launchAgent{Home: home, Wait: func(time.Duration) {}, Run: func(name string, args ...string) error {
+		ran = append(ran, name+" "+strings.Join(args, " "))
+		if args[0] == "bootstrap" && fails > 0 {
+			fails--
+			return errors.New("Bootstrap failed: 5: Input/output error")
+		}
+		return nil
+	}}
+	if err := Start(l, spec(t)); !errors.Is(err, ErrNotInstalled) || len(ran) != 0 {
+		t.Fatalf("start before install: %v %v", err, ran)
+	}
+	if err := l.Install(spec(t)); err != nil {
+		t.Fatal(err)
+	}
+	if err := Start(l, spec(t)); err != nil {
+		t.Fatal(err)
+	}
+	// Unload any loaded copy, then load the file; a copy still stopping makes the first loads fail.
+	if len(ran) != 4 || !strings.HasPrefix(ran[0], "launchctl bootout gui/") || !strings.HasSuffix(ran[0], "/"+Label) || ran[3] != ran[1] || !strings.HasPrefix(ran[1], "launchctl bootstrap gui/") || !strings.HasSuffix(ran[1], l.path()) {
+		t.Fatalf("ran %v", ran)
+	}
+	if err := Start(unsupported{}, spec(t)); !errors.Is(err, ErrUnsupported) {
+		t.Fatalf("a platform without a login item: %v", err)
 	}
 }
 

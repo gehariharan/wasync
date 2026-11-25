@@ -4,7 +4,10 @@ package service
 
 import (
 	"errors"
+	"os/exec"
+	"syscall"
 
+	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
@@ -47,6 +50,21 @@ func (runValue) Uninstall() error {
 		return err
 	}
 	return nil
+}
+
+// Start runs wasync serve now, hidden and detached, as the login item would.
+// Windows keeps no copy running for it, so the caller stops any running
+// wasync first.
+func (runValue) Start(s Spec) error {
+	if err := s.validate(); err != nil {
+		return err
+	}
+	cmd := exec.Command(s.Exe, "--data-dir", s.DataDir, "serve")
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: windows.CREATE_NEW_PROCESS_GROUP | windows.DETACHED_PROCESS}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	return cmd.Process.Release()
 }
 
 func (runValue) Installed() (bool, error) {
