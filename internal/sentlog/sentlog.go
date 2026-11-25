@@ -52,7 +52,10 @@ type Entry struct {
 	// Open marks a send allowed by open sending rather than by a chat the
 	// owner approved; NewNumber marks one that started a chat the archive
 	// had never seen. Open sending counts both against its hourly caps.
+	// List marks a send to a number on the agent's approved recipient list;
+	// there NewNumber marks the first message to that number.
 	Open      bool `json:"open,omitempty"`
+	List      bool `json:"list,omitempty"`
 	NewNumber bool `json:"new_number,omitempty"`
 }
 

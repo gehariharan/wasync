@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -153,7 +154,7 @@ func TestHelpCatalogListsOnlyImplementedCommands(t *testing.T) {
 	text, _ := h.run(t, "help")
 	mustContain(t, text, "commands[18]{name,usage,description}:", "help[1]:")
 	// Every command that talks to wasync has a compatibility entry.
-	if got := compat.Default().CommandNames(); !reflect.DeepEqual(got, []string{"access", "chats", "doctor", "edit", "home", "message", "messages", "observe", "react", "reply", "search", "send", "send.to", "thread", "version"}) {
+	if got := compat.Default().CommandNames(); !reflect.DeepEqual(got, []string{"access", "chats", "doctor", "edit", "home", "message", "messages", "observe", "react", "reply", "search", "send", "send.list", "send.to", "thread", "version"}) {
 		t.Fatalf("compat entries %v", got)
 	}
 	for _, args := range [][]string{{"version", "--help"}, {"help", "version"}, {"--help"}, {"help", "help"}, {"messages", "--help"}, {"help", "search"}} {
@@ -258,11 +259,11 @@ func TestVersionJSON(t *testing.T) {
 	if got.OldVersion != buildinfo.Version || got.OldCommit != buildinfo.Commit || got.OldDate != buildinfo.Date {
 		t.Fatalf("pre-rename keys missing: %s", out)
 	}
-	if got.Version != buildinfo.Version || got.Commit != buildinfo.Commit || got.Date != buildinfo.Date || got.Wasync.Transport != "api" || got.Wasync.Version == nil || len(got.Wasync.Version.Features) != 18 || !got.Compat.OK {
+	if got.Version != buildinfo.Version || got.Commit != buildinfo.Commit || got.Date != buildinfo.Date || got.Wasync.Transport != "api" || got.Wasync.Version == nil || len(got.Wasync.Version.Features) != 19 || !got.Compat.OK {
 		t.Fatalf("%+v", got)
 	}
 	text, _ := h.run(t, "version")
-	mustContain(t, text, "wasync-axi: "+buildinfo.Version, "commit: "+buildinfo.Commit, "date: "+buildinfo.Date, `min_api: "1.0"`, "features[18]: chats,chats.match,messages", "archive_schema: \"6\"")
+	mustContain(t, text, "wasync-axi: "+buildinfo.Version, "commit: "+buildinfo.Commit, "date: "+buildinfo.Date, `min_api: "1.0"`, "features[19]: chats,chats.match,messages", "archive_schema: \"6\"")
 }
 
 func TestIncompatibleWasync(t *testing.T) {
@@ -366,6 +367,38 @@ func TestVersionAliasesAsData(t *testing.T) {
 			if err != nil || u.Path != "/api/v1"+tc.path || u.Query().Get(tc.key) != alias {
 				t.Fatalf("data changed: %v %v", u, err)
 			}
+		}
+	}
+}
+
+func TestHomeShowsAnApprovedSendList(t *testing.T) {
+	srv := testutil.NewAPI(t)
+	srv.Routes["/chats"] = map[string]any{"request_id": "r-1", "data": map[string]any{"items": []any{}}}
+	srv.Routes["/send-list"] = map[string]any{"request_id": "r-2", "data": map[string]any{"active": true, "can_send": true, "numbers": 40, "not_messaged": 30, "stopped": 2, "new_numbers_left": 3, "messages_left": 12, "new_numbers_per_hour": 5, "messages_per_hour": 15, "expires_at": "2026-12-01T10:00:00Z"}}
+	h := newHarness(t)
+	h.env["WASYNC_API_ADDR"] = srv.Addr()
+	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_test"
+	out, code := h.run(t)
+	if code != ExitOK {
+		t.Fatal(out)
+	}
+	mustContain(t, out, "send_list:", "3 of 5 new numbers and 12 of 15 messages left this hour", "40 numbers, 30 not messaged yet, 2 removed after STOP", "ends 2026-12-01T10:00:00Z", "approved a list of numbers for you")
+	out, _ = h.run(t, "--json")
+	mustContain(t, out, `"send_list":{"active":true`, `"new_numbers_left":3`)
+
+	// No list, or a wasync without the feature: nothing is shown.
+	srv.Routes["/send-list"] = map[string]any{"request_id": "r-3", "data": map[string]any{"active": false}}
+	if out, _ = h.run(t); strings.Contains(out, "send_list") {
+		t.Fatalf("an inactive list was shown:\n%s", out)
+	}
+	v := testutil.FakeVersion()
+	v.Features = slices.DeleteFunc(v.Features, func(f string) bool { return f == contract.FeatureWriteSendList })
+	srv.Version = v
+	before := len(srv.Requests)
+	h.run(t)
+	for _, r := range srv.Requests[before:] {
+		if r == "/api/v1/send-list" {
+			t.Fatal("asked a wasync without write.send.list for its send list")
 		}
 	}
 }

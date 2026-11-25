@@ -14,6 +14,7 @@
     "message": {"features": ["message.ref"]},
     "send": {"features": ["write.send"]},
     "send.to": {"features": ["write.send", "write.send.to"]},
+    "send.list": {"features": ["write.send", "write.send.list"]},
     "reply": {"features": ["message.ref", "write.reply"]},
     "react": {"features": ["message.ref", "write.react"]},
     "edit": {"features": ["message.ref", "write.edit"]},

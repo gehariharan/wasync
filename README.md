@@ -1062,7 +1062,16 @@ not be retried automatically. `wasync-axi reply REF --text TEXT` calls it.
 To send a new message rather than a quoted reply, agents use
 `POST /api/v1/messages` with `{ "chat", "text" }` or `{ "to", "text" }` (`wasync-axi send --chat CHAT_JID
 --text TEXT`, or `--to PHONE_NUMBER`). It needs the same `send` scope and an approved chat, and refuses a chat or
-number the agent was not given, unless you have switched on open sending.
+number the agent was not given, unless it is on a list you approved for that agent or you have
+switched on open sending.
+
+To let one agent message a set of phone numbers without approving each chat, approve a list for
+it under Approved numbers on the Agents page: paste the numbers or choose a .txt or .csv file, one
+number with its country code per line, and pick when the list ends. wasync asks you to confirm,
+showing the count and the first numbers. The agent may then message those numbers only, at most 5
+new numbers and 15 messages an hour, and one message per number until that number replies; a
+number that replies STOP is removed. wasync archives those chats from then on so it can see the
+replies. Removing a list needs no confirmation.
 
 Open sending is on the web app's Agents page (`wasync web`, then Agents). Switching it on asks
 you to confirm with Touch ID, your password or Windows Hello, and lasts one hour: any agent that

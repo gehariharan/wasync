@@ -1,8 +1,11 @@
 package api
 
 import (
+	"crypto/subtle"
 	"fmt"
 	"html/template"
+	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"time"
@@ -10,15 +13,17 @@ import (
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/opensend"
+	"github.com/gehariharan/wasync/internal/sendlist"
 	"github.com/gehariharan/wasync/internal/sentlog"
 )
 
-// The Agents page shows which agents exist, whether each may send, and the
-// open sending switch. Widening what an agent may do (letting it send, turning
-// open sending on) ends in the operating system's confirmation prompt, like
-// every other approval in the web app, and is read-only on a computer that
-// cannot show one. Narrowing (stopping sending, turning open sending off)
-// needs no prompt: stopping is always safe.
+// The Agents page shows which agents exist, whether each may send, the open
+// sending switch and the approved recipient lists. Widening what an agent may
+// do (letting it send, turning open sending on, approving a list) ends in the
+// operating system's confirmation prompt, like every other approval in the web
+// app, and is read-only on a computer that cannot show one. Narrowing
+// (stopping sending, turning open sending off, removing a list) needs no
+// prompt: stopping is always safe.
 
 type agentRow struct {
 	Name, Scopes string
@@ -41,10 +46,25 @@ type openView struct {
 	Paused              string
 }
 
+// listRow is one approved recipient list.
+type listRow struct {
+	Agent                         string
+	Numbers, NotMessaged, Stopped int
+	Until                         string
+	Gone                          bool // its agent is no longer active
+}
+
+type listsView struct {
+	Rows    []listRow
+	Senders []string // agents that may be given a list
+	MaxNew  int
+}
+
 type agentsData struct {
 	uiData
 	Agents []agentRow
 	Open   openView
+	Lists  listsView
 }
 
 func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
@@ -74,6 +94,27 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 			row.Expires = c.ExpiresAt.Local().Format("2 Jan 15:04")
 		}
 		d.Agents = append(d.Agents, row)
+		if row.CanSend {
+			d.Lists.Senders = append(d.Lists.Senders, row.Name)
+		}
+	}
+	d.Lists.MaxNew = sendlist.MaxNewNumbers
+	_ = h.dropStopped(r.Context(), now)
+	if lists, err := sendlist.Load(h.dataDir); err == nil {
+		active := map[string]bool{}
+		for _, c := range clients {
+			active[c.ID] = c.Status(now) == "active"
+		}
+		for _, l := range lists {
+			row := listRow{Agent: humancheck.Clean(l.Agent, 40), Numbers: len(l.Numbers), NotMessaged: l.NotMessaged(), Stopped: l.Stopped, Until: "no end", Gone: !active[l.AgentID]}
+			if l.Until != nil {
+				row.Until = l.Until.Local().Format("2 Jan 15:04")
+				if !l.Active(now) {
+					row.Until = "ended " + row.Until
+				}
+			}
+			d.Lists.Rows = append(d.Lists.Rows, row)
+		}
 	}
 	d.Open = openView{Gate: h.human.Enabled(), MaxMessages: opensend.MaxMessages, MaxNew: opensend.MaxNewNumbers, Cap: opensend.MaxMessages, NewCap: opensend.MaxNewNumbers}
 	if d.Open.Gate {
@@ -145,8 +186,21 @@ func sentOutcome(e sentlog.Entry) string {
 	return "Not sent"
 }
 
+// listUpload is the most a list form may carry: the pasted text plus a file.
+const listUpload = 256 << 10
+
+// listEnds are the end choices offered for a list.
+var listEnds = map[string]time.Duration{"1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30d": 30 * 24 * time.Hour, "none": 0}
+
 func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	if !h.uiForm(w, r, sess) {
+	if mt, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type")); mt == "multipart/form-data" {
+		r.Body = http.MaxBytesReader(w, r.Body, listUpload+8<<10)
+		if err := r.ParseMultipartForm(listUpload); err != nil || subtle.ConstantTimeCompare([]byte(r.PostForm.Get("csrf")), []byte(sess.csrf)) != 1 {
+			http.Error(w, "invalid form", http.StatusForbidden)
+			return
+		}
+		defer r.MultipartForm.RemoveAll()
+	} else if !h.uiForm(w, r, sess) {
 		return
 	}
 	back := func(notice string) {
@@ -224,6 +278,24 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 		}
 		audit("open_send_on", "")
 		back("openon")
+	case "liston":
+		h.listOn(w, r, name, back, audit)
+	case "listoff":
+		lists, err := sendlist.Load(h.dataDir)
+		if err != nil {
+			back("failed")
+			return
+		}
+		for _, l := range lists {
+			if l.Agent == name {
+				if err = sendlist.Remove(h.dataDir, l.AgentID); err != nil {
+					back("failed")
+					return
+				}
+			}
+		}
+		audit("send_list_off", name)
+		back("listoff")
 	case "openoff":
 		if err := opensend.Stop(h.dataDir); err != nil {
 			back("failed")
@@ -234,6 +306,88 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 	default:
 		http.Error(w, "unknown action", http.StatusBadRequest)
 	}
+}
+
+// listOn approves a recipient list for one agent after the system confirmation.
+func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, back func(string), audit func(string, string)) {
+	if !h.human.Enabled() {
+		back("nogate")
+		return
+	}
+	end, ok := listEnds[r.PostForm.Get("ends")]
+	if agentauth.ValidName(name) != nil || !ok {
+		back("invalid")
+		return
+	}
+	text := r.PostForm.Get("numbers")
+	if r.MultipartForm != nil && len(r.MultipartForm.File["file"]) > 0 {
+		f, err := r.MultipartForm.File["file"][0].Open()
+		if err != nil {
+			back("failed")
+			return
+		}
+		data, err := io.ReadAll(io.LimitReader(f, listUpload))
+		f.Close()
+		if err != nil {
+			back("failed")
+			return
+		}
+		text += "\n" + string(data)
+	}
+	chats, bad := sendlist.Parse(text)
+	switch {
+	case bad != "":
+		back("badlist")
+		return
+	case len(chats) == 0:
+		back("nolist")
+		return
+	case len(chats) > sendlist.MaxNumbers:
+		back("biglist")
+		return
+	}
+	target, err := agentauth.ActiveByName(h.dataDir, name)
+	now := time.Now()
+	if err != nil || target == nil || target.Status(now) != "active" {
+		back("failed")
+		return
+	}
+	if !target.HasScope(agentauth.ScopeSend) {
+		back("needsend")
+		return
+	}
+	list := sendlist.List{AgentID: target.ID, Agent: target.Name, GrantedAt: now.UTC()}
+	ends := "until you remove it"
+	if end > 0 {
+		until := now.Add(end).UTC().Truncate(time.Second)
+		list.Until = &until
+		ends = "until " + until.Local().Format("2 Jan 15:04")
+	}
+	examples := ""
+	for i, c := range chats {
+		if i == 3 {
+			examples += fmt.Sprintf(" and %d more", len(chats)-3)
+			break
+		}
+		if i > 0 {
+			examples += ", "
+		}
+		examples += sendlist.Shown(c)
+	}
+	prompt := fmt.Sprintf("Approve: let the agent %s message these %d number(s), and no others, %s: %s. At most %d new numbers an hour, one message each until they reply.", agentauth.QuotedName(name), len(chats), ends, examples, sendlist.MaxNewNumbers)
+	if err = h.confirmError(r.Context(), prompt); err != nil {
+		back(noticeFor(err))
+		return
+	}
+	for _, c := range chats {
+		list.Numbers = append(list.Numbers, sendlist.Number{Chat: c})
+	}
+	if err = sendlist.Put(h.dataDir, list); err != nil {
+		back("failed")
+		return
+	}
+	audit("send_list_on", name)
+	back("liston")
 }
 
 var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{template "head" .}}
@@ -253,6 +407,20 @@ var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{temp
 <table class="sent"><thead><tr><th>Time</th><th>By</th><th>To</th><th>Outcome</th></tr></thead><tbody>
 {{range .Open.Recent}}<tr{{if .Problem}} class="problem"{{end}}><td>{{.Time}}</td><td>🤖 {{.Who}}</td><td>{{.To}}</td><td>{{.Outcome}}</td></tr>{{end}}
 </tbody></table>{{end}}
+
+<h2>Approved numbers</h2>
+<p>An agent may message the numbers you approve for it here, and no others: {{.Lists.MaxNew}} new numbers an hour, one message each until they reply. A number that replies STOP is removed.</p>
+{{if .Lists.Rows}}<table class="sent"><thead><tr><th>Agent</th><th>Numbers</th><th>Ends</th><th></th></tr></thead><tbody>
+{{range .Lists.Rows}}<tr><td>🤖 {{.Agent}}{{if .Gone}} <span class="mut">(no longer active)</span>{{end}}</td><td>{{.Numbers}} <span class="mut">({{.NotMessaged}} not messaged yet{{if .Stopped}}, {{.Stopped}} removed after STOP{{end}})</span></td><td>{{.Until}}</td>
+<td><form method="post" action="/ui/agents" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="listoff"><input type="hidden" name="agent" value="{{.Agent}}"><button>Remove list</button></form></td></tr>
+{{end}}</tbody></table>{{end}}
+{{if .Open.Gate}}{{if .Lists.Senders}}<form method="post" action="/ui/agents" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="liston">
+<p><label>Agent <select name="agent">{{range .Lists.Senders}}<option>{{.}}</option>{{end}}</select></label></p>
+<p><label>Numbers, one per line, with country code<br><textarea name="numbers" rows="4" cols="40" placeholder="+15551230000"></textarea></label></p>
+<p><label>Or a file (.txt or .csv) <input type="file" name="file" accept=".txt,.csv,text/plain,text/csv"></label></p>
+<p><label>Ends <select name="ends"><option value="1d">in 1 day</option><option value="7d" selected>in 7 days</option><option value="30d">in 30 days</option><option value="none">never (until removed)</option></select></label></p>
+<p><button>Approve list…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}. Approving again replaces the agent's list.</span></p></form>
+{{else}}<p class="mut">Allow sending for an agent first.</p>{{end}}{{end}}
 
 <h2>Agents</h2>
 {{if .Agents}}<table class="sent"><thead><tr><th>Name</th><th>Allowed to</th><th>Sending</th></tr></thead><tbody>

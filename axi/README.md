@@ -52,7 +52,7 @@ The old `whatsapp_axi_*` JSON keys and the `whatsapp_axi_too_old` code (`legacy_
 - **Read-only by default, enforced by wasync.** Scopes, chat allowlists, rate limits, expiry and the audit
   log are checked inside wasync's API. Flags, confirmations and agent skills in wasync-axi are
   convenience, not a security boundary.
-- **Writes need a scope you grant, per chat.** `wasync-axi send --chat CHAT_JID --text TEXT` (a new message; `--to PHONE_NUMBER` instead of `--chat` works only while the person has switched on open sending in the wasync web app)
+- **Writes need a scope you grant, per chat.** `wasync-axi send --chat CHAT_JID --text TEXT` (a new message; `--to PHONE_NUMBER` instead of `--chat` works only for a number on the list the person approved for you, or while they have switched on open sending, in the wasync web app; the home view shows the list's allowance left this hour)
   and `wasync-axi reply REF --text TEXT` (a quoted reply) post to wasync's API,
   which refuses them unless the credential holds `send` and the chat is in its allowlist
   (`wasync agents grant <name> --scope read.chats,read.messages,send --on-demand`, then the person

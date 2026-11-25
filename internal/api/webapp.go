@@ -439,9 +439,9 @@ func (h *handler) pickSave(w http.ResponseWriter, r *http.Request, sess uiSessio
 }
 
 type sentRow struct {
-	Time, Who, To, Text, Outcome    string
-	Agent, Problem, Open, NewNumber bool
-	Kind                            string
+	Time, Who, To, Text, Outcome          string
+	Agent, Problem, Open, List, NewNumber bool
+	Kind                                  string
 }
 
 type sentData struct {
@@ -486,7 +486,7 @@ func (h *handler) sentPage(w http.ResponseWriter, r *http.Request, sess uiSessio
 		names[g.ID] = humancheck.Clean(g.Name, 80)
 	}
 	for _, e := range entries {
-		row := sentRow{Time: e.Time.Local().Format("2 Jan 15:04"), Kind: e.Kind, To: names[e.Chat], Agent: e.Actor != sentlog.Owner, Open: e.Open, NewNumber: e.NewNumber}
+		row := sentRow{Time: e.Time.Local().Format("2 Jan 15:04"), Kind: e.Kind, To: names[e.Chat], Agent: e.Actor != sentlog.Owner, Open: e.Open, List: e.List, NewNumber: e.NewNumber}
 		if row.To == "" {
 			row.To = humancheck.Clean(e.Chat, 80)
 		}
@@ -616,7 +616,7 @@ var sentTemplate = template.Must(template.New("sent").Parse(uiHead + `{{template
 <table class="sent">
 <thead><tr><th>Time</th><th>By</th><th>To</th><th>Message</th><th>Outcome</th></tr></thead>
 <tbody>
-{{range .Rows}}<tr{{if .Problem}} class="problem"{{end}}><td>{{.Time}}</td><td>{{if .Agent}}🤖 {{end}}{{.Who}}</td><td>{{.To}}</td><td>{{if .Text}}{{.Text}}{{else}}<span class="mut">text not kept</span>{{end}}{{if eq .Kind "reply"}} <span class="mut">(reply)</span>{{end}}{{if .Open}} <span class="mut">(open sending{{if .NewNumber}}, new number{{end}})</span>{{end}}</td><td>{{.Outcome}}</td></tr>
+{{range .Rows}}<tr{{if .Problem}} class="problem"{{end}}><td>{{.Time}}</td><td>{{if .Agent}}🤖 {{end}}{{.Who}}</td><td>{{.To}}</td><td>{{if .Text}}{{.Text}}{{else}}<span class="mut">text not kept</span>{{end}}{{if eq .Kind "reply"}} <span class="mut">(reply)</span>{{end}}{{if .Open}} <span class="mut">(open sending{{if .NewNumber}}, new number{{end}})</span>{{end}}{{if .List}} <span class="mut">(approved list{{if .NewNumber}}, first message{{end}})</span>{{end}}</td><td>{{.Outcome}}</td></tr>
 {{else}}<tr><td colspan="5" class="mut">Nothing has been sent from this computer yet.</td></tr>{{end}}
 </tbody></table>
 {{end}}

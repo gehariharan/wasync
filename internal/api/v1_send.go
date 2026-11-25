@@ -14,6 +14,7 @@ import (
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/opensend"
 	"github.com/gehariharan/wasync/internal/query"
+	"github.com/gehariharan/wasync/internal/sendlist"
 	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 )
@@ -24,10 +25,13 @@ import (
 // before this handler runs. A chat or number the agent has not been given is
 // refused; it is never turned into a grant by asking.
 //
-// The one exception is open sending, a time-boxed switch the person turns on
-// from the web app after the system confirmation: while it is on, an agent that
-// holds the send scope may reach any chat or number, up to a small cap per hour,
-// and every such message is marked in the sent log.
+// There are two exceptions, both set by the person on the web app's Agents page
+// after the system confirmation, and both only for an agent that holds the send
+// scope. An approved recipient list lets one agent message the phone numbers on
+// it, paced (a few new numbers an hour, one message per number until it
+// replies). Open sending, a time-boxed switch, lets any such agent reach any
+// chat or number, up to a small cap per hour. Every such message is marked in
+// the sent log.
 func init() {
 	registerV1(v1Route{Pattern: "POST /api/v1/messages", Scope: agentauth.ScopeSend, Mutation: true, Authorize: (*handler).authorizeSend, Handle: (*handler).v1Send})
 	registerV1(v1Route{Pattern: "/api/v1/messages", Handle: v1MethodNotAllowed("POST", `use POST /api/v1/messages with {"chat":"CHAT_JID","text":"..."} or {"to":"PHONE_NUMBER","text":"..."}`)})
@@ -35,7 +39,14 @@ func init() {
 	query.RegisterFeature("write.send.to")
 }
 
-type v1OpenKey struct{}
+// v1WideKey carries how a send outside the agent's allowlist was allowed:
+// wideList or wideOpen.
+type v1WideKey struct{}
+
+const (
+	wideList = "list"
+	wideOpen = "open"
+)
 
 // sendTarget peeks at the body for where the message is going, and puts the body
 // back for the handler, which decodes it strictly. A body that cannot be read
@@ -58,22 +69,12 @@ func sendTarget(r *http.Request) (chat, to string) {
 
 // numberJID turns a phone number in international form ("+1 555 123 0000",
 // "15551230000") into the WhatsApp address for that person.
-func numberJID(number string) (string, bool) {
-	digits := strings.Map(func(r rune) rune {
-		if r == ' ' || r == '-' || r == '(' || r == ')' || r == '.' {
-			return -1
-		}
-		return r
-	}, strings.TrimPrefix(strings.TrimSpace(number), "+"))
-	if len(digits) < 7 || len(digits) > 15 || digits[0] == '0' || strings.Trim(digits, "0123456789") != "" {
-		return "", false
-	}
-	return digits + "@s.whatsapp.net", true
-}
+func numberJID(number string) (string, bool) { return sendlist.NumberChat(number) }
 
 // authorizeSend decides who may send where. A chat on the agent's allowlist
-// goes the ordinary audited way. Anything else is refused, unless open sending
-// is on and the agent holds the send scope.
+// goes the ordinary audited way. Anything else is refused, unless it is on the
+// agent's approved recipient list, or open sending is on, and the agent holds
+// the send scope. The list comes first, so its stricter pacing applies.
 func (h *handler) authorizeSend(w http.ResponseWriter, r *http.Request, id string) bool {
 	chat, to := sendTarget(r)
 	target, numberGiven := chat, false
@@ -81,22 +82,28 @@ func (h *handler) authorizeSend(w http.ResponseWriter, r *http.Request, id strin
 		numberGiven = true
 		target, _ = numberJID(to)
 	}
+	wide := ""
 	ok := h.v1Decide(w, r, id, agentauth.ScopeSend, target, func(c *agentauth.Client) error {
 		if target == "" || c.AllowsChatScope(agentauth.ScopeSend, target) {
 			return h.agents.AuthorizeAndAudit(c, agentauth.ScopeSend, target, "", id, true)
 		}
+		if list, on := sendlist.For(h.dataDir, c.ID, time.Now()); on && list.Find(target) != nil {
+			wide = wideList
+			return h.agents.AuthorizeListSend(c, target, id)
+		}
 		if _, on := opensend.ActiveNow(h.dataDir, time.Now()); on {
+			wide = wideOpen
 			return h.agents.AuthorizeOpenSend(c, target, id)
 		}
 		err := h.agents.AuthorizeAndAudit(c, agentauth.ScopeSend, target, "", id, true)
 		var denied *agentauth.Error
 		if numberGiven && errors.As(err, &denied) && denied.Code == agentauth.CodeForbidden {
-			denied.Help = "Sending to a number you were not given needs the person to switch on Open sending on the Agents page of the wasync web app (wasync web), or to approve a chat for you. Do not try another route."
+			denied.Help = "Sending to a number you were not given needs the person to approve it in a list for you, or to switch on Open sending, on the Agents page of the wasync web app (wasync web). Do not try another route."
 		}
 		return err
 	})
-	if ok && target != "" && !v1Client(r).AllowsChatScope(agentauth.ScopeSend, target) {
-		*r = *r.WithContext(context.WithValue(r.Context(), v1OpenKey{}, true))
+	if ok && wide != "" {
+		*r = *r.WithContext(context.WithValue(r.Context(), v1WideKey{}, wide))
 	}
 	return ok
 }
@@ -132,16 +139,24 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	entry := sentlog.Entry{Actor: agentName(r), Kind: "send", Chat: in.To}
-	if open, _ := r.Context().Value(v1OpenKey{}).(bool); open {
-		// Open sends run one at a time so the hourly caps cannot be raced.
+	wide, _ := r.Context().Value(v1WideKey{}).(string)
+	if wide != "" {
+		// Wide sends run one at a time so the hourly caps cannot be raced.
 		h.openMu.Lock()
 		defer h.openMu.Unlock()
-		if !h.openSendRoom(w, r, id, in.To, &entry) {
+		room := h.openSendRoom
+		if wide == wideList {
+			room = h.listSendRoom
+		}
+		if !room(w, r, id, in.To, &entry) {
 			return
 		}
 	}
 	result, err := h.sender(r.Context(), in)
 	h.recordSentEntry(entry, result, err)
+	if wide == wideList && (err == nil || result.MessageID != "") {
+		h.listSent(r.Context(), v1Client(r).ID, in.To)
+	}
 	v1WriteResult(w, id, result, err)
 }
 

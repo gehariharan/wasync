@@ -138,6 +138,7 @@ const (
 	FeatureDiagnostics   = "diagnostics"
 	FeatureWriteSend     = "write.send"
 	FeatureWriteSendTo   = "write.send.to"
+	FeatureWriteSendList = "write.send.list"
 	FeatureWriteReply    = "write.reply"
 	FeatureWriteReact    = "write.react"
 	FeatureWriteEdit     = "write.edit"

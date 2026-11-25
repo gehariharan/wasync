@@ -1,0 +1,366 @@
+package api
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"mime/multipart"
+	"net/http"
+	"net/url"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/opensend"
+	"github.com/gehariharan/wasync/internal/query"
+	"github.com/gehariharan/wasync/internal/sendlist"
+	"github.com/gehariharan/wasync/internal/storage"
+)
+
+// approveList saves a list for the named agent as the Agents page would.
+func (f fixture) approveList(t *testing.T, name string, until *time.Time, numbers ...string) {
+	t.Helper()
+	c, err := agentauth.ActiveByName(f.dir, name)
+	if err != nil || c == nil {
+		t.Fatalf("agent %s: %v", name, err)
+	}
+	l := sendlist.List{AgentID: c.ID, Agent: c.Name, GrantedAt: time.Now(), Until: until}
+	for _, n := range numbers {
+		chat, ok := sendlist.NumberChat(n)
+		if !ok {
+			t.Fatalf("bad number %s", n)
+		}
+		l.Numbers = append(l.Numbers, sendlist.Number{Chat: chat})
+	}
+	if err = sendlist.Put(f.dir, l); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// incoming stores a message from the person at chat, as capture would.
+func (f fixture) incoming(t *testing.T, chat, id, text string) {
+	t.Helper()
+	m := storage.Message{GroupID: chat, MessageID: id, SenderID: chat, Timestamp: time.Now().Add(time.Second), Type: "text", Text: text}
+	if res, err := f.store.Apply(context.Background(), f.account, []storage.Message{m}); err != nil || res.Stored != 1 {
+		t.Fatalf("store reply: %+v %v", res, err)
+	}
+}
+
+func listOf(t *testing.T, f fixture, name string) sendlist.List {
+	t.Helper()
+	c, _ := agentauth.ActiveByName(f.dir, name)
+	l, ok := sendlist.For(f.dir, c.ID, time.Now())
+	if !ok {
+		t.Fatalf("no list for %s", name)
+	}
+	return l
+}
+
+const listed = "15551230000@s.whatsapp.net"
+
+func TestAnApprovedListLetsItsAgentMessageThoseNumbersOnly(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	other := f.grantWriter(t, "other", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "+1 555 123 0000", "15551230001")
+
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"+1 (555) 123-0000","text":"hello"}`); status != 200 {
+		t.Fatalf("send to a listed number: %d %s", status, body)
+	}
+	// A number not on the list, or another agent using this list, is refused.
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551239999","text":"hello"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if !strings.Contains(string(body), "approve it in a list") {
+		t.Fatalf("the refusal should say how to get access: %s", body)
+	}
+	status, body = f.send(t, "POST", "/api/v1/messages", other, `{"to":"15551230001","text":"hello"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if rec.count() != 1 || rec.calls[0].To != listed {
+		t.Fatalf("what reached WhatsApp: %+v", rec.calls)
+	}
+	entries := f.sentEntries(t)
+	if len(entries) != 1 || !entries[0].List || !entries[0].NewNumber || entries[0].Open || entries[0].Actor != "poster" {
+		t.Fatalf("a list send should be marked in the sent log: %+v", entries)
+	}
+	if audit := f.auditLog(t); !strings.Contains(audit, `"event":"send_list"`) || !strings.Contains(audit, listed) {
+		t.Fatalf("the list send was not audited: %s", audit)
+	}
+	l := listOf(t, f, "poster")
+	if n := l.Find(listed); n == nil || n.FirstSentAt == nil || n.LastSentAt == nil {
+		t.Fatalf("the number was not marked as messaged: %+v", n)
+	}
+	// Its chat is archived from now on, so a reply can be seen.
+	if on, err := f.store.IsEnabled(context.Background(), f.account, listed); err != nil || !on {
+		t.Fatalf("the messaged chat is not captured: %v %v", on, err)
+	}
+}
+
+func TestAListAllowsOneMessagePerNumberUntilItReplies(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000")
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi again"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if !strings.Contains(string(body), "has not replied") {
+		t.Fatalf("the refusal should say why: %s", body)
+	}
+	f.incoming(t, listed, "R1", "Yes, tell me more")
+	if status, body = f.send(t, "POST", "/api/v1/messages", agent, `{"chat":"`+listed+`","text":"here it is"}`); status != 200 {
+		t.Fatalf("after a reply: %d %s", status, body)
+	}
+	entries := f.sentEntries(t)
+	if rec.count() != 2 || len(entries) != 2 || entries[0].NewNumber || !entries[1].NewNumber {
+		t.Fatalf("only the first message is a new number: %+v", entries)
+	}
+}
+
+func TestAListAllowsFiveNewNumbersAnHourPerAgent(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	second := f.grantWriter(t, "second", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	var numbers []string
+	for i := 0; i <= sendlist.MaxNewNumbers; i++ {
+		numbers = append(numbers, fmt.Sprintf("1555123%04d", i))
+	}
+	f.approveList(t, "poster", nil, numbers...)
+	f.approveList(t, "second", nil, "15559990000")
+	for i := 0; i < sendlist.MaxNewNumbers; i++ {
+		if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"`+numbers[i]+`","text":"x"}`); status != 200 {
+			t.Fatalf("number %d: %d %s", i, status, body)
+		}
+	}
+	req, _ := http.NewRequest("POST", f.server.URL+"/api/v1/messages", strings.NewReader(`{"to":"`+numbers[sendlist.MaxNewNumbers]+`","text":"x"}`))
+	req.Header.Set("Authorization", "Bearer "+agent)
+	req.Header.Set("Content-Type", "application/json")
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != 429 || res.Header.Get("Retry-After") == "" {
+		t.Fatalf("the sixth new number: %d, Retry-After %q", res.StatusCode, res.Header.Get("Retry-After"))
+	}
+	// The cap is per agent.
+	if status, body := f.send(t, "POST", "/api/v1/messages", second, `{"to":"15559990000","text":"x"}`); status != 200 {
+		t.Fatalf("another agent's list: %d %s", status, body)
+	}
+	if rec.count() != sendlist.MaxNewNumbers+1 {
+		t.Fatalf("messages sent: %d", rec.count())
+	}
+}
+
+func TestANumberThatRepliesStopIsDroppedFromTheList(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	if status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`); status != 200 {
+		t.Fatalf("first: %d %s", status, body)
+	}
+	f.incoming(t, listed, "R1", "  Stop ")
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	l := listOf(t, f, "poster")
+	if l.Find(listed) != nil || l.Stopped != 1 || len(l.Numbers) != 1 {
+		t.Fatalf("the number that said STOP is still listed: %+v", l)
+	}
+	// Approving the same list again does not bring it back while the STOP is archived.
+	f.approveList(t, "poster", nil, "15551230000", "15551230001")
+	status, body = f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"hi"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if rec.count() != 1 {
+		t.Fatalf("a number that said STOP was messaged again: %d", rec.count())
+	}
+}
+
+func TestAListEndsWhenItExpiresIsRemovedOrTheAgentCannotSend(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	past := time.Now().Add(-time.Minute)
+	f.approveList(t, "poster", &past, "15551230000")
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	f.approveList(t, "poster", nil, "15551230000")
+	c, _ := agentauth.ActiveByName(f.dir, "poster")
+	if err := sendlist.Remove(f.dir, c.ID); err != nil {
+		t.Fatal(err)
+	}
+	status, body = f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	// A list never gives the send scope.
+	reader := f.grantWriter(t, "reader", []string{agentauth.ScopeReact}, 0, "one@g.us")
+	f.approveList(t, "reader", nil, "15551230000")
+	status, body = f.send(t, "POST", "/api/v1/messages", reader, `{"to":"15551230000","text":"x"}`)
+	wantV1Error(t, status, body, 403, query.CodeForbidden)
+	if rec.count() != 0 {
+		t.Fatalf("a send went out: %+v", rec.calls)
+	}
+}
+
+func TestAListIsUsedBeforeOpenSending(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	f.approveList(t, "poster", nil, "15551230000")
+	if _, err := opensend.Start(f.dir, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`)
+	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`)
+	wantV1Error(t, status, body, 429, query.CodeRateLimited)
+	if e := f.sentEntries(t); len(e) != 1 || !e[0].List || e[0].Open {
+		t.Fatalf("a listed number goes by the list's rules: %+v", e)
+	}
+}
+
+func TestSendListStatusReportsTheAllowanceLeft(t *testing.T) {
+	rec := &sendRecorder{}
+	f := setupSend(t, rec)
+	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	read := func(token string) sendListView {
+		t.Helper()
+		status, body := f.send(t, "GET", "/api/v1/send-list", token, "")
+		var got struct {
+			Data sendListView `json:"data"`
+		}
+		if status != 200 || json.Unmarshal(body, &got) != nil {
+			t.Fatalf("send-list: %d %s", status, body)
+		}
+		if strings.Contains(string(body), "1555") {
+			t.Fatalf("the status must not list the numbers: %s", body)
+		}
+		return got.Data
+	}
+	if v := read(agent); v.Active || !v.CanSend {
+		t.Fatalf("no list yet: %+v", v)
+	}
+	until := time.Now().Add(24 * time.Hour)
+	f.approveList(t, "poster", &until, "15551230000", "15551230001", "15551230002")
+	f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`)
+	f.incoming(t, listed, "R1", "STOP")
+	v := read(agent)
+	if !v.Active || v.Numbers != 2 || v.NotMessaged != 2 || v.Stopped != 1 || v.NewNumbersLeft != sendlist.MaxNewNumbers-1 || v.MessagesLeft != sendlist.MaxMessages-1 || v.ExpiresAt == nil {
+		t.Fatalf("status: %+v", v)
+	}
+	if v := read(f.agent); v.Active || v.CanSend {
+		t.Fatalf("another agent sees no list: %+v", v)
+	}
+	status, body := f.send(t, "GET", "/api/v1/send-list", "", "")
+	wantV1Error(t, status, body, 401, query.CodeUnauthorized)
+	status, body = f.send(t, "GET", "/api/v1/version", agent, "")
+	if status != 200 || !strings.Contains(string(body), `"write.send.list"`) {
+		t.Fatalf("version: %d %s", status, body)
+	}
+}
+
+// postList sends the Agents page's list form as a browser would.
+func (c *pageClient) postList(t *testing.T, fields map[string]string, file string) (int, string, http.Header) {
+	t.Helper()
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for k, v := range fields {
+		mw.WriteField(k, v)
+	}
+	if file != "" {
+		fw, _ := mw.CreateFormFile("file", "numbers.csv")
+		fw.Write([]byte(file))
+	}
+	mw.Close()
+	req, _ := http.NewRequest("POST", c.base+"/ui/agents", &buf)
+	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Origin", c.origin())
+	return c.do(req)
+}
+
+func TestApprovingAListNeedsTheSystemConfirmationAndRemovingItDoesNot(t *testing.T) {
+	stub := &promptStub{}
+	f, c, csrf := agentsFixture(t, stub)
+	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "quiet", Scopes: []string{agentauth.ScopeReadChats}, OnDemand: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	_, page, _ := c.get("/ui/agents")
+	if !strings.Contains(page, "Approved numbers") || !strings.Contains(page, "Approve list") || !strings.Contains(page, `<option>helper</option>`) || strings.Contains(page, `<option>quiet</option>`) {
+		t.Fatalf("the list form should offer agents that can send:\n%s", page)
+	}
+	form := func(numbers, file, agent string) string {
+		_, _, hd := c.postList(t, map[string]string{"csrf": csrf, "action": "liston", "agent": agent, "numbers": numbers, "ends": "7d"}, file)
+		return notice(hd)
+	}
+	if got := form("+15551230000\n15551230001", "", "helper"); got != "declined" {
+		t.Fatalf("a declined prompt gave %q", got)
+	}
+	if lists, _ := sendlist.Load(f.dir); len(lists) != 0 {
+		t.Fatalf("a list was saved without a confirmation: %+v", lists)
+	}
+	stub.set(true)
+	for _, tc := range []struct{ numbers, file, agent, want string }{
+		{"+15551230000\nJane", "", "helper", "badlist"},
+		{"", "", "helper", "nolist"},
+		{"+15551230000", "", "quiet", "needsend"},
+		{"+15551230000", "", "nobody", "failed"},
+	} {
+		if got := form(tc.numbers, tc.file, tc.agent); got != tc.want {
+			t.Fatalf("%+v gave %q", tc, got)
+		}
+	}
+	before := len(stub.seen())
+	if got := form("+1 555 123 0000\n+15551230001", "15551230002\r\n15551230003,15551230004\n15551230001\n", "helper"); got != "liston" {
+		t.Fatalf("a confirmed list gave %q", got)
+	}
+	prompts := stub.seen()
+	if len(prompts) != before+1 || !strings.Contains(prompts[len(prompts)-1], `"helper"`) || !strings.Contains(prompts[len(prompts)-1], "these 5 number(s)") || !strings.Contains(prompts[len(prompts)-1], "+15551230000, +15551230001, +15551230002 and 2 more") {
+		t.Fatalf("the prompt must name the agent, the count and some numbers: %q", prompts)
+	}
+	l := listOf(t, fixture{dir: f.dir}, "helper")
+	if len(l.Numbers) != 5 || l.Until == nil || l.Until.Before(time.Now().Add(6*24*time.Hour)) {
+		t.Fatalf("saved list: %+v", l)
+	}
+	_, page, _ = c.get("/ui/agents")
+	if !strings.Contains(page, "5 <span class=\"mut\">(5 not messaged yet)") || !strings.Contains(page, "Remove list") {
+		t.Fatalf("the list is not shown:\n%s", page)
+	}
+	stub.set(false)
+	before = len(stub.seen())
+	_, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"listoff"}, "agent": {"helper"}})
+	if notice(hd) != "listoff" || len(stub.seen()) != before {
+		t.Fatalf("removing a list must work without a prompt: %q", notice(hd))
+	}
+	if lists, _ := sendlist.Load(f.dir); len(lists) != 0 {
+		t.Fatalf("the list was not removed: %+v", lists)
+	}
+	if audit := auditText(t, f.dir); !strings.Contains(audit, `"event":"send_list_on"`) || !strings.Contains(audit, `"event":"send_list_off"`) {
+		t.Fatalf("the list changes were not audited: %s", audit)
+	}
+	if code, _, _ := c.postList(t, map[string]string{"csrf": "forged", "action": "liston", "agent": "helper", "numbers": "+15551230000", "ends": "7d"}, ""); code != 403 {
+		t.Fatalf("forged list form: %d", code)
+	}
+}
+
+func TestAListCannotBeApprovedWithoutASystemConfirmation(t *testing.T) {
+	f, c, csrf := agentsFixture(t, nil)
+	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	_, page, _ := c.get("/ui/agents")
+	if strings.Contains(page, "Approve list") {
+		t.Fatalf("a computer with no confirmation was offered the list form:\n%s", page)
+	}
+	if _, _, hd := c.postList(t, map[string]string{"csrf": csrf, "action": "liston", "agent": "helper", "numbers": "+15551230000", "ends": "7d"}, ""); notice(hd) != "nogate" {
+		t.Fatalf("list without a confirmation: %q", notice(hd))
+	}
+	if lists, _ := sendlist.Load(f.dir); len(lists) != 0 {
+		t.Fatal("a list was saved with no system confirmation")
+	}
+}
