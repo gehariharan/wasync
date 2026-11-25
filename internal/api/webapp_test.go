@@ -54,7 +54,7 @@ func TestChatsPageShowsSyncedChatsAndTheirMessagesSafely(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("chats: %d", code)
 	}
-	for _, want := range []string{"Family Group", "my own reply", "[image]", "&#43;15551230000", "Member", "1 of 3 syncing"} {
+	for _, want := range []string{"Family Group", "my own reply", `<span class="fn">Photo</span>`, "&#43;15551230000", "Member", "1 of 3 syncing"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("chats page lacks %q:\n%s", want, page)
 		}

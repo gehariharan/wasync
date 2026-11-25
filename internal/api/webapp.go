@@ -45,6 +45,7 @@ type chatMsg struct {
 	Who, Text, Time   string
 	Edited, Deleted   bool
 	Sent, Unavailable bool
+	Att               *chatAttachment
 }
 
 type chatsData struct {
@@ -60,6 +61,8 @@ type chatsData struct {
 	CanSend        bool
 	Picked         bool // a chat was asked for by name, so a phone shows it instead of the list
 	New            bool // the right pane is a new message to a phone number
+	MediaMode      string
+	CanDownload    bool
 }
 
 type pickRow struct {
@@ -180,7 +183,7 @@ func (h *handler) chatsPage(w http.ResponseWriter, r *http.Request, sess uiSessi
 // chatsView renders the chats page; with newMessage the right pane is a new
 // message to a phone number instead of an open chat.
 func (h *handler) chatsView(w http.ResponseWriter, r *http.Request, sess uiSession, newMessage bool) {
-	d := &chatsData{uiData: uiData{CSRF: sess.csrf, Title: "wasync chats", Wide: true, Full: true}, CanSend: h.sender != nil}
+	d := &chatsData{uiData: uiData{CSRF: sess.csrf, Title: "wasync chats", Wide: true, Full: true}, CanSend: h.sender != nil, CanDownload: h.mediaDownload != nil}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		d.Notice, d.NoticeOK = n.text, n.ok
 	}
@@ -255,14 +258,18 @@ func (h *handler) chatsView(w http.ResponseWriter, r *http.Request, sess uiSessi
 			return
 		}
 		d.OlderNotShown = page.Next != (storage.Cursor{})
+		if d.MediaMode, err = h.store.MediaPolicy(r.Context(), account.ID, cur.ID); err != nil {
+			d.MediaMode = "inherit"
+		}
 		for i := len(page.Items) - 1; i >= 0; i-- {
 			m := page.Items[i]
-			msg := chatMsg{Me: m.FromMe, Time: shortTime(m.Timestamp), Edited: m.EditedAt != nil, Deleted: m.DeletedAt != nil}
+			msg := chatMsg{Me: m.FromMe, Time: shortTime(m.Timestamp), Edited: m.EditedAt != nil, Deleted: m.DeletedAt != nil, Att: attachmentFor(cur.ID, m)}
 			switch {
 			case m.DeletedAt != nil:
 				msg.Text = "This message was deleted."
 			case strings.TrimSpace(m.Text) != "":
 				msg.Text = bodyText(m.Text)
+			case msg.Att != nil:
 			default:
 				msg.Text = "[" + humancheck.Clean(m.Type, 30) + "]"
 			}
@@ -530,12 +537,31 @@ main.full{max-width:none;height:100vh;height:100dvh;box-sizing:border-box;paddin
 .tabs a[aria-current="true"]{background:var(--fg);color:var(--bg)}
 .newmsg{flex:1;min-height:0;display:flex;flex-direction:column}
 .to{display:flex;gap:.5rem;align-items:center;margin:0;padding:.5rem .9rem;border-bottom:1px solid var(--line)}.to input{flex:1;font:inherit;padding:.3rem .5rem}
+.dlmode{display:flex;gap:.3rem;align-items:center;font-size:.85rem}.dlmode select,.dlmode button{font:inherit;font-size:.85rem;padding:.15rem .4rem;margin:0}
+.media{display:block;width:24rem;max-width:100%;height:auto;max-height:24rem;object-fit:contain;border-radius:8px;margin:.25rem 0;white-space:normal}
+.ph{display:grid;place-items:center;width:20rem;max-width:100%;max-height:16rem;border-radius:8px;margin:.25rem 0;background:repeating-linear-gradient(45deg,rgba(127,127,127,.12) 0 8px,rgba(127,127,127,.2) 8px 16px);color:var(--mut);font-size:.8rem;text-align:center;white-space:normal}
+.file{display:grid;grid-template-columns:2.2rem minmax(0,1fr) auto;gap:.5rem;align-items:center;margin:.25rem 0;white-space:normal;min-width:14rem}
+.file .ico{width:2.2rem;height:2.2rem;border-radius:8px;display:grid;place-items:center;background:var(--line)}
+.file .fn{display:block;font-weight:600;font-size:.88rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dl{display:inline;margin:0}.dl button,a.open{font:inherit;font-size:.8rem;padding:.2rem .6rem;margin:0;border-radius:7px;border:1px solid var(--line);background:var(--card);color:var(--fg);text-decoration:none;white-space:nowrap}.dl button{background:var(--acc);border-color:var(--acc);color:#fff}
 .compose{display:flex;gap:.5rem;padding:.6rem .9rem;border-top:1px solid var(--line)}.compose textarea{flex:1;font:inherit}
 .sent{width:100%;border-collapse:collapse;background:var(--card)}.sent th,.sent td{border:1px solid var(--line);padding:.4rem .6rem;text-align:left;vertical-align:top;font-size:.9rem}.sent tr.problem td{background:rgba(164,38,44,.08)}
 .pickbox{border:1px solid var(--line);border-radius:10px;background:var(--card);max-height:60vh;overflow:auto}
 </style>{{end}}`
 
-var chatsTemplate = template.Must(template.New("chats").Parse(uiHead + `{{template "head" .}}
+// attView is what the attachment template needs: the attachment and the page
+// it sits on, for the form token and the open chat.
+type attView struct {
+	D *chatsData
+	A *chatAttachment
+}
+
+// uiAttachment draws one attachment inside a chat bubble.
+const uiAttachment = `{{define "dlbtn"}}{{if and .D.CanDownload .D.Cur.Syncing}}<form class="dl" method="post" action="/ui/chats/media"><input type="hidden" name="csrf" value="{{.D.CSRF}}"><input type="hidden" name="chat" value="{{.D.Cur.ID}}"><input type="hidden" name="msg" value="{{.A.MsgID}}"><button name="action" value="download">{{if eq .A.State "failed"}}Try again{{else}}Download{{end}}</button></form>{{end}}{{end}}
+{{define "attstate"}}{{if eq .A.State "pending"}}<span class="sub">Downloading… refresh to see it</span>{{else if eq .A.State "failed"}}<span class="sub">Couldn't download</span>{{end}}{{end}}
+{{define "att"}}{{$a := .A}}{{if eq $a.State "ready"}}{{if eq $a.Show "img"}}<a href="{{$a.URL}}" target="_blank" rel="noopener"><img class="media" src="{{$a.URL}}" alt="{{$a.Label}}"{{if $a.Ratio}} style="aspect-ratio:{{$a.Ratio}}"{{end}}></a>{{else if eq $a.Show "video"}}<video class="media" controls preload="metadata" src="{{$a.URL}}"{{if $a.Ratio}} style="aspect-ratio:{{$a.Ratio}}"{{end}}></video>{{else if eq $a.Show "audio"}}<audio controls preload="metadata" src="{{$a.URL}}" aria-label="{{$a.Label}}"></audio><span class="sub" style="display:block">{{$a.Icon}} {{$a.Label}}{{if $a.Meta}} · {{$a.Meta}}{{end}}</span>{{else}}<div class="file"><span class="ico">{{$a.Icon}}</span><span><span class="fn">{{$a.Name}}</span><span class="sub">{{$a.Meta}}</span></span><a class="open" href="{{$a.URL}}" target="_blank" rel="noopener">Open</a></div>{{end}}{{else if and (or (eq $a.Kind "image") (eq $a.Kind "video")) $a.Ratio}}<div class="ph" style="aspect-ratio:{{$a.Ratio}}"><span>{{$a.Icon}}<br>{{$a.Label}}{{if $a.Meta}} · {{$a.Meta}}{{end}}<br>{{template "attstate" .}}{{if ne $a.State "pending"}} {{template "dlbtn" .}}{{end}}</span></div>{{else}}<div class="file"><span class="ico">{{$a.Icon}}</span><span><span class="fn">{{$a.Name}}</span><span class="sub">{{$a.Meta}}</span> {{template "attstate" .}}</span><span>{{if ne $a.State "pending"}}{{template "dlbtn" .}}{{end}}</span></div>{{end}}{{end}}`
+
+var chatsTemplate = template.Must(template.New("chats").Funcs(template.FuncMap{"attctx": func(d *chatsData, a *chatAttachment) attView { return attView{d, a} }}).Parse(uiHead + uiAttachment + `{{template "head" .}}
 {{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
 {{if not .Paired}}<h1>Chats</h1><p class="mut">No WhatsApp is linked yet. Link it on the <a href="/ui/setup">Set up</a> page first.</p>
 {{else}}
@@ -565,10 +591,11 @@ var chatsTemplate = template.Must(template.New("chats").Parse(uiHead + `{{templa
 {{else}}<p class="bad" style="padding:1rem">wasync is not connected to WhatsApp, so nothing can be sent. Start it with <code>wasync serve</code> or <code>wasync tui</code> on a linked account.</p>{{end}}
 {{else if .Cur}}
 <div class="head"><span><a class="back" href="/ui/chats{{if .All}}?all=1{{end}}" aria-label="Back to chats">‹</a> <strong>{{.Cur.Name}}</strong> <span class="sub">{{if .Cur.Syncing}}syncing{{else}}not syncing{{end}}{{if .Cur.Agent}} · 🤖 agents can read this chat{{end}}</span></span>
-{{if not .Cur.Syncing}}<a href="/ui/chats/pick">Choose chats to sync</a>{{end}}</div>
+{{if not .Cur.Syncing}}<a href="/ui/chats/pick">Choose chats to sync</a>{{else}}<form class="dlmode" method="post" action="/ui/chats/media"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="chat" value="{{.Cur.ID}}"><input type="hidden" name="action" value="policy">
+<label for="dlmode">Downloads</label> <select id="dlmode" name="mode"><option value="manual"{{if eq .MediaMode "manual"}} selected{{end}}>Only when I ask</option><option value="auto"{{if eq .MediaMode "auto"}} selected{{end}}>Always in this chat</option><option value="inherit"{{if eq .MediaMode "inherit"}} selected{{end}}>Same as wasync default</option></select> <button>Save</button></form>{{end}}</div>
 <div class="thread" aria-label="Messages in {{.Cur.Name}}"><div class="msgs">
 {{if .OlderNotShown}}<p class="sub">Older messages are not shown here.</p>{{end}}
-{{range .Messages}}<div class="b{{if .Me}} me{{end}}"><span class="by">{{.Who}}</span>{{.Text}}<span class="tm">{{.Time}}{{if .Edited}} · edited{{end}}</span></div>
+{{range .Messages}}<div class="b{{if .Me}} me{{end}}"><span class="by">{{.Who}}</span>{{with .Att}}{{template "att" (attctx $ .)}}{{end}}{{.Text}}<span class="tm">{{.Time}}{{if .Edited}} · edited{{end}}</span></div>
 {{else}}<p class="mut">No messages kept for this chat yet.</p>{{end}}
 </div></div>
 {{if .CanSend}}<form class="compose" method="post" action="/ui/chats/send"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="chat" value="{{.Cur.ID}}">
