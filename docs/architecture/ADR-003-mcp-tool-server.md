@@ -21,5 +21,5 @@ People who use the Codex desktop app have no terminal. They need WhatsApp to app
 ## Consequences
 
 - A prompt-injected agent can cause one setup page to open. It cannot link an account, choose chats, connect or widen an agent, or approve anything: those need the person at the computer.
-- If `wasync-axi` is not on the PATH the Codex desktop app gives its tool server, the plugin cannot start. The setup skill tells the person how to fix it; a later change can pin a full path.
+- If `whatsapp-axi` (the name the plugin runs) is not on the PATH the Codex desktop app gives its tool server, the plugin cannot start. The setup skill tells the person how to fix it; a later change can pin a full path.
 - The Windows paths (starting `wasync setup` detached, the login item) have not been run on a real Windows computer.

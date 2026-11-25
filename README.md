@@ -37,7 +37,8 @@ project, so Codex asks your approval before the commands below. In order, they a
 1. **Install wasync and wasync-axi** (no administrator password).
    - macOS: `brew tap --custom-remote gehariharan/tap https://github.com/gehariharan/wasync.git`,
      then `brew trust --cask gehariharan/tap/wasync` if your Homebrew has `brew trust`, then
-     `brew install --cask gehariharan/tap/wasync` and `brew install gehariharan/tap/wasync-axi`.
+     `brew install --cask gehariharan/tap/wasync` and `brew install gehariharan/tap/whatsapp-axi`
+     (the formula that also provides the `whatsapp-axi` name the plugin runs).
      Homebrew's `wasync-axi` builds from source, so that step takes a few minutes.
    - Windows: `Invoke-WebRequest https://raw.githubusercontent.com/gehariharan/wasync/main/scripts/install-windows.ps1 -OutFile $env:TEMP\install-wasync.ps1`
      then `powershell -ExecutionPolicy Bypass -File $env:TEMP\install-wasync.ps1`. The script finds
@@ -71,7 +72,7 @@ Either way, restarting Codex is the last step of the pasted prompt.
 
 No tool Codex has can approve anything, create a credential or read one (see
 [ADR-003](docs/architecture/ADR-003-mcp-tool-server.md)). If Codex says it has no WhatsApp tools
-after the restart, the plugin could not start `wasync-axi`: check `wasync-axi --version` in
+after the restart, the plugin could not start `whatsapp-axi`: check `whatsapp-axi --version` in
 a terminal and that the Codex app was started after the install.
 
 > **Windows:** continuous integration installs the Setup program directly and runs the
@@ -1254,9 +1255,9 @@ codex plugin marketplace add gehariharan/wasync
 codex plugin add whatsapp@wasync
 ```
 
-The plugin gives Codex `whatsapp_*` tools served by `wasync-axi mcp` (read, search, follow changes, and reply, react and edit only where you allow it, plus asking for access to a chat and starting setup). Ask Codex to "set up WhatsApp": it opens the setup page below, you scan the QR code and choose chats, and later every chat Codex asks for is approved by you on your own computer (unless you set wasync to sync all chats, where asking grants it). No tool can approve, grant or reveal a credential. See [ADR-003](docs/architecture/ADR-003-mcp-tool-server.md) and the threat model.
+The plugin gives Codex `whatsapp_*` tools served by `whatsapp-axi mcp` (read, search, follow changes, and reply, react and edit only where you allow it, plus asking for access to a chat and starting setup). Ask Codex to "set up WhatsApp": it opens the setup page below, you scan the QR code and choose chats, and later every chat Codex asks for is approved by you on your own computer (unless you set wasync to sync all chats, where asking grants it). No tool can approve, grant or reveal a credential. See [ADR-003](docs/architecture/ADR-003-mcp-tool-server.md) and the threat model.
 
-It needs `wasync` and `wasync-axi` installed (see [Choose whether to add AXI for agents](#choose-whether-to-add-axi-for-agents)) with `wasync-axi` on the PATH the Codex app uses. [Let your agent set this up](#let-your-agent-set-this-up) has the install commands for macOS and Windows and the steps only you can do.
+It needs `wasync` and `wasync-axi` installed (see [Choose whether to add AXI for agents](#choose-whether-to-add-axi-for-agents)) with its old name `whatsapp-axi` on the PATH the Codex app uses. [Let your agent set this up](#let-your-agent-set-this-up) has the install commands for macOS and Windows and the steps only you can do.
 
 ## Setting up without a terminal
 

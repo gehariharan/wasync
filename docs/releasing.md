@@ -236,4 +236,4 @@ custom remote and platform-specific installation commands.
 The [consolidation decision](architecture/ADR-002-monorepo.md) owns compatibility
 and historical repository retention requirements.
 
-TODO: once a release publishes `Formula/wasync-axi.rb` to the tap, switch the Codex plugin's server command (`plugins/whatsapp/mcp.json`) and its setup skill's missing-tools check and Homebrew line (`plugins/whatsapp/skills/setup/SKILL.md`) to `wasync-axi`.
+TODO: once a release publishes `Formula/wasync-axi.rb` to the tap, switch the Codex plugin's server command (`plugins/whatsapp/mcp.json`) and its setup skill's missing-tools check and Homebrew line (`plugins/whatsapp/skills/setup/SKILL.md`), plus the Codex plugin steps in `README.md`, `docs/architecture/ADR-003-mcp-tool-server.md` and `docs/architecture/threat-model.md`, to `wasync-axi`.
