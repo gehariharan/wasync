@@ -1,4 +1,4 @@
-package main
+package entry
 
 import (
 	"bufio"
@@ -16,9 +16,9 @@ import (
 // protocol stream.
 func TestToolServerOnRealPipesWithNoWasync(t *testing.T) {
 	t.Setenv("WASYNC_BIN", "/nonexistent/wasync")
-	t.Setenv("WHATSAPP_AXI_CONFIG_DIR", t.TempDir())
+	t.Setenv("WASYNC_AXI_CONFIG_DIR", t.TempDir())
 	t.Setenv("WASYNC_API_ADDR", "127.0.0.1:1")
-	t.Setenv("WHATSAPP_AXI_TOKEN", "")
+	t.Setenv("WASYNC_AXI_TOKEN", "")
 
 	inR, inW, err := os.Pipe()
 	if err != nil {

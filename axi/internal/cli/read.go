@@ -16,7 +16,7 @@ import (
 )
 
 // Read commands compose wasync v1 reads and format them. Matching, search,
-// paging, scopes and windows are decided by wasync; whatsapp-axi only picks
+// paging, scopes and windows are decided by wasync; wasync-axi only picks
 // defaults for how much to print.
 
 const (
@@ -25,8 +25,8 @@ const (
 	homeChatLimit     = 5   // recent chats in the home view
 	listTextLimit     = 200 // characters of message text in lists
 	offlineNote       = "offline read of the local archive; not scoped by an agent grant"
-	fullTextHintFmt   = "Text over %d chars is cut and ends in …; run `whatsapp-axi message <ref> --full` for a whole message"
-	threadHint        = "Run `whatsapp-axi thread <ref>` to read a message with its neighbours"
+	fullTextHintFmt   = "Text over %d chars is cut and ends in …; run `wasync-axi message <ref> --full` for a whole message"
+	threadHint        = "Run `wasync-axi thread <ref>` to read a message with its neighbours"
 	ambiguityHelpText = "Several chats match; rerun with one candidate id, e.g. "
 )
 
@@ -37,32 +37,32 @@ var (
 
 var chatsCommand = &command{
 	name:        "chats",
-	usage:       "whatsapp-axi chats [--match TEXT] [--limit N] [--fields LIST] [--json]",
+	usage:       "wasync-axi chats [--match TEXT] [--limit N] [--fields LIST] [--json]",
 	description: "List archived chats, or find one by JID or name",
 	flags: []flagSpec{
 		{name: "--match", value: "TEXT", description: "find chats by JID or name (wasync matches exact id, then exact name, name prefix, substring)"},
 		{name: "--limit", value: "N", description: "chats to print (default 50, 0 prints all); --json always returns every chat"},
 		listFieldsFlag(chatFields, defaultChatFields), jsonFlag,
 	},
-	examples: []string{"whatsapp-axi chats", "whatsapp-axi chats --match family", "whatsapp-axi chats --json"},
+	examples: []string{"wasync-axi chats", "wasync-axi chats --match family", "wasync-axi chats --json"},
 	run:      (*App).runChats,
 }
 
 var messagesCommand = &command{
 	name:        "messages",
-	usage:       "whatsapp-axi messages CHAT [--limit N] [--cursor CURSOR] [--fields LIST] [--json]",
+	usage:       "wasync-axi messages CHAT [--limit N] [--cursor CURSOR] [--fields LIST] [--json]",
 	description: "Read a chat's messages, newest first; CHAT is a chat JID or name",
 	flags:       []flagSpec{limitFlag, cursorFlag, listFieldsFlag(messageFields, defaultMessageFields), jsonFlag},
 	minArgs:     1,
 	maxArgs:     1,
 	argsName:    "CHAT",
-	examples:    []string{"whatsapp-axi messages 120363000000000000@g.us", "whatsapp-axi messages family --limit 50"},
+	examples:    []string{"wasync-axi messages 120363000000000000@g.us", "wasync-axi messages family --limit 50"},
 	run:         (*App).runMessages,
 }
 
 var searchCommand = &command{
 	name:        "search",
-	usage:       "whatsapp-axi search TEXT [--chat CHAT] [--context N] [--limit N] [--cursor CURSOR] [--fields LIST] [--json]",
+	usage:       "wasync-axi search TEXT [--chat CHAT] [--context N] [--limit N] [--cursor CURSOR] [--fields LIST] [--json]",
 	description: "Search message text, newest first, optionally with the messages around each hit",
 	flags: []flagSpec{
 		{name: "--chat", value: "CHAT", description: "only this chat (JID or name)"},
@@ -72,13 +72,13 @@ var searchCommand = &command{
 	minArgs:  1,
 	maxArgs:  1,
 	argsName: "TEXT",
-	examples: []string{`whatsapp-axi search "dinner plans"`, "whatsapp-axi search invoice --chat family --context 2", "whatsapp-axi search -- -5%"},
+	examples: []string{`wasync-axi search "dinner plans"`, "wasync-axi search invoice --chat family --context 2", "wasync-axi search -- -5%"},
 	run:      (*App).runSearch,
 }
 
 var threadCommand = &command{
 	name:        "thread",
-	usage:       "whatsapp-axi thread REF [--before N] [--after N] [--fields LIST] [--json]",
+	usage:       "wasync-axi thread REF [--before N] [--after N] [--fields LIST] [--json]",
 	description: "Show a message with the messages before and after it in its chat, oldest first",
 	flags: []flagSpec{
 		{name: "--before", value: "N", description: "earlier messages (wasync default 5)"},
@@ -88,13 +88,13 @@ var threadCommand = &command{
 	minArgs:  1,
 	maxArgs:  1,
 	argsName: "REF",
-	examples: []string{"whatsapp-axi thread m1_...", "whatsapp-axi thread m1_... --before 10 --after 2"},
+	examples: []string{"wasync-axi thread m1_...", "wasync-axi thread m1_... --before 10 --after 2"},
 	run:      (*App).runThread,
 }
 
 var messageCommand = &command{
 	name:        "message",
-	usage:       "whatsapp-axi message REF [--full] [--json]",
+	usage:       "wasync-axi message REF [--full] [--json]",
 	description: "Show one message by its ref (m1_...)",
 	flags: []flagSpec{
 		{name: "--full", description: "print the whole text and media metadata instead of the first 1000 chars"},
@@ -103,7 +103,7 @@ var messageCommand = &command{
 	minArgs:  1,
 	maxArgs:  1,
 	argsName: "REF",
-	examples: []string{"whatsapp-axi message m1_...", "whatsapp-axi message m1_... --full"},
+	examples: []string{"wasync-axi message m1_...", "wasync-axi message m1_... --full"},
 	run:      (*App).runMessage,
 }
 
@@ -189,7 +189,7 @@ func shellArg(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// commandLine builds a copy-pasteable hint from whatsapp-axi arguments.
+// commandLine builds a copy-pasteable hint from wasync-axi arguments.
 // Arguments that look like flags (--name) are kept bare; callers put a
 // positional value that starts with "-" after "--" (see searchArgs).
 func commandLine(args ...string) string {
@@ -201,7 +201,7 @@ func commandLine(args ...string) string {
 			q[i] = shellArg(a)
 		}
 	}
-	return "`whatsapp-axi " + strings.Join(q, " ") + "`"
+	return "`wasync-axi " + strings.Join(q, " ") + "`"
 }
 
 func isFlagToken(s string) bool {
@@ -262,7 +262,7 @@ func resolveChat(ctx context.Context, t transport.Transport, match string, examp
 	}
 	switch len(raw.Items) {
 	case 0:
-		return contract.Chat{}, nil, &contract.Error{RequestID: resp.RequestID, Code: contract.CodeNotFound, Message: "no chat matches " + strconv.Quote(match), Help: "run `whatsapp-axi chats` to list chats, or `whatsapp-axi chats --match <part of a name>`", Transport: t.Name()}
+		return contract.Chat{}, nil, &contract.Error{RequestID: resp.RequestID, Code: contract.CodeNotFound, Message: "no chat matches " + strconv.Quote(match), Help: "run `wasync-axi chats` to list chats, or `wasync-axi chats --match <part of a name>`", Transport: t.Name()}
 	case 1:
 		var c contract.Chat
 		if err := json.Unmarshal(raw.Items[0], &c); err != nil {
@@ -329,14 +329,14 @@ func (a *App) runChats(ctx context.Context, inv invocation) error {
 	var hints []string
 	switch {
 	case len(list.Items) == 0 && hasMatch:
-		hints = append(hints, "No chat matches "+strconv.Quote(match)+"; run `whatsapp-axi chats` to list every chat")
+		hints = append(hints, "No chat matches "+strconv.Quote(match)+"; run `wasync-axi chats` to list every chat")
 	case len(list.Items) == 0:
 		hints = append(hints, "The archive has no chats yet; ask the user to pair wasync and enable capture for some chats")
 	default:
 		if len(shown) < len(list.Items) {
-			hints = append(hints, "Showing "+strconv.Itoa(len(shown))+" of "+strconv.Itoa(len(list.Items))+" chats; run `whatsapp-axi chats --limit 0` for all, or `whatsapp-axi chats --match <name>` to narrow")
+			hints = append(hints, "Showing "+strconv.Itoa(len(shown))+" of "+strconv.Itoa(len(list.Items))+" chats; run `wasync-axi chats --limit 0` for all, or `wasync-axi chats --match <name>` to narrow")
 		}
-		hints = append(hints, "Run `whatsapp-axi messages <id>` to read a chat, `whatsapp-axi search <text>` to search")
+		hints = append(hints, "Run `wasync-axi messages <id>` to read a chat, `wasync-axi search <text>` to search")
 	}
 	o.Help(hints...)
 	return o.Err()
@@ -588,7 +588,7 @@ func (a *App) runSearch(ctx context.Context, inv invocation) error {
 func refArg(inv invocation) (string, error) {
 	ref := inv.args[0]
 	if !contract.IsMessageRef(ref) {
-		return "", usageErr("pass the ref column (m1_...) from `whatsapp-axi messages` or `whatsapp-axi search`", "%q is not a message ref", ref)
+		return "", usageErr("pass the ref column (m1_...) from `wasync-axi messages` or `wasync-axi search`", "%q is not a message ref", ref)
 	}
 	return ref, nil
 }

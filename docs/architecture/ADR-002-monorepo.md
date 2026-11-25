@@ -1,14 +1,14 @@
 # ADR-002: One wasync source and distribution repository
 
 Status: chosen by Hari on 2026-10-20. Supersedes ADR-001's separate repository
-and release ownership for whatsapp-axi; its process and authorization boundaries
+and release ownership for wasync-axi; its process and authorization boundaries
 remain in force.
 
 The project is named **wasync**, at `gehariharan/wasync`. It contains:
 
 - The existing core Go module at the repository root.
 - The independently buildable agent module under `axi/`, keeping the
-  `whatsapp-axi` executable name and its existing configuration directory.
+  `wasync-axi` executable name and its existing configuration directory.
 - The Homebrew definitions under root `Formula/` and `Casks/`.
 
 The AXI and tap histories are imported without squashing. Old releases and

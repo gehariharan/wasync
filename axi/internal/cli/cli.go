@@ -1,4 +1,4 @@
-// Package cli parses whatsapp-axi arguments and runs commands. Exit codes:
+// Package cli parses wasync-axi arguments and runs commands. Exit codes:
 // 0 success (including "wasync not running" states), 1 error (and a doctor
 // report with a failed check), 2 usage.
 package cli
@@ -121,10 +121,10 @@ func init() {
 	commands = []*command{
 		{
 			name:        "",
-			usage:       "whatsapp-axi [--brief] [--fields LIST] [--json]",
+			usage:       "wasync-axi [--brief] [--fields LIST] [--json]",
 			description: "Home view: this binary, the wasync transport in use, compatibility, recent chats and next steps",
 			flags:       []flagSpec{briefFlag, listFieldsFlag(chatFields, defaultChatFields), jsonFlag},
-			examples:    []string{"whatsapp-axi", "whatsapp-axi --brief", "whatsapp-axi --json"},
+			examples:    []string{"wasync-axi", "wasync-axi --brief", "wasync-axi --json"},
 			run:         (*App).runHome,
 		},
 		chatsCommand,
@@ -139,28 +139,28 @@ func init() {
 		accessCommand,
 		{
 			name:        "version",
-			usage:       "whatsapp-axi version [--json]",
-			description: "Show the whatsapp-axi version and the detected wasync version, transport and compatibility",
+			usage:       "wasync-axi version [--json]",
+			description: "Show the wasync-axi version and the detected wasync version, transport and compatibility",
 			flags:       []flagSpec{jsonFlag},
-			examples:    []string{"whatsapp-axi version", "whatsapp-axi version --json", "whatsapp-axi --version"},
+			examples:    []string{"wasync-axi version", "wasync-axi version --json", "wasync-axi --version"},
 			run:         (*App).runVersion,
 		},
 		{
 			name:        "doctor",
-			usage:       "whatsapp-axi doctor [--json]",
+			usage:       "wasync-axi doctor [--json]",
 			description: "Check installation, pairing, service, permissions, compatibility and hooks; each problem comes with repair guidance",
 			flags:       []flagSpec{jsonFlag},
-			examples:    []string{"whatsapp-axi doctor", "whatsapp-axi doctor --json"},
+			examples:    []string{"wasync-axi doctor", "wasync-axi doctor --json"},
 			run:         (*App).runDoctor,
 		},
 		{
 			name:        "help",
-			usage:       "whatsapp-axi help [COMMAND] [--json]",
+			usage:       "wasync-axi help [COMMAND] [--json]",
 			description: "List commands, or show flags and examples for one command",
 			flags:       []flagSpec{jsonFlag},
 			maxArgs:     1,
 			argsName:    "COMMAND",
-			examples:    []string{"whatsapp-axi help", "whatsapp-axi help version", "whatsapp-axi help --json"},
+			examples:    []string{"wasync-axi help", "wasync-axi help version", "wasync-axi help --json"},
 			run:         (*App).runHelp,
 		},
 		observeCommand(),
@@ -191,7 +191,7 @@ func commandNames() []string {
 
 func displayName(c *command) string {
 	if c.name == "" {
-		return "whatsapp-axi"
+		return "wasync-axi"
 	}
 	return c.name
 }
@@ -247,7 +247,7 @@ func (a *App) resolve(args []string) (*command, []string, bool, error) {
 	if c := findCommand(args[0]); c != nil {
 		return c, args[1:], jsonMode, nil
 	}
-	return nil, nil, jsonMode, usageErr("valid commands: "+strings.Join(commandNames(), ", ")+"; run `whatsapp-axi help`", "unknown command %q", args[0])
+	return nil, nil, jsonMode, usageErr("valid commands: "+strings.Join(commandNames(), ", ")+"; run `wasync-axi help`", "unknown command %q", args[0])
 }
 
 func containsJSON(args []string) bool {
@@ -291,7 +291,7 @@ func parseFlags(c *command, rest []string) (invocation, bool, error) {
 		case arg == "--":
 			positionalOnly = true
 		case IsVersionFlag(arg):
-			return inv, false, usageErr("whatsapp-axi --version", "%s takes no other arguments", arg)
+			return inv, false, usageErr("wasync-axi --version", "%s takes no other arguments", arg)
 		case arg == "--help" || arg == "-h":
 			wantHelp = true
 		case arg == "--json":
@@ -342,7 +342,7 @@ func validFlags(c *command) string {
 func (a *App) binPath() string {
 	exe, err := a.Executable()
 	if err != nil || exe == "" {
-		return "whatsapp-axi"
+		return "wasync-axi"
 	}
 	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
 		exe = resolved

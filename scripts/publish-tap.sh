@@ -46,10 +46,11 @@ apply_and_commit() {
   mkdir -p Casks Formula
   cp "$asset_directory/wasync.rb" Casks/wasync.rb
   cp "$asset_directory/wasync-formula.rb" Formula/wasync.rb
+  cp "$asset_directory/wasync-axi.rb" Formula/wasync-axi.rb
   cp "$asset_directory/whatsapp-axi.rb" Formula/whatsapp-axi.rb
   # lib/ is canonical source on main. An older release checkout must not
   # overwrite a helper fix merged while its signing job was in flight.
-  local paths=(Casks/wasync.rb Formula/wasync.rb Formula/whatsapp-axi.rb)
+  local paths=(Casks/wasync.rb Formula/wasync.rb Formula/wasync-axi.rb Formula/whatsapp-axi.rb)
   if [[ ! -e README.md ]]; then
     cp "$project_dir/packaging/homebrew/README.md" README.md
     paths+=(README.md)

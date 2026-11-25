@@ -22,9 +22,9 @@ import (
 
 // Environment variables that drive the fake wasync.
 const (
-	EnvFakeMode     = "WHATSAPP_AXI_FAKE_WASYNC_MODE"
-	EnvFakeLog      = "WHATSAPP_AXI_FAKE_WASYNC_LOG"
-	EnvFakeFixtures = "WHATSAPP_AXI_FAKE_WASYNC_FIXTURES"
+	EnvFakeMode     = "WASYNC_AXI_FAKE_WASYNC_MODE"
+	EnvFakeLog      = "WASYNC_AXI_FAKE_WASYNC_LOG"
+	EnvFakeFixtures = "WASYNC_AXI_FAKE_WASYNC_FIXTURES"
 )
 
 // Fake wasync modes.
@@ -56,7 +56,7 @@ func MaybeRunFakeWasync() {
 		return
 	}
 	if log := os.Getenv(EnvFakeLog); log != "" {
-		rec := map[string]any{"args": os.Args[1:], "token_present": os.Getenv("WHATSAPP_AXI_TOKEN") != ""}
+		rec := map[string]any{"args": os.Args[1:], "token_present": os.Getenv("WASYNC_AXI_TOKEN") != ""}
 		b, _ := json.Marshal(rec)
 		if f, err := os.OpenFile(log, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600); err == nil {
 			_, _ = f.Write(append(b, '\n'))

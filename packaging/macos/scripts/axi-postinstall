@@ -1,0 +1,11 @@
+#!/bin/sh
+# Keep the old command name, whatsapp-axi, as a link to wasync-axi unless
+# another program owns that name.
+old=/usr/local/bin/whatsapp-axi
+if [ -L "$old" ]; then
+  [ "$(readlink "$old")" = wasync-axi ] || exit 0
+elif [ -e "$old" ] && ! LC_ALL=C grep -aq 'gehariharan/wasync/axi' "$old" 2>/dev/null; then
+  exit 0
+fi
+ln -sf wasync-axi "$old"
+exit 0

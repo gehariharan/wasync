@@ -110,5 +110,5 @@ func fieldsDescription(available, defaults []string) string {
 }
 
 func allChatsHint(total int) string {
-	return "Run `whatsapp-axi chats --limit 0` for all " + strconv.Itoa(total) + " archived chats"
+	return "Run `wasync-axi chats --limit 0` for all " + strconv.Itoa(total) + " archived chats"
 }

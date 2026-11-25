@@ -7,7 +7,7 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/contract"
 )
 
-const reactUsage = "whatsapp-axi react REF (EMOJI | --remove) [--json]"
+const reactUsage = "wasync-axi react REF (EMOJI | --remove) [--json]"
 
 var reactCommand = &command{
 	name:        "react",
@@ -20,7 +20,7 @@ var reactCommand = &command{
 	minArgs:  1,
 	maxArgs:  2,
 	argsName: "REF",
-	examples: []string{"whatsapp-axi react m1_... 👍", "whatsapp-axi react m1_... --remove"},
+	examples: []string{"wasync-axi react m1_... 👍", "wasync-axi react m1_... --remove"},
 	run:      (*App).runReact,
 }
 

@@ -15,7 +15,7 @@ import (
 )
 
 // setupApp returns an interactive App whose input is served one byte at a
-// time (so each prompt consumes only its own line) and whose whatsapp-axi
+// time (so each prompt consumes only its own line) and whose wasync-axi
 // config directory is a temporary one.
 func setupApp(t *testing.T, input string) (*App, *strings.Builder, *strings.Builder, string) {
 	t.Helper()
@@ -24,7 +24,7 @@ func setupApp(t *testing.T, input string) (*App, *strings.Builder, *strings.Buil
 	app := &App{
 		In: iotest.OneByteReader(strings.NewReader(input)), Out: &out, Err: &errs, Interactive: true,
 		Getenv: func(k string) string {
-			if k == "WHATSAPP_AXI_CONFIG_DIR" {
+			if k == "WASYNC_AXI_CONFIG_DIR" {
 				return axiDir
 			}
 			return ""
@@ -242,7 +242,7 @@ func TestGrantDoesNotReplaceADifferentSavedCredentialWithoutAsking(t *testing.T)
 	dir2 := filepath.Join(t.TempDir(), "data2")
 	app, out, _, _ = setupApp(t, "helper\ny\n")
 	app.Getenv = func(k string) string {
-		if k == "WHATSAPP_AXI_CONFIG_DIR" {
+		if k == "WASYNC_AXI_CONFIG_DIR" {
 			return filepath.Dir(credPath)
 		}
 		return ""

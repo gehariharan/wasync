@@ -4,9 +4,9 @@
 #   scripts/test-macos-pkg.sh PKG VERSION ARCHITECTURE [SIGNED_AXI_BINARY]
 #
 # Always (no administrator access, installs nothing): the installer holds wasync
-# and whatsapp-axi as separate components; wasync is selected and locked, and AXI
+# and wasync-axi as separate components; wasync is selected and locked, and AXI
 # for agents is offered but not selected. With SIGNED_AXI_BINARY, the installer's
-# whatsapp-axi must be byte-identical to it.
+# wasync-axi must be byte-identical to it.
 #
 # On a disposable GitHub-hosted runner only, it also installs the package twice
 # with `installer`: once with the default choices (wasync only) and once with AXI
@@ -22,7 +22,7 @@ work="$(mktemp -d)"
 installed=0
 cleanup() {
   if [[ "$installed" == 1 ]]; then
-    sudo rm -f /usr/local/bin/wasync /usr/local/bin/whatsapp-axi
+    sudo rm -f /usr/local/bin/wasync /usr/local/bin/wasync-axi /usr/local/bin/whatsapp-axi
     sudo rm -rf /usr/local/share/wasync
     for id in com.gehariharan.wasynctuicli com.gehariharan.wasynctuicli.axi; do sudo pkgutil --forget "$id" >/dev/null 2>&1 || true; done
   fi
@@ -42,10 +42,10 @@ run_installer() {
 
 pkgutil --expand-full "$package" "$work/expanded"
 [[ -x "$work/expanded/wasync.pkg/Payload/usr/local/bin/wasync" ]] || fail "wasync is not in the wasync component"
-[[ -x "$work/expanded/whatsapp-axi.pkg/Payload/usr/local/bin/whatsapp-axi" ]] || fail "whatsapp-axi is not in its own component"
-[[ ! -e "$work/expanded/wasync.pkg/Payload/usr/local/bin/whatsapp-axi" ]] || fail "whatsapp-axi leaked into the always-installed component"
+[[ -x "$work/expanded/wasync-axi.pkg/Payload/usr/local/bin/wasync-axi" ]] || fail "wasync-axi is not in its own component"
+[[ ! -e "$work/expanded/wasync.pkg/Payload/usr/local/bin/wasync-axi" ]] || fail "wasync-axi leaked into the always-installed component"
 grep -q 'customize="always"' "$work/expanded/Distribution" || fail "the installer does not show the component list"
-pass "wasync and whatsapp-axi are separate components"
+pass "wasync and wasync-axi are separate components"
 
 # Ask Installer itself what it would preselect; this installs nothing.
 installer -pkg "$package" -target / -showChoicesXML > "$work/choices.plist"
@@ -65,16 +65,16 @@ PY
 pass "Installer preselects wasync (locked) and leaves AXI for agents unticked"
 
 if [[ -n "$signed_axi" ]]; then
-  cmp "$signed_axi" "$work/expanded/whatsapp-axi.pkg/Payload/usr/local/bin/whatsapp-axi" || fail "installer whatsapp-axi differs from the standalone signed one"
-  pass "installer whatsapp-axi is byte-identical to the standalone one"
+  cmp "$signed_axi" "$work/expanded/wasync-axi.pkg/Payload/usr/local/bin/wasync-axi" || fail "installer wasync-axi differs from the standalone signed one"
+  pass "installer wasync-axi is byte-identical to the standalone one"
 fi
 
 if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hosted ]]; then
-  if [[ -e /usr/local/bin/wasync || -e /usr/local/bin/whatsapp-axi ]]; then fail "refusing to install over an existing wasync"; fi
+  if [[ -e /usr/local/bin/wasync || -e /usr/local/bin/wasync-axi || -e /usr/local/bin/whatsapp-axi ]]; then fail "refusing to install over an existing wasync"; fi
   installed=1
   run_installer
   [[ -x /usr/local/bin/wasync ]] || fail "default install did not provide wasync"
-  [[ ! -e /usr/local/bin/whatsapp-axi ]] || fail "default install added whatsapp-axi"
+  [[ ! -e /usr/local/bin/wasync-axi ]] || fail "default install added wasync-axi"
   pass "default install provides wasync only"
   cat > "$work/choose-axi.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -86,9 +86,10 @@ if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hoste
 </dict></array></plist>
 PLIST
   run_installer -applyChoiceChangesXML "$work/choose-axi.plist"
-  [[ "$(/usr/local/bin/whatsapp-axi --version)" == "$version" ]] || fail "installed whatsapp-axi is not version $version"
+  [[ "$(/usr/local/bin/wasync-axi --version)" == "$version" ]] || fail "installed wasync-axi is not version $version"
+  [[ "$(readlink /usr/local/bin/whatsapp-axi)" == wasync-axi ]] || fail "the old name whatsapp-axi is not a link to wasync-axi"
   /usr/local/bin/wasync version | grep -qF "wasync $version " || fail "installed wasync is not version $version"
-  python3 "$project_dir/scripts/smoke-installed.py" /usr/local/bin/wasync "$version" "$architecture" /usr/local/bin/whatsapp-axi
+  python3 "$project_dir/scripts/smoke-installed.py" /usr/local/bin/wasync "$version" "$architecture" /usr/local/bin/wasync-axi
   pass "choosing AXI for agents installs both at $version, and they work together"
 else
   echo "test-macos-pkg: skipped the real install (only run on disposable GitHub-hosted runners)"

@@ -10,5 +10,5 @@ results[3]{hit,role,ref,untrusted_text}:
   1,hit,m1_bWVAbGlkAGZhbWlseUBnLnVzAGYy,"me, dinner at 8"
   1,after,m1_bWVAbGlkAGZhbWlseUBnLnVzAGYz,""
 help[2]:
-  More results: run `whatsapp-axi search dinner --chat family@g.us --context 1 --limit 1 --cursor s2`
-  Run `whatsapp-axi thread <ref>` to read a message with its neighbours
+  More results: run `wasync-axi search dinner --chat family@g.us --context 1 --limit 1 --cursor s2`
+  Run `wasync-axi thread <ref>` to read a message with its neighbours

@@ -5,8 +5,10 @@
 #
 # - exactly the six expected archives plus SHA256SUMS, nothing else
 # - SHA256SUMS lists every archive once and every checksum matches
-# - each archive holds exactly the binary, README.md and LICENSE, with an
-#   executable binary, and README.md/LICENSE identical to the repository's
+# - each archive holds exactly the binary, its old name whatsapp-axi (a
+#   symlink to it, or an identical copy on Windows), README.md and LICENSE,
+#   with an executable binary, and README.md/LICENSE identical to the
+#   repository's
 #
 # Needs: bash, tar, unzip, sha256sum or shasum. Changes nothing.
 set -euo pipefail
@@ -23,10 +25,10 @@ fi
 
 expected=()
 for target in darwin_amd64 darwin_arm64 linux_amd64 linux_arm64; do
-  expected+=("whatsapp-axi_${version}_${target}.tar.gz")
+  expected+=("wasync-axi_${version}_${target}.tar.gz")
 done
 for target in windows_amd64 windows_arm64; do
-  expected+=("whatsapp-axi_${version}_${target}.zip")
+  expected+=("wasync-axi_${version}_${target}.zip")
 done
 
 actual="$(cd "$dir" && LC_ALL=C ls -1A)"
@@ -46,16 +48,20 @@ for archive in "${expected[@]}"; do
   x="$work/${archive%.*}"
   mkdir -p "$x"
   if [[ "$archive" == *.zip ]]; then
-    exe=whatsapp-axi.exe
+    exe=wasync-axi.exe
+    alias=whatsapp-axi.exe
     entries="$(unzip -Z1 "$dir/$archive" | LC_ALL=C sort)"
     unzip -q "$dir/$archive" -d "$x"
+    cmp -s "$x/$exe" "$x/$alias" || fail "$archive: $alias is not a copy of $exe"
   else
-    exe=whatsapp-axi
+    exe=wasync-axi
+    alias=whatsapp-axi
     entries="$(tar -tzf "$dir/$archive" | LC_ALL=C sort)"
     tar -xzf "$dir/$archive" -C "$x"
     [[ -x "$x/$exe" ]] || fail "$archive: $exe is not executable"
+    [[ -L "$x/$alias" && "$(readlink "$x/$alias")" == "$exe" ]] || fail "$archive: $alias is not a symlink to $exe"
   fi
-  [[ "$entries" == "$(printf '%s\n' LICENSE README.md "$exe" | LC_ALL=C sort)" ]] || fail "$archive holds:
+  [[ "$entries" == "$(printf '%s\n' LICENSE README.md "$exe" "$alias" | LC_ALL=C sort)" ]] || fail "$archive holds:
 $entries"
   [[ -s "$x/$exe" ]] || fail "$archive: $exe is empty"
   cmp -s "$x/README.md" "$project_dir/README.md" || fail "$archive: README.md differs from the repository"
@@ -63,6 +69,6 @@ $entries"
   # The version string is embedded by -ldflags; check it without running a
   # foreign-architecture binary.
   grep -qF "$version" "$x/$exe" || fail "$archive: $exe does not embed version $version"
-  echo "check-dist: ok - $archive ($exe, README.md, LICENSE)"
+  echo "check-dist: ok - $archive ($exe, $alias, README.md, LICENSE)"
 done
 echo "check-dist: all release files for $version look right"

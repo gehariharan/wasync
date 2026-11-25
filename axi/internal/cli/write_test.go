@@ -16,7 +16,7 @@ func writerHarness(t *testing.T) (*harness, *testutil.API) {
 	srv := testutil.NewAPI(t)
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
-	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_writer"
+	h.env["WASYNC_AXI_TOKEN"] = "wsa_writer"
 	return h, srv
 }
 
@@ -74,7 +74,7 @@ func TestReplyPostsOnceAndPrintsAcknowledgement(t *testing.T) {
 	}
 }
 
-// whatsapp-axi enforces no scope or allowlist itself: it sends the request
+// wasync-axi enforces no scope or allowlist itself: it sends the request
 // and reports exactly what wasync answers.
 func TestReplyReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
 	for _, tc := range []struct {
@@ -132,7 +132,7 @@ func TestReplyNeverWritesOffline(t *testing.T) {
 	h := newHarness(t)
 	bin, log := testutil.FakeWasync(t, testutil.ModeOK)
 	h.env["WASYNC_BIN"] = bin
-	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_writer"
+	h.env["WASYNC_AXI_TOKEN"] = "wsa_writer"
 	out, code := h.run(t, "reply", testRef, "--text", "hello")
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)

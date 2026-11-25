@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Generate both source formulas from one immutable monorepo release archive."""
+"""Generate the source formulas from one immutable monorepo release archive:
+wasync, wasync-axi and whatsapp-axi (wasync-axi's old name)."""
 import argparse
 from pathlib import Path
 import re
@@ -58,7 +59,8 @@ def main():
         parser.error("invalid commit")
     args.directory.mkdir(parents=True, exist_ok=True)
     (args.directory / "wasync-formula.rb").write_text(render_wasync(args.version, args.source_sha256, args.commit))
-    (args.directory / "whatsapp-axi.rb").write_text(axi["render"](args.version, args.source_sha256, args.commit))
+    (args.directory / "wasync-axi.rb").write_text(axi["render"](args.version, args.source_sha256, args.commit))
+    (args.directory / "whatsapp-axi.rb").write_text(axi["render_legacy"](args.version, args.source_sha256))
 
 
 if __name__ == "__main__":

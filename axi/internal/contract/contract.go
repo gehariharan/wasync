@@ -1,7 +1,7 @@
-// Package contract defines the wasync v1 interface types that whatsapp-axi
+// Package contract defines the wasync v1 interface types that wasync-axi
 // consumes: the version handshake, the response envelope, error codes,
 // feature names and identifier helpers. It mirrors the contract in ADR-001;
-// whatsapp-axi never defines WhatsApp semantics of its own.
+// wasync-axi never defines WhatsApp semantics of its own.
 package contract
 
 import (
@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// APIVersion is the major v1 API version this build of whatsapp-axi speaks.
+// APIVersion is the major v1 API version this build of wasync-axi speaks.
 const APIVersion = 1
 
 // VersionInfo is the data of GET /api/v1/version and `wasync query version --v1 --json`.
@@ -99,10 +99,10 @@ var WasyncCodes = []string{
 	CodeSchemaIncompatible, CodeRateLimited, CodeTargetUnavailable, CodeNotEditable, CodeEditWindowExpired, CodeSendFailed, CodeInternal,
 }
 
-// Error codes produced by whatsapp-axi itself (never by wasync).
+// Error codes produced by wasync-axi itself (never by wasync).
 const (
 	CodeWasyncTooOld     = "wasync_too_old"
-	CodeAXITooOld        = "whatsapp_axi_too_old"
+	CodeAXITooOld        = "wasync_axi_too_old"
 	CodeWasyncNotFound   = "wasync_not_found"
 	CodeTransport        = "transport_error"
 	CodeInvalidResponse  = "invalid_response"
@@ -110,6 +110,17 @@ const (
 	CodeCredentialBad    = "credential_invalid"
 	CodeUsage            = "usage"
 )
+
+// CodeAXITooOldLegacy is the deprecated pre-rename spelling of CodeAXITooOld.
+const CodeAXITooOldLegacy = "whatsapp_axi_too_old"
+
+// LegacyCode returns the deprecated pre-rename spelling of code, or "".
+func LegacyCode(code string) string {
+	if code == CodeAXITooOld {
+		return CodeAXITooOldLegacy
+	}
+	return ""
+}
 
 // Feature names advertised in VersionInfo.Features.
 const (
@@ -137,12 +148,12 @@ const (
 const MessageRefPrefix = "m1_"
 
 // IsMessageRef reports whether s looks like a v1 message ref. Refs are
-// opaque: whatsapp-axi never decodes them.
+// opaque: wasync-axi never decodes them.
 func IsMessageRef(s string) bool {
 	return len(s) > len(MessageRefPrefix) && strings.HasPrefix(s, MessageRefPrefix)
 }
 
-// Error is a structured error from wasync or from whatsapp-axi itself.
+// Error is a structured error from wasync or from wasync-axi itself.
 type Error struct {
 	RequestID string
 	Code      string

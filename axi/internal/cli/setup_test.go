@@ -14,14 +14,14 @@ import (
 	"github.com/gehariharan/wasync/axi/skills"
 )
 
-// The harness runs whatsapp-axi as /home/user/bin/whatsapp-axi with
+// The harness runs wasync-axi as /home/user/bin/wasync-axi with
 // nothing on PATH, so the hook command uses that path.
 var (
-	harnessBin  = filepath.Join(home, "bin", "whatsapp-axi")
+	harnessBin  = filepath.Join(home, "bin", "wasync-axi")
 	harnessHook = agentsetup.HookCommand(harnessBin, false, runtime.GOOS)
 )
 
-func agentHome(h *harness) string { return h.env["WHATSAPP_AXI_AGENT_HOME"] }
+func agentHome(h *harness) string { return h.env["WASYNC_AXI_AGENT_HOME"] }
 
 func writeFile(t *testing.T, path, data string) {
 	t.Helper()
@@ -73,7 +73,7 @@ func TestSetupHooksIsIdempotentAndPreservesSettings(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	mustContain(t, out, "setup: hooks", "dry_run: false", "hook_command: "+harnessHook,
-		"changes[1]{agent,item,path,change}:", "claude,session_hooks,", ",add", "written: 1", "whatsapp-axi setup hooks --remove")
+		"changes[1]{agent,item,path,change}:", "claude,session_hooks,", ",add", "written: 1", "wasync-axi setup hooks --remove")
 	installed := readFile(t, settings)
 	if !strings.Contains(installed, `"command": "echo hello"`) || !strings.Contains(installed, `"command": "notify"`) || !strings.Contains(installed, harnessHook) {
 		t.Fatalf("settings:\n%s", installed)
@@ -89,7 +89,7 @@ func TestSetupHooksIsIdempotentAndPreservesSettings(t *testing.T) {
 	}
 
 	// A reinstall elsewhere repairs the path in place.
-	moved := strings.ReplaceAll(installed, harnessHook, "/opt/old/whatsapp-axi --brief")
+	moved := strings.ReplaceAll(installed, harnessHook, "/opt/old/wasync-axi --brief")
 	writeFile(t, settings, moved)
 	if r, _ := setupJSONRun(t, h, "hooks"); r.Changes[0].Change != agentsetup.ActionUpdate || r.Written != 1 {
 		t.Fatalf("%+v", r)
@@ -232,7 +232,7 @@ func TestSetupFilesArePrivate(t *testing.T) {
 		}
 	}
 	root := agentHome(h)
-	for _, p := range []string{filepath.Join(root, ".claude", "settings.json"), filepath.Join(root, ".claude", "skills", "whatsapp-axi", "SKILL.md")} {
+	for _, p := range []string{filepath.Join(root, ".claude", "settings.json"), filepath.Join(root, ".claude", "skills", "wasync-axi", "SKILL.md")} {
 		info, err := os.Stat(p)
 		if err != nil || info.Mode().Perm() != 0o600 {
 			t.Errorf("%s: %v %v", p, info.Mode(), err)
@@ -247,8 +247,8 @@ func TestSetupSkillAndDoctorChecks(t *testing.T) {
 	if code != ExitOK || r.Written != 1 || r.Changes[0].Item != agentsetup.ItemSkill {
 		t.Fatalf("%d %+v", code, r)
 	}
-	path := filepath.Join(root, ".claude", "skills", "whatsapp-axi", "SKILL.md")
-	if readFile(t, path) != string(skills.WhatsappAXI) {
+	path := filepath.Join(root, ".claude", "skills", "wasync-axi", "SKILL.md")
+	if readFile(t, path) != string(skills.WasyncAXI) {
 		t.Fatal("installed skill differs from the embedded one")
 	}
 	if r, _ := setupJSONRun(t, h, "skill"); r.Written != 0 || r.Changes[0].Change != agentsetup.ActionNone {
@@ -275,8 +275,8 @@ func TestSetupSkillAndDoctorChecks(t *testing.T) {
 	if c["skill"].Status != statusPass || c["hooks"].Status != statusSkip || !strings.Contains(c["hooks"].Detail, "skill is installed instead") {
 		t.Fatalf("skill only: %+v", c)
 	}
-	writeFile(t, path, string(skills.WhatsappAXI)+"\nlocal edit\n")
-	if c := checks()["skill"]; c.Status != statusWarn || c.Fix != "whatsapp-axi setup skill" {
+	writeFile(t, path, string(skills.WasyncAXI)+"\nlocal edit\n")
+	if c := checks()["skill"]; c.Status != statusWarn || c.Fix != "wasync-axi setup skill" {
 		t.Fatalf("stale skill: %+v", c)
 	}
 	if _, code := h.run(t, "setup", "skill", "--remove"); code != ExitOK {
@@ -287,15 +287,15 @@ func TestSetupSkillAndDoctorChecks(t *testing.T) {
 	}
 
 	c = checks()
-	if c["hooks"].Status != statusWarn || c["hooks"].Fix != "whatsapp-axi setup hooks" || !strings.Contains(c["hooks"].Detail, "not installed") {
+	if c["hooks"].Status != statusWarn || c["hooks"].Fix != "wasync-axi setup hooks" || !strings.Contains(c["hooks"].Detail, "not installed") {
 		t.Fatalf("nothing installed: %+v", c["hooks"])
 	}
 	if c["skill"].Status != statusSkip {
 		t.Fatalf("%+v", c["skill"])
 	}
 	settings := filepath.Join(root, ".claude", "settings.json")
-	writeFile(t, settings, `{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "/opt/old/whatsapp-axi --brief"}]}]}}`)
-	if c := checks()["hooks"]; c.Status != statusWarn || c.Fix != "whatsapp-axi setup hooks" || !strings.Contains(c.Detail, "/opt/old/whatsapp-axi --brief") {
+	writeFile(t, settings, `{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "/opt/old/wasync-axi --brief"}]}]}}`)
+	if c := checks()["hooks"]; c.Status != statusWarn || c.Fix != "wasync-axi setup hooks" || !strings.Contains(c.Detail, "/opt/old/wasync-axi --brief") {
 		t.Fatalf("stale hook: %+v", c)
 	}
 	writeFile(t, settings, `{"hooks": `)
@@ -313,7 +313,7 @@ func TestSetupSkillAndDoctorChecks(t *testing.T) {
 		t.Fatalf("installed: %+v", c)
 	}
 	writeFile(t, filepath.Join(root, ".codex", "config.toml"), "[features]\nhooks = false\n")
-	if c := checks()["hooks"]; c.Status != statusWarn || c.Fix != "whatsapp-axi setup hooks --agent codex" {
+	if c := checks()["hooks"]; c.Status != statusWarn || c.Fix != "wasync-axi setup hooks --agent codex" {
 		t.Fatalf("codex feature off: %+v", c)
 	}
 	writeFile(t, filepath.Join(root, ".codex", "config.toml"), "[\"features\"]\n'hooks' = true\n")
@@ -332,7 +332,7 @@ func TestBriefHomeView(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "whatsapp-axi: ", "wasync: offline (transport query; credential missing)", "chats: 4", briefMoreHint, untrustedHint)
+	mustContain(t, out, "wasync-axi: ", "wasync: offline (transport query; credential missing)", "chats: 4", briefMoreHint, untrustedHint)
 	for _, leak := range []string{"Family", "Team A", "untrusted_name", "recent["} {
 		if strings.Contains(out, leak) {
 			t.Errorf("brief view prints %q:\n%s", leak, out)
@@ -385,5 +385,31 @@ func TestSetupCodexInvalidConfigWritesNothing(t *testing.T) {
 		if _, err := os.Stat(filepath.Join(root, ".codex", "hooks.json")); !errors.Is(err, os.ErrNotExist) {
 			t.Fatalf("hook written before validation: %v", err)
 		}
+	}
+}
+
+func TestSetupMovesOldNameInstallToTheNewName(t *testing.T) {
+	h := newHarness(t)
+	root := agentHome(h)
+	settings := filepath.Join(root, ".claude", "settings.json")
+	writeFile(t, settings, `{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "/opt/old/whatsapp-axi --brief", "timeout": 10}]}]}}`)
+	oldSkill := filepath.Join(root, ".claude", "skills", "whatsapp-axi", "SKILL.md")
+	writeFile(t, oldSkill, "---\nname: whatsapp-axi\n---\nold\n")
+
+	if r, code := setupJSONRun(t, h, "hooks"); code != ExitOK || r.Changes[0].Change != agentsetup.ActionUpdate {
+		t.Fatalf("%d %+v", code, r)
+	}
+	if got := readFile(t, settings); strings.Contains(got, "whatsapp-axi") || !strings.Contains(got, harnessHook) {
+		t.Fatalf("old hook kept:\n%s", got)
+	}
+	r, code := setupJSONRun(t, h, "skill")
+	if code != ExitOK || r.Written != 2 {
+		t.Fatalf("%d %+v", code, r)
+	}
+	if _, err := os.Stat(oldSkill); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("old skill left behind")
+	}
+	if readFile(t, filepath.Join(root, ".claude", "skills", "wasync-axi", "SKILL.md")) != string(skills.WasyncAXI) {
+		t.Fatal("new skill not installed")
 	}
 }

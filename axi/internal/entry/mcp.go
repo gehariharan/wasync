@@ -1,4 +1,4 @@
-package main
+package entry
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 )
 
 // serveMCP runs the tool server on this process's standard input and output.
-// Each tool runs a whatsapp-axi command with its own output buffer and no
+// Each tool runs a wasync-axi command with its own output buffer and no
 // access to the tool channel, so a command can never write into the protocol
 // stream or read a request.
 func serveMCP(ctx context.Context) error {

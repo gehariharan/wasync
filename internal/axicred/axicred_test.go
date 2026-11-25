@@ -23,13 +23,64 @@ func TestPathHonoursConfigDirOverride(t *testing.T) {
 	}
 }
 
+func TestLegacyNamesAreHonoured(t *testing.T) {
+	env := map[string]string{LegacyEnvConfigDir: "/tmp/old", LegacyEnvToken: "wsa_x"}
+	get := func(k string) string { return env[k] }
+	if got, err := Path(get); err != nil || got != filepath.Join("/tmp/old", "credential") {
+		t.Fatalf("legacy dir: %q %v", got, err)
+	}
+	if TokenEnv(get) != LegacyEnvToken {
+		t.Fatal("legacy token variable not reported")
+	}
+	env[EnvConfigDir], env[EnvToken] = "/tmp/new", "wsa_y"
+	if got, _ := Path(get); got != filepath.Join("/tmp/new", "credential") || TokenEnv(get) != EnvToken {
+		t.Fatalf("new names must win: %q %q", got, TokenEnv(get))
+	}
+}
+
+// wasync-axi still reads <user config dir>/whatsapp-axi/credential when the
+// default file is absent, so saving must treat it as an existing credential.
+func TestExistingSeesCredentialSavedUnderOldName(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	t.Setenv("AppData", filepath.Join(home, "AppData"))
+	base, err := os.UserConfigDir()
+	if err != nil {
+		t.Skip("no user config dir")
+	}
+	path, err := Path(func(string) string { return "" })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Existing(path); err != nil || got != "" {
+		t.Fatalf("nothing saved yet: %q %v", got, err)
+	}
+	if err := Save(filepath.Join(base, "whatsapp-axi", "credential"), "wsa_old"); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Existing(path); err != nil || got != "wsa_old" {
+		t.Fatalf("credential under the old folder not seen: %q %v", got, err)
+	}
+	other := filepath.Join(t.TempDir(), "credential")
+	if got, _ := Existing(other); got != "" {
+		t.Fatalf("an overridden config dir must not fall back: %q", got)
+	}
+	if err := Save(path, "wsa_new"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := Existing(path); got != "wsa_new" {
+		t.Fatalf("the new file must win: %q", got)
+	}
+}
+
 func TestPathDefaultsToUserConfigDir(t *testing.T) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		t.Skip("no user config dir")
 	}
 	got, err := Path(func(string) string { return "" })
-	if err != nil || got != filepath.Join(base, "whatsapp-axi", "credential") {
+	if err != nil || got != filepath.Join(base, "wasync-axi", "credential") {
 		t.Fatalf("%q %v", got, err)
 	}
 }
@@ -48,12 +99,12 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// whatsappAxi builds the real whatsapp-axi (a separate Go module, so it
+// wasyncAxi builds the real wasync-axi (a separate Go module, so it
 // cannot be imported) once per test run.
-func whatsappAxi(t *testing.T) string {
+func wasyncAxi(t *testing.T) string {
 	t.Helper()
 	if testing.Short() {
-		t.Skip("builds whatsapp-axi")
+		t.Skip("builds wasync-axi")
 	}
 	axiOnce.Do(func() {
 		dir, err := os.MkdirTemp("", "axicred-axi-")
@@ -61,14 +112,14 @@ func whatsappAxi(t *testing.T) string {
 			axiErr = err
 			return
 		}
-		axiBin = filepath.Join(dir, "whatsapp-axi")
+		axiBin = filepath.Join(dir, "wasync-axi")
 		if runtime.GOOS == "windows" {
 			axiBin += ".exe"
 		}
-		cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", axiBin, "./cmd/whatsapp-axi")
+		cmd := exec.Command(filepath.Join(runtime.GOROOT(), "bin", "go"), "build", "-o", axiBin, "./cmd/wasync-axi")
 		cmd.Dir = filepath.Join("..", "..", "axi")
 		if out, err := cmd.CombinedOutput(); err != nil {
-			axiErr = fmt.Errorf("build whatsapp-axi: %v\n%s", err, out)
+			axiErr = fmt.Errorf("build wasync-axi: %v\n%s", err, out)
 		}
 	})
 	if axiErr != nil {
@@ -77,7 +128,7 @@ func whatsappAxi(t *testing.T) string {
 	return axiBin
 }
 
-// axiCredentialState runs whatsapp-axi's home view with no wasync reachable
+// axiCredentialState runs wasync-axi's home view with no wasync reachable
 // and returns its "credential:" line.
 func axiCredentialState(t *testing.T, bin string, env map[string]string) string {
 	t.Helper()
@@ -95,10 +146,10 @@ func axiCredentialState(t *testing.T, bin string, env map[string]string) string 
 	}
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		t.Fatalf("whatsapp-axi: %v\n%s", err, out)
+		t.Fatalf("wasync-axi: %v\n%s", err, out)
 	}
 	if strings.Contains(string(out), "wsa_saved") {
-		t.Fatalf("whatsapp-axi printed the credential:\n%s", out)
+		t.Fatalf("wasync-axi printed the credential:\n%s", out)
 	}
 	for _, line := range strings.Split(string(out), "\n") {
 		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "credential: "); ok {
@@ -109,8 +160,8 @@ func axiCredentialState(t *testing.T, bin string, env map[string]string) string 
 	return ""
 }
 
-func TestWhatsappAxiReadsSavedCredentialFromConfigDir(t *testing.T) {
-	bin := whatsappAxi(t)
+func TestWasyncAxiReadsSavedCredentialFromConfigDir(t *testing.T) {
+	bin := wasyncAxi(t)
 	dir := filepath.Join(t.TempDir(), "axi")
 	env := map[string]string{EnvConfigDir: dir}
 	if got := axiCredentialState(t, bin, env); got != "missing" {
@@ -128,8 +179,8 @@ func TestWhatsappAxiReadsSavedCredentialFromConfigDir(t *testing.T) {
 	}
 }
 
-func TestWhatsappAxiReadsSavedCredentialFromUserConfigDir(t *testing.T) {
-	bin := whatsappAxi(t)
+func TestWasyncAxiReadsSavedCredentialFromUserConfigDir(t *testing.T) {
+	bin := wasyncAxi(t)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, "xdg"))
@@ -150,7 +201,7 @@ func TestWhatsappAxiReadsSavedCredentialFromUserConfigDir(t *testing.T) {
 }
 
 func TestSaveIsPrivateAndAtomic(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "cfg", "whatsapp-axi", "credential")
+	path := filepath.Join(t.TempDir(), "cfg", "wasync-axi", "credential")
 	if err := Save(path, "wsa_one"); err != nil {
 		t.Fatal(err)
 	}

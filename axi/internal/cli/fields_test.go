@@ -70,5 +70,5 @@ func TestHomeRevealsClippedChats(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("%d %s", code, out)
 	}
-	mustContain(t, out, "total: 8", "groups: 8", "recent[5]{id,kind,messages,untrusted_name}", "whatsapp-axi chats --limit 0` for all 8")
+	mustContain(t, out, "total: 8", "groups: 8", "recent[5]{id,kind,messages,untrusted_name}", "wasync-axi chats --limit 0` for all 8")
 }

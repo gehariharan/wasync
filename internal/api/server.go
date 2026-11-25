@@ -129,7 +129,7 @@ type Owner struct {
 	// Service installs the start-at-login item; Spec says what it starts.
 	Service     service.Manager
 	ServiceSpec service.Spec
-	// AxiPath says where whatsapp-axi reads its credential; nil uses its default.
+	// AxiPath says where wasync-axi reads its credential; nil uses its default.
 	AxiPath func() (string, error)
 	// Human, when enabled, makes every approval wait for the person to confirm
 	// with the operating system's own prompt (see internal/humancheck).

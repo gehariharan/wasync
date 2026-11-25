@@ -14,7 +14,7 @@ trap 'rm -rf "$work"' EXIT
 # require them to match.
 version=0.0.0-check
 go build -tags sqlite_fts5 -ldflags "-X github.com/gehariharan/wasync/internal/buildinfo.Version=$version" -o "$work/wasync" ./cmd/wasync
-(cd axi && CGO_ENABLED=0 go build -ldflags "-X github.com/gehariharan/wasync/axi/internal/buildinfo.Version=$version" -o "$work/whatsapp-axi" ./cmd/whatsapp-axi)
-python3 scripts/smoke-pair.py "$work/wasync" "$work/whatsapp-axi"
-python3 scripts/smoke-installed.py "$work/wasync" "$version" "$(go env GOARCH)" "$work/whatsapp-axi"
+(cd axi && CGO_ENABLED=0 go build -ldflags "-X github.com/gehariharan/wasync/axi/internal/buildinfo.Version=$version" -o "$work/wasync-axi" ./cmd/wasync-axi)
+python3 scripts/smoke-pair.py "$work/wasync" "$work/wasync-axi"
+python3 scripts/smoke-installed.py "$work/wasync" "$version" "$(go env GOARCH)" "$work/wasync-axi"
 bash scripts/test-install-linux.sh

@@ -12,16 +12,18 @@ New-Item -ItemType Directory -Force $out, $stage | Out-Null
 try {
  $commit = (git rev-parse --short=12 HEAD).Trim(); Check-Exit
  $built = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
- # whatsapp-axi (AXI for agents) ships in the ZIP and is an opt-in task in Setup.
+ # wasync-axi (AXI for agents) ships in the ZIP and is an opt-in task in Setup.
  # It is pure Go, so build it without the C toolchain, at the same version.
  $env:CGO_ENABLED = '0'
  $axiBuildinfo = 'github.com/gehariharan/wasync/axi/internal/buildinfo'
  Push-Location axi
  try {
-  go build -trimpath -ldflags "-s -w -X $axiBuildinfo.Version=$Version -X $axiBuildinfo.Commit=$commit -X $axiBuildinfo.Date=$built" -o "$stage/whatsapp-axi.exe" ./cmd/whatsapp-axi
+  go build -trimpath -ldflags "-s -w -X $axiBuildinfo.Version=$Version -X $axiBuildinfo.Commit=$commit -X $axiBuildinfo.Date=$built" -o "$stage/wasync-axi.exe" ./cmd/wasync-axi
   Check-Exit
  } finally { Pop-Location }
- if ((& "$stage/whatsapp-axi.exe" --version).Trim() -ne $Version) { throw "whatsapp-axi does not report version $Version" }
+ if ((& "$stage/wasync-axi.exe" --version).Trim() -ne $Version) { throw "wasync-axi does not report version $Version" }
+ # The old command name keeps working as a copy.
+ Copy-Item "$stage/wasync-axi.exe" "$stage/whatsapp-axi.exe"
  $env:CGO_ENABLED = '1'
  # Bundle the MinGW runtime so the download needs no compiler/runtime install.
  $env:CGO_LDFLAGS = '-static'

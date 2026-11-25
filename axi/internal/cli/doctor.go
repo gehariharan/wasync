@@ -49,7 +49,7 @@ var areaOrder = []string{areaInstallation, areaService, areaPairing, areaPermiss
 
 // Check sources.
 const (
-	sourceAXI    = "whatsapp-axi"
+	sourceAXI    = "wasync-axi"
 	sourceWasync = "wasync"
 )
 
@@ -67,7 +67,7 @@ var wasyncCheckArea = map[string]string{
 	"journal":         areaCompatibility,
 }
 
-// Agent scopes whatsapp-axi commands use through the API, in wasync's
+// Agent scopes wasync-axi commands use through the API, in wasync's
 // canonical order. Granting is always a human action in wasync.
 const (
 	scopeReadChats    = "read.chats"
@@ -85,14 +85,14 @@ var scopeUses = []struct{ scope, use string }{
 }
 
 // defaultAgentName is suggested when no agent is known yet.
-const defaultAgentName = "whatsapp-axi"
+const defaultAgentName = "wasync-axi"
 
 var (
 	upgradeWasyncFix = installhint.UpgradeCore()
 	installWasyncFix = installhint.InstallCore()
 )
 
-const upgradeAXIFix = "go install github.com/gehariharan/wasync/axi/cmd/whatsapp-axi@latest"
+const upgradeAXIFix = "go install github.com/gehariharan/wasync/axi/cmd/wasync-axi@latest"
 
 type doctorCheck struct {
 	Area   string `json:"area"`
@@ -175,17 +175,18 @@ type doctorSummary struct {
 }
 
 type doctorReport struct {
-	WhatsappAXIVersion string        `json:"whatsapp_axi_version"`
-	Bin                string        `json:"bin"`
-	Transport          string        `json:"transport"`
-	TransportNote      string        `json:"transport_note,omitempty"`
-	Summary            doctorSummary `json:"summary"`
-	Checks             []doctorCheck `json:"checks"`
-	Wasync             wasyncJSON    `json:"wasync"`
-	Compatibility      compatJSON    `json:"compatibility"`
-	Diagnostics        *diagnostics  `json:"diagnostics"`
-	Health             *deepHealth   `json:"health"`
-	Help               []string      `json:"help"`
+	WasyncAXIVersion string        `json:"wasync_axi_version"`
+	LegacyVersion    string        `json:"whatsapp_axi_version"` // deprecated
+	Bin              string        `json:"bin"`
+	Transport        string        `json:"transport"`
+	TransportNote    string        `json:"transport_note,omitempty"`
+	Summary          doctorSummary `json:"summary"`
+	Checks           []doctorCheck `json:"checks"`
+	Wasync           wasyncJSON    `json:"wasync"`
+	Compatibility    compatJSON    `json:"compatibility"`
+	Diagnostics      *diagnostics  `json:"diagnostics"`
+	Health           *deepHealth   `json:"health"`
+	Help             []string      `json:"help"`
 }
 
 func (a *App) runDoctor(ctx context.Context, inv invocation) error {
@@ -222,7 +223,7 @@ func (a *App) gatherFacts(ctx context.Context, d detection) facts {
 	}
 	if d.sel.Name() == transport.NameAPI {
 		if d.cred == nil {
-			f.apiErr = &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no whatsapp-axi agent credential is configured", Help: config.GrantHelp, Transport: transport.NameAPI}
+			f.apiErr = &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no wasync-axi agent credential is configured", Help: config.GrantHelp, Transport: transport.NameAPI}
 		} else {
 			var diag diagnostics
 			err := d.sel.Transport.Get(ctx, "/diagnostics", nil, &diag)
@@ -266,7 +267,7 @@ func (a *App) fetchHealth(ctx context.Context, d detection, diag *diagnostics) *
 
 func (a *App) doctorReport(d detection, f facts) doctorReport {
 	r := doctorReport{
-		WhatsappAXIVersion: buildinfo.Version, Bin: a.binPath(), Transport: f.transport,
+		WasyncAXIVersion: buildinfo.Version, LegacyVersion: buildinfo.Version, Bin: a.binPath(), Transport: f.transport,
 		Wasync: a.wasyncJSON(d), Compatibility: compatOf(d), Diagnostics: f.diag, Health: f.health,
 	}
 	switch f.transport {
@@ -325,10 +326,10 @@ func (a *App) doctorReport(d detection, f facts) doctorReport {
 	r.Summary = summarize(r.Checks)
 	r.Help = []string{}
 	if r.Summary.Result != statusPass {
-		r.Help = append(r.Help, "Run each fix for fail checks first, then warn checks, and rerun `whatsapp-axi doctor`")
+		r.Help = append(r.Help, "Run each fix for fail checks first, then warn checks, and rerun `wasync-axi doctor`")
 	}
 	if f.transport == transport.NameQuery {
-		r.Help = append(r.Help, "Ask the user to start wasync (the TUI or `wasync serve`) for live, scoped reads; whatsapp-axi never starts it")
+		r.Help = append(r.Help, "Ask the user to start wasync (the TUI or `wasync serve`) for live, scoped reads; wasync-axi never starts it")
 	}
 	return r
 }
@@ -359,8 +360,8 @@ func summarize(checks []doctorCheck) doctorSummary {
 }
 
 func (a *App) installationChecks(d detection) []doctorCheck {
-	out := []doctorCheck{{Area: areaInstallation, Name: "whatsapp_axi", Status: statusPass, Source: sourceAXI,
-		Detail: "whatsapp-axi " + buildinfo.Version + " at " + a.binPath() + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"}}
+	out := []doctorCheck{{Area: areaInstallation, Name: "wasync_axi", Status: statusPass, Source: sourceAXI,
+		Detail: "wasync-axi " + buildinfo.Version + " at " + a.binPath() + " (" + runtime.GOOS + "/" + runtime.GOARCH + ")"}}
 	c := doctorCheck{Area: areaInstallation, Name: "wasync_bin", Source: sourceAXI}
 	switch {
 	case d.bin != "":
@@ -500,7 +501,7 @@ func (a *App) permissionChecks(d detection, f facts) []doctorCheck {
 			}
 		}
 		if agent.OnDemand {
-			scopes.Detail += "; chats are approved on demand (" + strconv.Itoa(len(agent.Chats)) + " so far; ask with `whatsapp-axi access request`)"
+			scopes.Detail += "; chats are approved on demand (" + strconv.Itoa(len(agent.Chats)) + " so far; ask with `wasync-axi access request`)"
 		} else if len(agent.Chats) > 0 {
 			scopes.Detail += "; limited to " + strconv.Itoa(len(agent.Chats)) + " chat(s)"
 		}
@@ -508,7 +509,7 @@ func (a *App) permissionChecks(d detection, f facts) []doctorCheck {
 	return []doctorCheck{cred, a.configFilesCheck(d), scopes}
 }
 
-// configFilesCheck verifies whatsapp-axi's own config directory and
+// configFilesCheck verifies wasync-axi's own config directory and
 // credential file are private. It never reads wasync's files.
 func (a *App) configFilesCheck(d detection) doctorCheck {
 	c := doctorCheck{Area: areaPermissions, Name: "config_files", Source: sourceAXI}
@@ -518,12 +519,12 @@ func (a *App) configFilesCheck(d detection) doctorCheck {
 		c.Status, c.Detail = statusSkip, "file permission bits are not checked on Windows"
 		return c
 	case dir == "":
-		c.Status, c.Detail = statusSkip, "no whatsapp-axi config directory could be determined"
+		c.Status, c.Detail = statusSkip, "no wasync-axi config directory could be determined"
 		return c
 	}
 	info, err := os.Stat(dir)
 	if errors.Is(err, fs.ErrNotExist) {
-		c.Status, c.Detail = statusPass, "no whatsapp-axi config directory yet ("+a.collapseHome(dir)+")"
+		c.Status, c.Detail = statusPass, "no wasync-axi config directory yet ("+a.collapseHome(dir)+")"
 		return c
 	}
 	if err != nil || !info.IsDir() {
@@ -571,7 +572,7 @@ func (a *App) compatibilityChecks(d detection) []doctorCheck {
 		feat.Status, feat.Detail = statusSkip, "not checked: API version incompatible"
 		return []doctorCheck{api, feat}
 	}
-	api.Status, api.Detail = statusPass, base+"; whatsapp-axi needs API "+a.Compat.MinAPI+" to "+strconv.Itoa(contract.APIVersion)+".x"
+	api.Status, api.Detail = statusPass, base+"; wasync-axi needs API "+a.Compat.MinAPI+" to "+strconv.Itoa(contract.APIVersion)+".x"
 	var problems []string
 	for _, cmd := range a.Compat.CommandNames() {
 		if err := a.Compat.Check(cmd, *v); err != nil {
@@ -580,7 +581,7 @@ func (a *App) compatibilityChecks(d detection) []doctorCheck {
 	}
 	if len(problems) == 0 {
 		feat.Status = statusPass
-		feat.Detail = "wasync has every feature whatsapp-axi uses (" + strconv.Itoa(len(a.Compat.Commands)) + " commands checked)"
+		feat.Detail = "wasync has every feature wasync-axi uses (" + strconv.Itoa(len(a.Compat.Commands)) + " commands checked)"
 	} else {
 		feat.Status, feat.Fix = statusWarn, upgradeWasyncFix
 		feat.Detail = strings.Join(problems, "; ")
@@ -590,7 +591,7 @@ func (a *App) compatibilityChecks(d detection) []doctorCheck {
 
 func (a *App) writeDoctor(r doctorReport) error {
 	o := output.New(a.Out)
-	o.Field(0, "whatsapp-axi", r.WhatsappAXIVersion)
+	o.Field(0, "wasync-axi", r.WasyncAXIVersion)
 	o.Field(0, "transport", r.Transport)
 	o.Field(0, "transport_note", r.TransportNote)
 	if r.Wasync.Version != nil {
@@ -718,7 +719,7 @@ func fixFromHelp(help, fallback string) string {
 
 func credSource(c *config.Credential) string {
 	if c.Source == "env" {
-		return config.EnvToken
+		return c.Env
 	}
 	return "credential file"
 }

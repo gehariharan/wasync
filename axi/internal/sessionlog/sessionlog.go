@@ -1,5 +1,5 @@
-// Package sessionlog is whatsapp-axi's session-end capture (AXI principle 7):
-// one small record per working directory of which whatsapp-axi commands an
+// Package sessionlog is wasync-axi's session-end capture (AXI principle 7):
+// one small record per working directory of which wasync-axi commands an
 // agent session ran and how often. A record holds command names and counts
 // only, never arguments, chat names, message text or phone numbers, so the
 // next session's `--brief` can say what the last one did without carrying
@@ -113,12 +113,13 @@ func writeAtomic(target string, data []byte) error {
 	return os.Rename(name, target)
 }
 
-// invocation finds `whatsapp-axi <word>` in a shell command: the program
+// invocation finds `wasync-axi <word>` (or the old name, whatsapp-axi) in a
+// shell command: the program
 // name, optionally quoted or with .exe, then the first argument. Only the
 // word is kept; known() decides whether it is a real command name.
-var invocation = regexp.MustCompile(`(?:^|[\s"'/\;&|(])whatsapp-axi(?:\.exe)?["']?\s+([a-z][a-z-]*)`)
+var invocation = regexp.MustCompile(`(?:^|[\s"'/\;&|(])(?:wasync|whatsapp)-axi(?:\.exe)?["']?\s+([a-z][a-z-]*)`)
 
-// Count tallies whatsapp-axi invocations by command name in a shell command
+// Count tallies wasync-axi invocations by command name in a shell command
 // line, keeping only names known() accepts.
 func Count(command string, known func(string) bool, into map[string]int) {
 	for _, m := range invocation.FindAllStringSubmatch(command, -1) {
@@ -128,7 +129,7 @@ func Count(command string, known func(string) bool, into map[string]int) {
 	}
 }
 
-// FromTranscript counts whatsapp-axi commands in an agent transcript (JSON
+// FromTranscript counts wasync-axi commands in an agent transcript (JSON
 // lines). It looks only at the command a tool call ran, never at tool
 // output or messages, and keeps only command names. Claude Code records a
 // Bash tool_use block; Codex records a function, custom-tool or shell call.

@@ -10,4 +10,4 @@ chats[4]{id,kind,messages,untrusted_name}:
   team-b@g.us,group,0,"Team B"
   4915100000000@s.whatsapp.net,direct,1,"Bob, \"the builder\""
 help[1]:
-  Run `whatsapp-axi messages <id>` to read a chat, `whatsapp-axi search <text>` to search
+  Run `wasync-axi messages <id>` to read a chat, `wasync-axi search <text>` to search

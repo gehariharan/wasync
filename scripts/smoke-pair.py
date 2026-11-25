@@ -29,9 +29,9 @@ with tempfile.TemporaryDirectory(prefix="wasync-pair-smoke-") as temporary:
     registry.chmod(0o600)
     environment = os.environ.copy()
     environment.update({"WASYNC_BIN": wasync, "WASYNC_DATA_DIR": str(data),
-                        "WHATSAPP_AXI_CONFIG_DIR": str(root / "config"),
-                        "WHATSAPP_AXI_AGENT_HOME": str(root / "agents"),
-                        "WHATSAPP_AXI_TOKEN": credential})
+                        "WASYNC_AXI_CONFIG_DIR": str(root / "config"),
+                        "WASYNC_AXI_AGENT_HOME": str(root / "agents"),
+                        "WASYNC_AXI_TOKEN": credential})
     owner = subprocess.Popen([wasync, "--data-dir", str(data), "--api-addr", "127.0.0.1:0", "serve", "--offline"],
                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix="wasync-pair-smoke-") as temporary:
         online = run("messages", "synthetic@g.us")
         assert online["transport"] == "api", online
         assert online["data"]["items"][0]["text_content"] == "synthetic content", online
-        environment.pop("WHATSAPP_AXI_TOKEN")
+        environment.pop("WASYNC_AXI_TOKEN")
         denied = run("chats", expected=1)
         assert denied["error_code"] == "credential_missing", denied
     finally:

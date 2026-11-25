@@ -90,7 +90,7 @@ func (a *API) Get(ctx context.Context, path string, query url.Values, out any) e
 		return err
 	}
 	if a.cred == nil {
-		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no whatsapp-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
+		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no wasync-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
 	}
 	return a.do(ctx, path, query, true, out)
 }

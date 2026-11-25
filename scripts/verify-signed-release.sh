@@ -23,7 +23,7 @@ if [[ "$(gh release view "v$version" --json isDraft --jq .isDraft)" != true ]]; 
   echo 'Only draft releases may be published by this workflow.' >&2; exit 1
 fi
 name="wasync_${version}_darwin_${architecture}"
-axi_name="whatsapp-axi_${version}_darwin_${architecture}"
+axi_name="wasync-axi_${version}_darwin_${architecture}"
 gh release download "v$version" --pattern "$name.*" --pattern "$axi_name.tar.gz" --pattern checksums.txt --dir "$work"
 cd "$work"
 # Require the aggregate checksum manifest to cover both assets.
@@ -51,16 +51,16 @@ pkgutil --expand-full "$name.pkg" expanded
 cmp archive/wasync expanded/wasync.pkg/Payload/usr/local/bin/wasync
 mkdir axi
 tar -xzf "$axi_name.tar.gz" -C axi
-[[ "$(lipo -archs axi/whatsapp-axi)" == "$cpu" ]]
+[[ "$(lipo -archs axi/wasync-axi)" == "$cpu" ]]
 codesign --verify --strict \
-  -R='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "57V379V642"' axi/whatsapp-axi
-retry_check codesign --verify --strict --verbose=2 -R='notarized' --check-notarization axi/whatsapp-axi
+  -R='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "57V379V642"' axi/wasync-axi
+retry_check codesign --verify --strict --verbose=2 -R='notarized' --check-notarization axi/wasync-axi
 # The installer's AXI must be the very executable signed and notarized above.
-cmp axi/whatsapp-axi expanded/whatsapp-axi.pkg/Payload/usr/local/bin/whatsapp-axi
+cmp axi/wasync-axi expanded/wasync-axi.pkg/Payload/usr/local/bin/wasync-axi
 # Exercise the exact signed executables with a quarantine attribute intact.
 xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-check;" archive/wasync
-xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-check;" axi/whatsapp-axi
-[[ "$(axi/whatsapp-axi --version)" == "$version" ]]
-python3 "$project_dir/scripts/smoke-installed.py" "$work/archive/wasync" "$version" "$architecture" "$work/axi/whatsapp-axi"
+xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-check;" axi/wasync-axi
+[[ "$(axi/wasync-axi --version)" == "$version" ]]
+python3 "$project_dir/scripts/smoke-installed.py" "$work/archive/wasync" "$version" "$architecture" "$work/axi/wasync-axi"
 # The installer offers AXI for agents unticked and, on a hosted runner, installs both ways.
-bash "$project_dir/scripts/test-macos-pkg.sh" "$work/$name.pkg" "$version" "$architecture" "$work/axi/whatsapp-axi"
+bash "$project_dir/scripts/test-macos-pkg.sh" "$work/$name.pkg" "$version" "$architecture" "$work/axi/wasync-axi"

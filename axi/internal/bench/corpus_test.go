@@ -16,13 +16,13 @@ import (
 
 // The synthetic corpus: invented chat names, people and sentences from a
 // fixed seed, shaped like wasync's v1 data (including the fields
-// whatsapp-axi does not print, because raw readers receive them too).
+// wasync-axi does not print, because raw readers receive them too).
 
 const (
 	account     = "4915100000000@lid"
 	searchTerm  = "invoice"
 	targetChat  = "Project Falcon"
-	pageLimit   = 20  // whatsapp-axi's default page; the raw calls use the same
+	pageLimit   = 20  // wasync-axi's default page; the raw calls use the same
 	changeLimit = 100 // observe's default page
 	contextSize = 2
 )

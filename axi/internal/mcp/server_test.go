@@ -99,7 +99,7 @@ func TestInitializeNegotiatesAndAnnouncesOnlyTools(t *testing.T) {
 	if len(caps) != 1 || caps["tools"] == nil {
 		t.Fatalf("capabilities: %v", caps)
 	}
-	if info := first["serverInfo"].(map[string]any); info["name"] != "whatsapp-axi" || info["version"] != "9.9.9" {
+	if info := first["serverInfo"].(map[string]any); info["name"] != "wasync-axi" || info["version"] != "9.9.9" {
 		t.Fatalf("serverInfo %v", info)
 	}
 	if result(t, msgs[1])["protocolVersion"] != "2025-06-18" {

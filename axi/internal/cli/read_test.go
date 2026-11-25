@@ -34,7 +34,7 @@ func apiHarness(t *testing.T) (*harness, *testutil.API) {
 	srv.ServeFixtures(t, fixtures)
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
-	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_0123abcd_test"
+	h.env["WASYNC_AXI_TOKEN"] = "wsa_0123abcd_test"
 	return h, srv
 }
 
@@ -186,7 +186,7 @@ func TestReadAPIRequests(t *testing.T) {
 
 func TestReadWithoutCredentialDoesNotFallBack(t *testing.T) {
 	h, srv := apiHarness(t)
-	delete(h.env, "WHATSAPP_AXI_TOKEN")
+	delete(h.env, "WASYNC_AXI_TOKEN")
 	bin, log := testutil.FakeWasync(t, testutil.ModeOK)
 	h.env["WASYNC_BIN"] = bin
 	out, code := h.run(t, "chats")
@@ -201,7 +201,7 @@ func TestReadWithoutCredentialDoesNotFallBack(t *testing.T) {
 		t.Fatal("fell back to the unscoped offline transport")
 	}
 
-	h.env["WHATSAPP_AXI_TOKEN"] = "0123456789abcdef"
+	h.env["WASYNC_AXI_TOKEN"] = "0123456789abcdef"
 	out, code = h.run(t, "chats")
 	if code != ExitError || strings.Contains(out, "0123456789abcdef") {
 		t.Fatalf("exit %d\n%s", code, out)
@@ -243,7 +243,7 @@ func TestHomeShowsRecentChats(t *testing.T) {
 			t.Fatalf("%s: exit %d\n%s", name, code, out)
 		}
 		mustContain(t, out, "chats:\n  total: 4\n  groups: 3\n  direct: 1\n  capture_enabled: 3\n  archived_messages: 7\n  recent[4]{id,kind,messages,untrusted_name}:\n    team-a@g.us,",
-			"Run `whatsapp-axi messages <id>` to read a chat")
+			"Run `wasync-axi messages <id>` to read a chat")
 		// Newest first; a chat without messages sorts last.
 		if i, j := strings.Index(out, "    family@g.us,"), strings.Index(out, "    team-b@g.us,"); i < 0 || j < i {
 			t.Errorf("%s: order\n%s", name, out)
@@ -260,7 +260,7 @@ func TestHomeReportsChatsError(t *testing.T) {
 	srv.Codes["/chats"] = 403
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
-	h.env["WHATSAPP_AXI_TOKEN"] = "wsa_test"
+	h.env["WASYNC_AXI_TOKEN"] = "wsa_test"
 	out, code := h.run(t)
 	if code != ExitOK {
 		t.Fatal(out)
@@ -270,13 +270,13 @@ func TestHomeReportsChatsError(t *testing.T) {
 
 func TestHintCommandLines(t *testing.T) {
 	cases := map[string]string{
-		commandLine("messages", "family@g.us", "--cursor", "c2"):  "`whatsapp-axi messages family@g.us --cursor c2`",
-		commandLine(searchArgs("-5% off", "--chat", "a@g.us")...): "`whatsapp-axi search --chat a@g.us -- '-5% off'`",
-		commandLine(searchArgs("it's", "--limit", "5")...):        "`whatsapp-axi search 'it'\\''s' --limit 5`",
-		commandLine("search", "--json"):                           "`whatsapp-axi search --json`",
-		commandLine("thread", "m1_a-b_c", "--before", "10"):       "`whatsapp-axi thread m1_a-b_c --before 10`",
-		commandLine(searchArgs("$(rm -rf ~)")...):                 "`whatsapp-axi search '$(rm -rf ~)'`",
-		commandLine(searchArgs("a\nb")...):                        "`whatsapp-axi search 'a\nb'`",
+		commandLine("messages", "family@g.us", "--cursor", "c2"):  "`wasync-axi messages family@g.us --cursor c2`",
+		commandLine(searchArgs("-5% off", "--chat", "a@g.us")...): "`wasync-axi search --chat a@g.us -- '-5% off'`",
+		commandLine(searchArgs("it's", "--limit", "5")...):        "`wasync-axi search 'it'\\''s' --limit 5`",
+		commandLine("search", "--json"):                           "`wasync-axi search --json`",
+		commandLine("thread", "m1_a-b_c", "--before", "10"):       "`wasync-axi thread m1_a-b_c --before 10`",
+		commandLine(searchArgs("$(rm -rf ~)")...):                 "`wasync-axi search '$(rm -rf ~)'`",
+		commandLine(searchArgs("a\nb")...):                        "`wasync-axi search 'a\nb'`",
 	}
 	for got, want := range cases {
 		if got != want {

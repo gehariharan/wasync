@@ -1,9 +1,9 @@
-# Installs wasync and whatsapp-axi for the current Windows user, without a browser or administrator rights.
+# Installs wasync and wasync-axi for the current Windows user, without a browser or administrator rights.
 # It is meant to be run by a person, or by an agent such as Codex on their behalf:
 #   powershell -ExecutionPolicy Bypass -File scripts/install-windows.ps1
 # What it does: finds the newest published release (previews included), downloads the Setup
 # program, checks its SHA-256 against the release's checksums.txt, then runs Setup silently
-# for your account with the PATH entry and whatsapp-axi. It changes no agent settings.
+# for your account with the PATH entry and wasync-axi. It changes no agent settings.
 #   -DryRun                    say what would be installed; download and install nothing
 #   -ReleasesJson FILE         tests only, with -DryRun: read the release list from a saved JSON array
 param(

@@ -8,7 +8,7 @@ import (
 
 // EnvFakeDiagnostics names a file whose contents the fake wasync prints for
 // `wasync query doctor`. Other commands keep the EnvFakeMode behaviour.
-const EnvFakeDiagnostics = "WHATSAPP_AXI_FAKE_WASYNC_DIAGNOSTICS"
+const EnvFakeDiagnostics = "WASYNC_AXI_FAKE_WASYNC_DIAGNOSTICS"
 
 // MaybeRunFakeDoctor answers `wasync query doctor` when the current process
 // is the fake wasync and EnvFakeDiagnostics is set. Call it before
@@ -28,7 +28,7 @@ func MaybeRunFakeDoctor() {
 		return
 	}
 	if log := os.Getenv(EnvFakeLog); log != "" {
-		rec := map[string]any{"args": os.Args[1:], "token_present": os.Getenv("WHATSAPP_AXI_TOKEN") != ""}
+		rec := map[string]any{"args": os.Args[1:], "token_present": os.Getenv("WASYNC_AXI_TOKEN") != ""}
 		b, _ := json.Marshal(rec)
 		_ = os.WriteFile(log+".doctor", b, 0o600)
 	}

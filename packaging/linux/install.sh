@@ -1,5 +1,5 @@
 #!/bin/sh
-# Installs wasync from this extracted archive. whatsapp-axi (AXI for agents) is
+# Installs wasync from this extracted archive. wasync-axi (AXI for agents) is
 # optional: it is installed only when you say yes. Needs no administrator access.
 #
 #   ./install.sh [--bin-dir DIR] [--with-axi | --without-axi]
@@ -7,7 +7,7 @@
 #
 # Without --with-axi or --without-axi the script asks when run in a terminal and
 # otherwise installs wasync only. --axi-skill and --axi-hooks run
-# `whatsapp-axi setup skill` / `setup hooks` after installing, which write to your
+# `wasync-axi setup skill` / `setup hooks` after installing, which write to your
 # agents' configuration; they imply --with-axi. Without them, a terminal run asks
 # about each (default no) and a non-interactive run changes no agent settings.
 set -eu
@@ -60,14 +60,14 @@ ask() {
 }
 
 if [ "$axi" = ask ]; then
-  if [ -f "$here/whatsapp-axi" ] && ask "Also install whatsapp-axi (AXI for agents, used by AI agents such as Claude Code, Codex and OpenCode)?"; then
+  if [ -f "$here/wasync-axi" ] && ask "Also install wasync-axi (AXI for agents, used by AI agents such as Claude Code, Codex and OpenCode)?"; then
     axi=yes
   else
     axi=no
   fi
 fi
-if [ "$axi" = yes ] && [ ! -f "$here/whatsapp-axi" ]; then
-  echo "install.sh: whatsapp-axi is not in this archive" >&2
+if [ "$axi" = yes ] && [ ! -f "$here/wasync-axi" ]; then
+  echo "install.sh: wasync-axi is not in this archive" >&2
   exit 1
 fi
 
@@ -75,23 +75,37 @@ mkdir -p "$bin_dir"
 install -m 755 "$here/wasync" "$bin_dir/wasync"
 echo "Installed wasync to $bin_dir/wasync"
 if [ "$axi" = yes ]; then
-  install -m 755 "$here/whatsapp-axi" "$bin_dir/whatsapp-axi"
-  echo "Installed whatsapp-axi to $bin_dir/whatsapp-axi"
+  install -m 755 "$here/wasync-axi" "$bin_dir/wasync-axi"
+  echo "Installed wasync-axi to $bin_dir/wasync-axi"
+  # Keep the old name, whatsapp-axi, as a link unless another program owns it.
+  old="$bin_dir/whatsapp-axi"
+  if [ -L "$old" ]; then
+    [ "$(readlink "$old")" = wasync-axi ] && own=yes || own=no
+  elif [ ! -e "$old" ] || LC_ALL=C grep -aq 'gehariharan/wasync/axi' "$old" 2>/dev/null; then
+    own=yes
+  else
+    own=no
+  fi
+  if [ "$own" = yes ]; then
+    ln -sf wasync-axi "$old"
+  else
+    echo "Left $old alone: it is another program."
+  fi
 else
-  echo "Skipped whatsapp-axi. Re-run with --with-axi to add it later."
+  echo "Skipped wasync-axi. Re-run with --with-axi to add it later."
 fi
 
 if [ "$axi" = yes ]; then
   if [ "$skill" = ask ]; then
-    if ask "Run 'whatsapp-axi setup skill' to add the whatsapp-axi skill to your agents?"; then skill=yes; else skill=no; fi
+    if ask "Run 'wasync-axi setup skill' to add the wasync-axi skill to your agents?"; then skill=yes; else skill=no; fi
   fi
   if [ "$hooks" = ask ]; then
-    if ask "Run 'whatsapp-axi setup hooks' to add whatsapp-axi's session hooks to your agents?"; then hooks=yes; else hooks=no; fi
+    if ask "Run 'wasync-axi setup hooks' to add wasync-axi's session hooks to your agents?"; then hooks=yes; else hooks=no; fi
   fi
-  if [ "$skill" = yes ]; then "$bin_dir/whatsapp-axi" setup skill; fi
-  if [ "$hooks" = yes ]; then "$bin_dir/whatsapp-axi" setup hooks; fi
-  if [ "$skill" != yes ]; then echo "Agent skill not installed. Later: whatsapp-axi setup skill (add --dry-run to preview)."; fi
-  if [ "$hooks" != yes ]; then echo "Agent session hooks not installed. Later: whatsapp-axi setup hooks (add --dry-run to preview)."; fi
+  if [ "$skill" = yes ]; then "$bin_dir/wasync-axi" setup skill; fi
+  if [ "$hooks" = yes ]; then "$bin_dir/wasync-axi" setup hooks; fi
+  if [ "$skill" != yes ]; then echo "Agent skill not installed. Later: wasync-axi setup skill (add --dry-run to preview)."; fi
+  if [ "$hooks" != yes ]; then echo "Agent session hooks not installed. Later: wasync-axi setup hooks (add --dry-run to preview)."; fi
 fi
 
 case ":${PATH:-}:" in

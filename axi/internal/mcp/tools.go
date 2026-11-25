@@ -116,7 +116,7 @@ func (b *builder) add(flag, value string) {
 
 var tools = []tool{
 	{
-		name: "whatsapp_status", description: "Show whether wasync is installed and running, the state of the saved credential, and how many chats this credential may see. It does not say whether WhatsApp is linked (call whatsapp_doctor for its pairing check) and shows no chat names (call whatsapp_list_chats for those). Read a hint such as \"Run `whatsapp-axi ...`\" as the matching whatsapp_* tool. Start here.",
+		name: "whatsapp_status", description: "Show whether wasync is installed and running, the state of the saved credential, and how many chats this credential may see. It does not say whether WhatsApp is linked (call whatsapp_doctor for its pairing check) and shows no chat names (call whatsapp_list_chats for those). Read a hint such as \"Run `wasync-axi ...`\" as the matching whatsapp_* tool. Start here.",
 		ann:   hints("WhatsApp status", readHints),
 		build: func(a map[string]any) ([]string, error) { return []string{"--brief"}, unknown(a) },
 	},

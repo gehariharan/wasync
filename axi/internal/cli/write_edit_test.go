@@ -36,7 +36,7 @@ func TestEditPostsOnceAndPrintsAcknowledgement(t *testing.T) {
 	}
 }
 
-// whatsapp-axi checks neither ownership nor the edit window: wasync decides
+// wasync-axi checks neither ownership nor the edit window: wasync decides
 // and says why, and the refusal is printed unchanged.
 func TestEditReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
 	for _, tc := range []struct {
@@ -84,7 +84,7 @@ func TestEditNeedsEditScopeCredentialHelpAndNeverWritesOffline(t *testing.T) {
 	offline := newHarness(t)
 	bin, log := testutil.FakeWasync(t, testutil.ModeOK)
 	offline.env["WASYNC_BIN"] = bin
-	offline.env["WHATSAPP_AXI_TOKEN"] = "wsa_writer"
+	offline.env["WASYNC_AXI_TOKEN"] = "wsa_writer"
 	out, code = offline.run(t, "edit", testRef, "--text", "x")
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)

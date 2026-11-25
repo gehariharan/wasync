@@ -15,7 +15,7 @@ func (a *API) Delete(ctx context.Context, path string, out any) error {
 		return err
 	}
 	if a.cred == nil {
-		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no whatsapp-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
+		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no wasync-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
 	}
 	return a.send(ctx, http.MethodDelete, path, nil, nil, true, out)
 }

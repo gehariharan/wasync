@@ -31,12 +31,12 @@ func toJSON(c *command) commandJSON {
 func (a *App) runHelp(_ context.Context, inv invocation) error {
 	if len(inv.args) == 1 {
 		name := inv.args[0]
-		if name == "whatsapp-axi" || name == "home" {
+		if name == "wasync-axi" || name == "home" {
 			name = ""
 		}
 		c := findCommand(name)
 		if c == nil {
-			return usageErr("valid commands: whatsapp-axi, "+strings.Join(commandNames(), ", "), "unknown command %q", inv.args[0])
+			return usageErr("valid commands: wasync-axi, "+strings.Join(commandNames(), ", "), "unknown command %q", inv.args[0])
 		}
 		return a.commandHelp(c, inv.json)
 	}
@@ -53,7 +53,7 @@ func (a *App) runHelp(_ context.Context, inv invocation) error {
 		rows = append(rows, []string{displayName(c), c.usage, c.description})
 	}
 	o.Table(0, "commands", []string{"name", "usage", "description"}, rows)
-	o.Help("Run `whatsapp-axi help <command>` for flags and examples")
+	o.Help("Run `wasync-axi help <command>` for flags and examples")
 	return o.Err()
 }
 

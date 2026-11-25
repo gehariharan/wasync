@@ -1,6 +1,6 @@
 # Threat model: agent access to wasync
 
-Scope: the local wasync owner (TUI or `serve`), its loopback API, the `wasync query` CLI, and agent clients such as whatsapp-axi. See [ADR-001](ADR-001-repository-boundaries.md).
+Scope: the local wasync owner (TUI or `serve`), its loopback API, the `wasync query` CLI, and agent clients such as wasync-axi. See [ADR-001](ADR-001-repository-boundaries.md).
 
 ## Assets
 
@@ -32,7 +32,7 @@ Scope: the local wasync owner (TUI or `serve`), its loopback API, the `wasync qu
 | Legacy read token mutating capture policy (existing behaviour) | Recorded in the baseline audit; unchanged for compatibility; agent credentials do not inherit it |
 | Duplicate WhatsApp session | Only wasync pairs; `device.lock`; AXI never connects to WhatsApp |
 | Data loss on upgrade | Additive-only migrations, automatic pre-migration backup, schema upgrade tests from every released schema |
-| Contact names in logs, or hostile names reaching an agent | Direct-chat names (address-book, push and business names) come from whatsmeow's contact store and events and are stored only in the local archive; they are never written to logs or diagnostics. Names are trimmed of control characters and capped at 256 characters when stored, shown in `whatsapp-axi` as sanitized `untrusted_` values, and visible to an agent only through the same `read.chats` scope and chat allowlist as the chat itself. Push names are chosen by other people, so a name can impersonate a contact or carry instruction-like text; agents must treat it as data, and a name is never an authorization input (allowlists use chat IDs). Residual risk: an agent with `read.chats` learns the owner's saved contact names for the chats it may see |
+| Contact names in logs, or hostile names reaching an agent | Direct-chat names (address-book, push and business names) come from whatsmeow's contact store and events and are stored only in the local archive; they are never written to logs or diagnostics. Names are trimmed of control characters and capped at 256 characters when stored, shown in `wasync-axi` as sanitized `untrusted_` values, and visible to an agent only through the same `read.chats` scope and chat allowlist as the chat itself. Push names are chosen by other people, so a name can impersonate a contact or carry instruction-like text; agents must treat it as data, and a name is never an authorization input (allowlists use chat IDs). Residual risk: an agent with `read.chats` learns the owner's saved contact names for the chats it may see |
 | Secrets or bodies in logs | Audit and diagnostics record identifiers and outcomes only |
 | Change feed skipping events | Transactional journal with sequence cursors and an epoch; no timestamp cursors |
 | Agent talks its way into a chat it was not given | By default access is never granted by asking. A request becomes a pending human approval (TUI dialog, the approval page, or `wasync actions approve` with a typed `ALLOW CODE`; 30-minute expiry that survives a restart, no replay, approve token separate from every agent credential). Where the computer has a system confirmation, the owner then asks the person to confirm with it, whichever way the approval arrived. The person sees which agent, which chat and whether read, send/reply/react or also edit-own, and picks the history depth before confirming. Approval enables capture for that one chat and adds a per-chat grant limited to scopes the credential already holds (read, send and edit are separate; capture, group and export scopes are never requestable). Rejection, expiry, a revoked agent or any failure changes nothing; grants and denials are audited |
@@ -77,7 +77,7 @@ Not covered, stated plainly:
 | Property | How it holds |
 |---|---|
 | The pairing QR code is shown only as an image | The setup page draws it as an image from the code and never prints the code as text, in the page or the logs. The code is useless without the phone it is scanned by |
-| A connected agent's secret is never displayed | The owner creates the credential and writes it to the file whatsapp-axi reads, atomically and privately, then forgets it. If it cannot be saved, the credential is revoked at once. It never replaces an existing saved credential without an explicit tick |
+| A connected agent's secret is never displayed | The owner creates the credential and writes it to the file wasync-axi reads, atomically and privately, then forgets it. If it cannot be saved, the credential is revoked at once. It never replaces an existing saved credential without an explicit tick |
 | The page connects read-only agents | An agent connected from the page gets `read.chats` and `read.messages`, on demand and with no expiry, and nothing else; sending, other scopes and expiry need `wasync agents grant` in a terminal |
 | Connecting an agent, and installing start-at-login, need the person | Both end in the system prompt, with a sentence built by the owner. Where the computer has no prompt the page offers neither and shows the terminal command, whose own typed confirmation is then the only check (see above) |
 | The login item is per user and visible | A macOS LaunchAgent plist or a Windows `Run` value, both for the current account, no administrator rights, removed by `wasync service uninstall` or the page. Installing only writes the item; it starts at the next login, so it never races a wasync the person is already running |
@@ -98,12 +98,12 @@ On macOS `approve.token` is no longer a file. wasync keeps it in the login Keych
 
 ## The tool server and the Codex plugin
 
-See [ADR-003](ADR-003-mcp-tool-server.md). `whatsapp-axi mcp` serves tools over standard input and output for apps that have no terminal.
+See [ADR-003](ADR-003-mcp-tool-server.md). `wasync-axi mcp` serves tools over standard input and output for apps that have no terminal.
 
 | Property | How it holds |
 |---|---|
 | The tool server cannot approve, grant or reveal | The menu has no such tool, and a test fixes the exact list. Asking for a chat (`whatsapp_request_access`) queues a request the person answers on their own computer; the server never sees the answer's secret and approving still ends in the system prompt |
-| The tool server adds no authority | Each tool runs a `whatsapp-axi` command with fixed flags. Every value is a separate argument. Positional values (search text, chat, message ref, emoji) come after `--`, so text that looks like a flag is only text there. Values of fixed flags (`--text`, `--mentions`, `--match`, `--chat`, `--cursor`, `--consumer`, `--after`) come before `--`: they still reach the command whole, but a value of exactly `--json` switches that command's output to JSON. That changes only the output format, never the authority. Arguments a tool does not declare, over-long text, non-integers and missing fields are refused before any command runs |
+| The tool server adds no authority | Each tool runs a `wasync-axi` command with fixed flags. Every value is a separate argument. Positional values (search text, chat, message ref, emoji) come after `--`, so text that looks like a flag is only text there. Values of fixed flags (`--text`, `--mentions`, `--match`, `--chat`, `--cursor`, `--consumer`, `--after`) come before `--`: they still reach the command whole, but a value of exactly `--json` switches that command's output to JSON. That changes only the output format, never the authority. Arguments a tool does not declare, over-long text, non-integers and missing fields are refused before any command runs |
 | It cannot corrupt its own protocol stream | Each command writes to its own buffer and has no access to the input channel; replies are one JSON line each |
 | Message content stays data | Tool results are the same delimited output as the command line, and the plugin's skills tell the agent to treat message text, contact names and group names as untrusted |
 | Starting setup is bounded | One tool runs `wasync setup` detached, no arguments, output discarded, at most once per thirty seconds; the page it opens needs the person (ADR-003). It cannot be steered to open anything else |

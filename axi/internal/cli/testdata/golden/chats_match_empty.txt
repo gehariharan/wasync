@@ -6,4 +6,4 @@ capture_enabled: 0
 archived_messages: 0
 chats[0]{id,kind,messages,untrusted_name}:
 help[1]:
-  No chat matches "nobody"; run `whatsapp-axi chats` to list every chat
+  No chat matches "nobody"; run `wasync-axi chats` to list every chat

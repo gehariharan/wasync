@@ -11,7 +11,7 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/output"
 )
 
-const accessUsage = "whatsapp-axi access request (--chat JID | --match TEXT) [--send] [--edit] [--json]; whatsapp-axi access status REQUEST_ID [--json]"
+const accessUsage = "wasync-axi access request (--chat JID | --match TEXT) [--send] [--edit] [--json]; wasync-axi access status REQUEST_ID [--json]"
 
 var accessCommand = &command{
 	name:        "access",
@@ -28,10 +28,10 @@ var accessCommand = &command{
 	maxArgs:  2,
 	argsName: "request | status REQUEST_ID",
 	examples: []string{
-		"whatsapp-axi access request --match \"Family\" --send",
-		"whatsapp-axi access request --match +15551234567",
-		"whatsapp-axi access request --chat 120363000000000000@g.us",
-		"whatsapp-axi access status 0123456789abcdef0123456789abcdef",
+		"wasync-axi access request --match \"Family\" --send",
+		"wasync-axi access request --match +15551234567",
+		"wasync-axi access request --chat 120363000000000000@g.us",
+		"wasync-axi access status 0123456789abcdef0123456789abcdef",
 	},
 	run: (*App).runAccess,
 }
@@ -139,16 +139,16 @@ func (a *App) accessResult(inv invocation, transportName string, resp contract.R
 	case "pending":
 		o.Help(
 			"Nothing is granted yet. Ask the person to open the wasync terminal UI (a dialog appears) or to run `"+d.ApproveWith+"` in a terminal",
-			"Check the answer with `whatsapp-axi access status "+d.RequestID+"`; do not retry the read until it says approved",
+			"Check the answer with `wasync-axi access status "+d.RequestID+"`; do not retry the read until it says approved",
 			"The request expires after 30 minutes; ask again if it does. wasync does not say whether the name matched anything, so if it expires try the phone number or exact chat JID")
 	case "approved":
-		o.Help("Access was granted for this chat only; retry your read, e.g. `whatsapp-axi messages " + d.Chat + "`")
+		o.Help("Access was granted for this chat only; retry your read, e.g. `wasync-axi messages " + d.Chat + "`")
 	case "already_allowed":
 		o.Help("This credential can already use this chat; no approval is needed")
 	case "rejected":
 		o.Help("The person declined. Do not ask again unless they ask you to")
 	case "expired", "failed":
-		o.Help("No access was granted. If it is still needed, run `whatsapp-axi access request` again and ask the person to answer promptly")
+		o.Help("No access was granted. If it is still needed, run `wasync-axi access request` again and ask the person to answer promptly")
 	}
 	return o.Err()
 }

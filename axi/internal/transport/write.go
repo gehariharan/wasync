@@ -17,7 +17,7 @@ func (a *API) Post(ctx context.Context, path string, body any, out any) error {
 		return err
 	}
 	if a.cred == nil {
-		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no whatsapp-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
+		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no wasync-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
 	}
 	b, err := json.Marshal(body)
 	if err != nil {

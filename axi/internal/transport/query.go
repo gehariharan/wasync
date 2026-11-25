@@ -52,7 +52,7 @@ func withParams(base map[string]string, extra map[string]string) map[string]stri
 
 // queryRoutes is the API path to offline command table. Only reads belong
 // here; every v1 read endpoint with a `wasync query` equivalent is listed.
-// GET /chats/{chat} has none: whatsapp-axi resolves chats with ?match=.
+// GET /chats/{chat} has none: wasync-axi resolves chats with ?match=.
 var queryRoutes = map[string]QueryRoute{
 	"/version":               {Command: []string{"version"}},
 	"/diagnostics":           {Command: []string{"doctor"}},
@@ -253,12 +253,12 @@ func (q *Query) Get(ctx context.Context, path string, query url.Values, out any)
 	return decodeEnvelope(stdout.Bytes(), NameQuery, out)
 }
 
-// childEnv drops whatsapp-axi's own credential from the subprocess env:
+// childEnv drops wasync-axi's own credential from the subprocess env:
 // offline reads are unscoped and never need it.
 func childEnv(env []string) []string {
 	out := make([]string, 0, len(env))
 	for _, kv := range env {
-		if strings.HasPrefix(kv, config.EnvToken+"=") {
+		if strings.HasPrefix(kv, config.EnvToken+"=") || strings.HasPrefix(kv, config.LegacyEnvToken+"=") {
 			continue
 		}
 		out = append(out, kv)

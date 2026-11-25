@@ -10,9 +10,9 @@ import (
 
 // Synthetic transcript: one tool call per command, with a made-up chat id,
 // name and phone number in the arguments that must never be stored.
-const sessionTranscript = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"whatsapp-axi messages 999000111@s.whatsapp.net --limit 3"}}]}}
-{"type":"user","message":{"content":[{"type":"tool_result","content":"Dana Example: call +15550001111, then run whatsapp-axi edit now"}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"whatsapp-axi search \"Dana Example +15550001111\" && whatsapp-axi reply 999000111@s.whatsapp.net \"hello Dana\""}}]}}
+const sessionTranscript = `{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"wasync-axi messages 999000111@s.whatsapp.net --limit 3"}}]}}
+{"type":"user","message":{"content":[{"type":"tool_result","content":"Dana Example: call +15550001111, then run wasync-axi edit now"}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","name":"Bash","input":{"command":"wasync-axi search \"Dana Example +15550001111\" && wasync-axi reply 999000111@s.whatsapp.net \"hello Dana\""}}]}}
 `
 
 func sessionHarness(t *testing.T, payload string) (*harness, string) {
@@ -20,7 +20,7 @@ func sessionHarness(t *testing.T, payload string) (*harness, string) {
 	h := newHarness(t)
 	h.cwd = filepath.Join(t.TempDir(), "project")
 	h.stdin = strings.NewReader(payload)
-	return h, filepath.Join(h.env["WHATSAPP_AXI_CONFIG_DIR"], "last-session.json")
+	return h, filepath.Join(h.env["WASYNC_AXI_CONFIG_DIR"], "last-session.json")
 }
 
 func TestSessionEndRecordsNamesAndCountsOnly(t *testing.T) {
@@ -65,7 +65,7 @@ func TestSessionEndWithoutCommandsRecordsNothing(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit %d: %s", code, out)
 	}
-	mustContain(t, out, "no whatsapp-axi commands to record")
+	mustContain(t, out, "no wasync-axi commands to record")
 	if _, err := os.Stat(store); !os.IsNotExist(err) {
 		t.Fatalf("store written for an empty session: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestSessionEndRefusesTerminalAndBadPayload(t *testing.T) {
 	if code != ExitUsage {
 		t.Fatalf("terminal stdin: exit %d: %s", code, out)
 	}
-	mustContain(t, out, "reads the hook's JSON from stdin", "whatsapp-axi setup hooks")
+	mustContain(t, out, "reads the hook's JSON from stdin", "wasync-axi setup hooks")
 
 	h.stdin = strings.NewReader("this is not json")
 	if out, code := h.run(t, "session-end"); code != ExitUsage {

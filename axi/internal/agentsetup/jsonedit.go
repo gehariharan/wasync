@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// The agents' settings files belong to the user. whatsapp-axi edits them by
+// The agents' settings files belong to the user. wasync-axi edits them by
 // splicing bytes at the spans of a parsed tree, so every byte outside the
 // edited span (key order, formatting, unrelated settings) stays as it was.
 

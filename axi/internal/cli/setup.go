@@ -16,9 +16,9 @@ import (
 	"github.com/gehariharan/wasync/axi/skills"
 )
 
-// `setup` installs whatsapp-axi's opt-in agent integrations (AXI principle
-// 7): a session-start hook that prints `whatsapp-axi --brief`, a session-end
-// hook that runs `whatsapp-axi session-end`, and the agent skill shipped in
+// `setup` installs wasync-axi's opt-in agent integrations (AXI principle
+// 7): a session-start hook that prints `wasync-axi --brief`, a session-end
+// hook that runs `wasync-axi session-end`, and the agent skill shipped in
 // skills/. Only a user-invoked setup command writes agent
 // settings; no other command does. Setup never talks to wasync.
 
@@ -26,19 +26,19 @@ const (
 	setupHooks = "hooks"
 	setupSkill = "skill"
 
-	setupUsage    = "whatsapp-axi setup hooks|skill [--agent claude|codex|opencode|all] [--dir DIR] [--remove] [--dry-run] [--json]"
-	setupHooksFix = "whatsapp-axi setup hooks"
-	setupSkillFix = "whatsapp-axi setup skill"
+	setupUsage    = "wasync-axi setup hooks|skill [--agent claude|codex|opencode|all] [--dir DIR] [--remove] [--dry-run] [--json]"
+	setupHooksFix = "wasync-axi setup hooks"
+	setupSkillFix = "wasync-axi setup skill"
 )
 
 var setupCommand = &command{
 	name:        "setup",
 	usage:       setupUsage,
-	description: "Install (or --remove) the session hooks, or the whatsapp-axi agent skill: a session-start hook that shows `whatsapp-axi --brief` in new agent sessions and a session-end hook that records which whatsapp-axi commands a session ran (names and counts only); idempotent, keeps unrelated settings",
+	description: "Install (or --remove) the session hooks, or the wasync-axi agent skill: a session-start hook that shows `wasync-axi --brief` in new agent sessions and a session-end hook that records which wasync-axi commands a session ran (names and counts only); idempotent, keeps unrelated settings",
 	flags: []flagSpec{
 		{name: "--agent", value: "LIST", description: "claude, codex, opencode or all, comma-separated (default: detected config directories, else claude; with --remove: all)"},
 		{name: "--dir", value: "DIR", description: "project settings in DIR/.claude, DIR/.codex and DIR/.opencode; default $" + config.EnvAgentHome + " or the home directory (OpenCode: $XDG_CONFIG_HOME/opencode or ~/.config/opencode)"},
-		{name: "--remove", description: "remove whatsapp-axi's hook or skill and nothing else"},
+		{name: "--remove", description: "remove wasync-axi's hook or skill and nothing else"},
 		{name: "--dry-run", description: "print the planned changes without writing anything"},
 		jsonFlag,
 	},
@@ -46,20 +46,20 @@ var setupCommand = &command{
 	maxArgs:  1,
 	argsName: "hooks or skill",
 	examples: []string{
-		"whatsapp-axi setup hooks",
-		"whatsapp-axi setup hooks --dry-run",
-		"whatsapp-axi setup hooks --agent codex",
-		"whatsapp-axi setup skill",
-		"whatsapp-axi setup hooks --remove",
-		"whatsapp-axi setup hooks --dir .",
+		"wasync-axi setup hooks",
+		"wasync-axi setup hooks --dry-run",
+		"wasync-axi setup hooks --agent codex",
+		"wasync-axi setup skill",
+		"wasync-axi setup hooks --remove",
+		"wasync-axi setup hooks --dir .",
 	},
 	run: (*App).runSetup,
 }
 
-// agentHome is where agent settings live: $WHATSAPP_AXI_AGENT_HOME, else
+// agentHome is where agent settings live: $WASYNC_AXI_AGENT_HOME, else
 // the home directory.
 func (a *App) agentHome() (string, error) {
-	if v := strings.TrimSpace(a.Getenv(config.EnvAgentHome)); v != "" {
+	if v := config.AgentHome(a.Getenv); v != "" {
 		return v, nil
 	}
 	home, err := a.HomeDir()
@@ -70,7 +70,7 @@ func (a *App) agentHome() (string, error) {
 }
 
 // hookCommand is the managed hook's command: the bare name when the
-// whatsapp-axi on PATH is this binary, otherwise this binary's path.
+// wasync-axi on PATH is this binary, otherwise this binary's path.
 func (a *App) hookCommand() string {
 	executable := a.hookExecutable()
 	return agentsetup.HookCommand(executable, executable == agentsetup.BinaryName, runtime.GOOS)
@@ -160,7 +160,7 @@ func (a *App) setupAgents(inv invocation, root string, remove bool) ([]agentsetu
 
 func (a *App) agentConfigs(project bool) []agentsetup.Agent {
 	configHome := a.Getenv("XDG_CONFIG_HOME")
-	if strings.TrimSpace(a.Getenv(config.EnvAgentHome)) != "" {
+	if config.AgentHome(a.Getenv) != "" {
 		configHome = ""
 	}
 	return agentsetup.AgentsAt(project, configHome)
@@ -228,12 +228,22 @@ func (a *App) runSetup(_ context.Context, inv invocation) error {
 				c, err = agentsetup.PlanHook(ag, root, res.HookCommand, remove)
 			}
 		} else {
-			c, err = agentsetup.PlanSkill(ag, root, skills.WhatsappAXI, remove)
+			c, err = agentsetup.PlanSkill(ag, root, skills.WasyncAXI, remove)
 		}
 		if err != nil {
 			return err
 		}
 		changes = append(changes, c)
+		// Clear what an install from before the rename to wasync-axi left.
+		var legacy agentsetup.Change
+		if what == setupSkill {
+			legacy = agentsetup.PlanLegacySkill(ag, root)
+		} else if ag.Name == "opencode" {
+			legacy = agentsetup.PlanLegacyOpenCodeHook(ag, root)
+		}
+		if legacy.Action == agentsetup.ActionRemove {
+			changes = append(changes, legacy)
+		}
 		if what == setupHooks && !remove && ag.Name == "codex" {
 			c, err := agentsetup.PlanCodexFeature(root)
 			if err != nil {
@@ -293,7 +303,7 @@ func setupHints(what string, remove, dryRun bool, pending int, changes []agentse
 	var h []string
 	switch {
 	case pending == 0 && remove:
-		h = append(h, "Nothing to remove: no whatsapp-axi "+what+" found")
+		h = append(h, "Nothing to remove: no wasync-axi "+what+" found")
 	case pending == 0:
 		h = append(h, "Already set up; nothing changed")
 	case dryRun:
@@ -308,13 +318,13 @@ func setupHints(what string, remove, dryRun bool, pending int, changes []agentse
 	case remove:
 	case what == setupHooks:
 		h = append(h,
-			"New agent sessions start with `whatsapp-axi --brief`: wasync state and the chat count, never message text",
-			"Ending a session runs `whatsapp-axi session-end`, which records command names and counts only, so the next brief can say what the last session did",
-			"Undo with `whatsapp-axi setup hooks --remove`; `whatsapp-axi doctor` checks the hook")
+			"New agent sessions start with `wasync-axi --brief`: wasync state and the chat count, never message text",
+			"Ending a session runs `wasync-axi session-end`, which records command names and counts only, so the next brief can say what the last session did",
+			"Undo with `wasync-axi setup hooks --remove`; `wasync-axi doctor` checks the hook")
 	default:
 		h = append(h,
-			"Agents load the skill when a task is about WhatsApp; `whatsapp-axi setup hooks` adds a summary to every session instead",
-			"Undo with `whatsapp-axi setup skill --remove`")
+			"Agents load the skill when a task is about WhatsApp; `wasync-axi setup hooks` adds a summary to every session instead",
+			"Undo with `wasync-axi setup skill --remove`")
 	}
 	return h
 }
@@ -360,7 +370,7 @@ func (a *App) hookChecks() []doctorCheck {
 	}
 	var skillCurrent, skillStale, skillBroken []string
 	for _, ag := range agents {
-		st := agentsetup.InspectSkill(ag, root, skills.WhatsappAXI)
+		st := agentsetup.InspectSkill(ag, root, skills.WasyncAXI)
 		where := ag.Label + " (" + a.collapseHome(st.Path) + ")"
 		switch {
 		case st.Err != nil:
@@ -387,10 +397,10 @@ func (a *App) hookChecks() []doctorCheck {
 		hooks.Detail = "session-start and session-end hooks run `" + cmd + "` for " + strings.Join(current, ", ")
 	case len(skillCurrent)+len(skillStale) > 0:
 		hooks.Status = statusSkip
-		hooks.Detail = "no session hooks installed; the whatsapp-axi skill is installed instead"
+		hooks.Detail = "no session hooks installed; the wasync-axi skill is installed instead"
 	default:
 		hooks.Status, hooks.Fix = statusWarn, setupHooksFix
-		hooks.Detail = "not installed: agent sessions start without whatsapp-axi context (opt-in)"
+		hooks.Detail = "not installed: agent sessions start without wasync-axi context (opt-in)"
 	}
 	switch {
 	case len(skillBroken) > 0:
@@ -398,9 +408,9 @@ func (a *App) hookChecks() []doctorCheck {
 		skill.Detail = strings.Join(skillBroken, "; ") + "; move that file away, then run the fix"
 	case len(skillStale) > 0:
 		skill.Status, skill.Fix = statusWarn, setupSkillFix
-		skill.Detail = "installed skill differs from this whatsapp-axi version: " + strings.Join(skillStale, ", ")
+		skill.Detail = "installed skill differs from this wasync-axi version: " + strings.Join(skillStale, ", ")
 	case len(skillCurrent) > 0:
-		skill.Status, skill.Detail = statusPass, "whatsapp-axi skill installed for "+strings.Join(skillCurrent, ", ")
+		skill.Status, skill.Detail = statusPass, "wasync-axi skill installed for "+strings.Join(skillCurrent, ", ")
 	default:
 		skill.Status, skill.Detail = statusSkip, "skill not installed (optional; `"+setupSkillFix+"` installs it)"
 	}

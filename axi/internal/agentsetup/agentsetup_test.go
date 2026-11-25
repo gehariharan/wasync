@@ -12,7 +12,7 @@ import (
 	"github.com/gehariharan/wasync/axi/internal/contract"
 )
 
-const cmd = "whatsapp-axi --brief"
+const cmd = "wasync-axi --brief"
 
 var claude, codex = Agents[0], Agents[1]
 
@@ -69,7 +69,7 @@ func TestInstallIntoMissingFile(t *testing.T) {
         "hooks": [
           {
             "type": "command",
-            "command": "whatsapp-axi --brief",
+            "command": "wasync-axi --brief",
             "timeout": 10
           }
         ]
@@ -81,7 +81,7 @@ func TestInstallIntoMissingFile(t *testing.T) {
         "hooks": [
           {
             "type": "command",
-            "command": "whatsapp-axi session-end",
+            "command": "wasync-axi session-end",
             "timeout": 10
           }
         ]
@@ -187,11 +187,11 @@ func TestPathRepairAndDuplicates(t *testing.T) {
 	root := t.TempDir()
 	path := claude.HookPath(root)
 	write(t, path, `{"hooks": {"SessionStart": [
-  {"matcher": "", "hooks": [{"type": "command", "command": "echo keep"}, {"type": "command", "command": "'/old dir/whatsapp-axi' --brief", "timeout": 5}]},
-  {"matcher": "", "hooks": [{"type": "command", "command": "/usr/local/bin/whatsapp-axi --brief"}]}
+  {"matcher": "", "hooks": [{"type": "command", "command": "echo keep"}, {"type": "command", "command": "'/old dir/wasync-axi' --brief", "timeout": 5}]},
+  {"matcher": "", "hooks": [{"type": "command", "command": "/usr/local/bin/wasync-axi --brief"}]}
 ]}}`)
 	st := InspectHook(claude, root, cmd)
-	if !st.Installed || st.Current || st.Command != "'/old dir/whatsapp-axi' --brief" {
+	if !st.Installed || st.Current || st.Command != "'/old dir/wasync-axi' --brief" {
 		t.Fatalf("%+v", st)
 	}
 	c := plan(t, root, false)
@@ -200,14 +200,14 @@ func TestPathRepairAndDuplicates(t *testing.T) {
 	}
 	apply(t, c)
 	got := read(t, path)
-	if strings.Count(got, "whatsapp-axi") != 2 || !strings.Contains(got, "echo keep") || strings.Contains(got, "/usr/local/bin") {
+	if strings.Count(got, "wasync-axi") != 2 || !strings.Contains(got, "echo keep") || strings.Contains(got, "/usr/local/bin") {
 		t.Fatalf("got\n%s", got)
 	}
 	if st := InspectHook(claude, root, cmd); !st.Current {
 		t.Fatalf("%+v", st)
 	}
 	apply(t, plan(t, root, true))
-	if got := read(t, path); strings.Contains(got, "whatsapp-axi") || !strings.Contains(got, "echo keep") {
+	if got := read(t, path); strings.Contains(got, "wasync-axi") || !strings.Contains(got, "echo keep") {
 		t.Fatalf("remove: %s", got)
 	}
 }
@@ -286,40 +286,41 @@ func TestSymlinkedSettingsAreEditedInPlace(t *testing.T) {
 	if info, err := os.Lstat(claude.HookPath(root)); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatal("symlink replaced by a regular file")
 	}
-	if !strings.Contains(read(t, dotfiles), "whatsapp-axi --brief") {
+	if !strings.Contains(read(t, dotfiles), "wasync-axi --brief") {
 		t.Fatal("link target not updated")
 	}
 }
 
 func TestManagedCommandDetection(t *testing.T) {
 	for c, want := range map[string]bool{
-		"whatsapp-axi --brief":                            true,
-		"/usr/local/bin/whatsapp-axi --brief":             true,
-		"'/Users/a b/go/bin/whatsapp-axi' --brief":        true,
-		`"C:/Program Files/axi/whatsapp-axi.exe" --brief`: true,
-		`C:\Users\a\go\bin\whatsapp-axi.EXE --brief`:      true,
-		"whatsapp-axi":              false,
-		"whatsapp-axi chats":        false,
-		"echo whatsapp-axi --brief": false,
-		"other-axi --brief":         false,
-		"whatsapp-axi-dev --brief":  false,
+		"wasync-axi --brief":                            true,
+		"/usr/local/bin/wasync-axi --brief":             true,
+		"'/Users/a b/go/bin/wasync-axi' --brief":        true,
+		`"C:/Program Files/axi/wasync-axi.exe" --brief`: true,
+		`C:\Users\a\go\bin\wasync-axi.EXE --brief`:      true,
+		"/usr/local/bin/whatsapp-axi --brief":           true,
+		"wasync-axi":                                    false,
+		"wasync-axi chats":                              false,
+		"echo wasync-axi --brief":                       false,
+		"other-axi --brief":                             false,
+		"wasync-axi-dev --brief":                        false,
 	} {
 		if IsManagedCommand(c) != want {
 			t.Errorf("%q: want %v", c, want)
 		}
 	}
 	for _, c := range []struct{ exe, goos, want string }{
-		{"/usr/local/bin/whatsapp-axi", "linux", "/usr/local/bin/whatsapp-axi --brief"},
-		{"/Users/a b/bin/whatsapp-axi", "darwin", "'/Users/a b/bin/whatsapp-axi' --brief"},
-		{`C:\Users\a\go\bin\whatsapp-axi.exe`, "windows", "C:/Users/a/go/bin/whatsapp-axi.exe --brief"},
-		{`C:\Program Files\whatsapp-axi.exe`, "windows", `"C:/Program Files/whatsapp-axi.exe" --brief`},
+		{"/usr/local/bin/wasync-axi", "linux", "/usr/local/bin/wasync-axi --brief"},
+		{"/Users/a b/bin/wasync-axi", "darwin", "'/Users/a b/bin/wasync-axi' --brief"},
+		{`C:\Users\a\go\bin\wasync-axi.exe`, "windows", "C:/Users/a/go/bin/wasync-axi.exe --brief"},
+		{`C:\Program Files\wasync-axi.exe`, "windows", `"C:/Program Files/wasync-axi.exe" --brief`},
 	} {
 		got := HookCommand(c.exe, false, c.goos)
 		if got != c.want || !IsManagedCommand(got) {
 			t.Errorf("%s: %q", c.exe, got)
 		}
 	}
-	if HookCommand("/x/whatsapp-axi", true, "linux") != cmd {
+	if HookCommand("/x/wasync-axi", true, "linux") != cmd {
 		t.Error("on PATH should use the bare name")
 	}
 }
@@ -364,7 +365,7 @@ func TestCodexHooksFile(t *testing.T) {
 
 func TestSkillPlan(t *testing.T) {
 	root := t.TempDir()
-	content := []byte("---\nname: whatsapp-axi\ndescription: x\n---\nbody\n")
+	content := []byte("---\nname: wasync-axi\ndescription: x\n---\nbody\n")
 	c, err := PlanSkill(claude, root, content, false)
 	if err != nil || c.Action != ActionAdd {
 		t.Fatalf("%+v %v", c, err)
@@ -460,7 +461,7 @@ func TestSessionEndHookInstallRepairAndRemove(t *testing.T) {
 	write(t, path, foreignSessionEnd)
 	apply(t, plan(t, root, false))
 	got := read(t, path)
-	if !strings.Contains(got, "cleanup-tool run") || !strings.Contains(got, `"command": "whatsapp-axi session-end"`) || !strings.Contains(got, `"command": "whatsapp-axi --brief"`) {
+	if !strings.Contains(got, "cleanup-tool run") || !strings.Contains(got, `"command": "wasync-axi session-end"`) || !strings.Contains(got, `"command": "wasync-axi --brief"`) {
 		t.Fatalf("install: %s", got)
 	}
 	if st := InspectHook(claude, root, cmd); !st.Current {
@@ -468,7 +469,7 @@ func TestSessionEndHookInstallRepairAndRemove(t *testing.T) {
 	}
 
 	// Only the end hook points at an old binary: setup repairs just that one.
-	moved := strings.Replace(got, `"whatsapp-axi session-end"`, `"/old/whatsapp-axi session-end"`, 1)
+	moved := strings.Replace(got, `"wasync-axi session-end"`, `"/old/wasync-axi session-end"`, 1)
 	write(t, path, moved)
 	if st := InspectHook(claude, root, cmd); !st.Installed || st.Current {
 		t.Fatalf("stale end hook reported current: %+v", st)
@@ -478,7 +479,7 @@ func TestSessionEndHookInstallRepairAndRemove(t *testing.T) {
 		t.Fatalf("action %s", c.Action)
 	}
 	apply(t, c)
-	if fixed := read(t, path); strings.Contains(fixed, "/old/") || strings.Count(fixed, "whatsapp-axi") != 2 || !strings.Contains(fixed, "cleanup-tool run") {
+	if fixed := read(t, path); strings.Contains(fixed, "/old/") || strings.Count(fixed, "wasync-axi") != 2 || !strings.Contains(fixed, "cleanup-tool run") {
 		t.Fatalf("repair:\n%s", fixed)
 	}
 	if st := InspectHook(claude, root, cmd); !st.Current {
@@ -489,7 +490,7 @@ func TestSessionEndHookInstallRepairAndRemove(t *testing.T) {
 	}
 
 	apply(t, plan(t, root, true))
-	if left := read(t, path); strings.Contains(left, "whatsapp-axi") || !strings.Contains(left, "cleanup-tool run") {
+	if left := read(t, path); strings.Contains(left, "wasync-axi") || !strings.Contains(left, "cleanup-tool run") {
 		t.Fatalf("remove: %s", left)
 	}
 	if c := plan(t, root, true); c.Action != ActionNone {
@@ -502,7 +503,7 @@ func TestSessionEndHookInstallRepairAndRemove(t *testing.T) {
 func TestStartOnlyInstallGainsSessionEndHook(t *testing.T) {
 	root := t.TempDir()
 	path := claude.HookPath(root)
-	write(t, path, `{"hooks": {"SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "whatsapp-axi --brief", "timeout": 10}]}]}}`)
+	write(t, path, `{"hooks": {"SessionStart": [{"matcher": "", "hooks": [{"type": "command", "command": "wasync-axi --brief", "timeout": 10}]}]}}`)
 	if st := InspectHook(claude, root, cmd); !st.Installed || st.Current {
 		t.Fatalf("%+v", st)
 	}
@@ -514,26 +515,57 @@ func TestStartOnlyInstallGainsSessionEndHook(t *testing.T) {
 	if st := InspectHook(claude, root, cmd); !st.Current {
 		t.Fatalf("%+v", st)
 	}
-	if got := read(t, path); strings.Count(got, "whatsapp-axi --brief") != 1 || strings.Count(got, "whatsapp-axi session-end") != 1 {
+	if got := read(t, path); strings.Count(got, "wasync-axi --brief") != 1 || strings.Count(got, "wasync-axi session-end") != 1 {
 		t.Fatalf("got\n%s", got)
 	}
 }
 
 func TestEndCommandAndDetection(t *testing.T) {
 	for _, c := range []struct{ start, end string }{
-		{"whatsapp-axi --brief", "whatsapp-axi session-end"},
-		{"'/opt/my tools/whatsapp-axi' --brief", "'/opt/my tools/whatsapp-axi' session-end"},
-		{"C:/Program Files/whatsapp-axi.exe --brief", "C:/Program Files/whatsapp-axi.exe session-end"},
+		{"wasync-axi --brief", "wasync-axi session-end"},
+		{"'/opt/my tools/wasync-axi' --brief", "'/opt/my tools/wasync-axi' session-end"},
+		{"C:/Program Files/wasync-axi.exe --brief", "C:/Program Files/wasync-axi.exe session-end"},
 	} {
 		if got := EndCommand(c.start); got != c.end {
 			t.Errorf("EndCommand(%q) = %q, want %q", c.start, got, c.end)
 		}
 	}
 	// Each hook is recognized by its own argument only.
-	if isManagedCommand(endKind, "whatsapp-axi --brief") || isManagedCommand(startKind, "whatsapp-axi session-end") {
+	if isManagedCommand(endKind, "wasync-axi --brief") || isManagedCommand(startKind, "wasync-axi session-end") {
 		t.Fatal("start and end commands mixed up")
 	}
-	if !isManagedCommand(endKind, "/x/whatsapp-axi.exe session-end") || isManagedCommand(endKind, "other-axi session-end") {
+	if !isManagedCommand(endKind, "/x/wasync-axi.exe session-end") || isManagedCommand(endKind, "other-axi session-end") {
 		t.Fatal("end command detection")
+	}
+}
+
+func TestPlanLegacySkillRemovesOnlyTheOldSkill(t *testing.T) {
+	root := t.TempDir()
+	ag := Agents[0]
+	path := filepath.Join(root, ".claude", "skills", LegacyName, "SKILL.md")
+	if c := PlanLegacySkill(ag, root); c.Action != ActionNone {
+		t.Fatalf("missing: %+v", c)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: someone-else\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c := PlanLegacySkill(ag, root); c.Action != ActionNone {
+		t.Fatalf("foreign skill: %+v", c)
+	}
+	if err := os.WriteFile(path, []byte("---\nname: whatsapp-axi\n---\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := PlanLegacySkill(ag, root)
+	if c.Action != ActionRemove {
+		t.Fatalf("old skill: %+v", c)
+	}
+	if err := c.Apply(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+		t.Fatalf("old skill directory left: %v", err)
 	}
 }

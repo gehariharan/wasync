@@ -12,7 +12,7 @@ import (
 
 func main() {
 	check := flag.Bool("check", false, "fail when the committed skill differs")
-	output := flag.String("output", "skills/whatsapp-axi/SKILL.md", "skill path")
+	output := flag.String("output", "skills/wasync-axi/SKILL.md", "skill path")
 	flag.Parse()
 	content := cli.SkillDocument()
 	if *check {

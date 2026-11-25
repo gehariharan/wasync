@@ -71,3 +71,54 @@ func TestCredentialFile(t *testing.T) {
 		t.Fatalf("%+v %v", c, err)
 	}
 }
+
+func TestLegacyNamesAreStillRead(t *testing.T) {
+	c, err := LoadCredential(env(map[string]string{LegacyEnvToken: "wsa_old"}), "")
+	if err != nil || c.Secret != "wsa_old" || c.Env != LegacyEnvToken {
+		t.Fatalf("%+v %v", c, err)
+	}
+	c, err = LoadCredential(env(map[string]string{EnvToken: "wsa_new", LegacyEnvToken: "wsa_old"}), "")
+	if err != nil || c.Secret != "wsa_new" || c.Env != EnvToken {
+		t.Fatalf("new name wins: %+v %v", c, err)
+	}
+	if d := ConfigDir(env(map[string]string{LegacyEnvConfigDir: "/old"})); d != "/old" {
+		t.Fatalf("legacy dir: %q", d)
+	}
+	if d := ConfigDir(env(map[string]string{EnvConfigDir: "/new", LegacyEnvConfigDir: "/old"})); d != "/new" {
+		t.Fatalf("new dir wins: %q", d)
+	}
+	if h := AgentHome(env(map[string]string{LegacyEnvAgentHome: " /h "})); h != "/h" {
+		t.Fatalf("legacy agent home: %q", h)
+	}
+}
+
+func TestCredentialFallsBackToLegacyDefaultDir(t *testing.T) {
+	base := t.TempDir()
+	t.Setenv("HOME", base)
+	t.Setenv("XDG_CONFIG_HOME", base)
+	t.Setenv("AppData", base)
+	dir := ConfigDir(env(nil))
+	if filepath.Base(dir) != "wasync-axi" {
+		t.Fatalf("default dir: %q", dir)
+	}
+	legacy := filepath.Join(filepath.Dir(dir), LegacyName)
+	if err := os.MkdirAll(legacy, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(legacy, CredentialFile), []byte("wsa_old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c, err := LoadCredential(env(nil), dir)
+	if err != nil || c == nil || c.Secret != "wsa_old" {
+		t.Fatalf("legacy file: %+v %v", c, err)
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, CredentialFile), []byte("wsa_new\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if c, err := LoadCredential(env(nil), dir); err != nil || c.Secret != "wsa_new" {
+		t.Fatalf("new file wins: %+v %v", c, err)
+	}
+}

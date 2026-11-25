@@ -58,16 +58,26 @@ jobs:
           PACKAGE_VERSION: ${{ inputs.version }}
         run: |
           brew tap --custom-remote gehariharan/tap "$TAP_URL"
+          # Releases before the rename publish only the whatsapp-axi formula.
+          axi=wasync-axi
+          if [[ ! -f "$(brew --repository gehariharan/tap)/Formula/wasync-axi.rb" ]]; then axi=whatsapp-axi; fi
           if brew help trust >/dev/null 2>&1; then
             brew trust --formula gehariharan/tap/wasync
-            brew trust --formula gehariharan/tap/whatsapp-axi
+            brew trust --formula "gehariharan/tap/$axi"
           fi
-          brew install gehariharan/tap/whatsapp-axi
-          actual_version="$(whatsapp-axi --version)"
+          brew install "gehariharan/tap/$axi"
+          actual_version="$("$axi" --version)"
           if [[ -n "$PACKAGE_VERSION" ]]; then test "$actual_version" = "$PACKAGE_VERSION"; fi
           wasync version | grep -F "wasync $actual_version "
           brew test gehariharan/tap/wasync
-          brew test gehariharan/tap/whatsapp-axi
+          brew test "gehariharan/tap/$axi"
+          if [[ "$axi" == wasync-axi ]]; then
+            # The old formula name installs a whatsapp-axi command that runs wasync-axi.
+            if brew help trust >/dev/null 2>&1; then brew trust --formula gehariharan/tap/whatsapp-axi; fi
+            brew install gehariharan/tap/whatsapp-axi
+            test "$(whatsapp-axi --version)" = "$actual_version"
+            brew test gehariharan/tap/whatsapp-axi
+          fi
   install:
     strategy:
       fail-fast: false
@@ -95,15 +105,23 @@ jobs:
         shell: bash
         run: |
           brew tap --custom-remote gehariharan/tap "$TAP_URL"
+          # Releases before the rename publish only the whatsapp-axi formula.
+          axi=wasync-axi
+          if [[ ! -f "$(brew --repository gehariharan/tap)/Formula/wasync-axi.rb" ]]; then axi=whatsapp-axi; fi
           if brew help trust >/dev/null 2>&1; then
             brew trust --cask gehariharan/tap/wasync
-            brew trust --formula gehariharan/tap/whatsapp-axi
+            brew trust --formula "gehariharan/tap/$axi"
           fi
           brew install --cask gehariharan/tap/wasync
-          brew install gehariharan/tap/whatsapp-axi
+          brew install "gehariharan/tap/$axi"
           actual_version="$(brew info --json=v2 --cask gehariharan/tap/wasync | python3 -c 'import json,sys; print(json.load(sys.stdin)["casks"][0]["version"])')"
           if [[ -n "$PACKAGE_VERSION" ]]; then test "$actual_version" = "$PACKAGE_VERSION"; fi
-          test "$(whatsapp-axi --version)" = "$actual_version"
+          test "$("$axi" --version)" = "$actual_version"
+          if [[ "$axi" == wasync-axi ]]; then
+            if brew help trust >/dev/null 2>&1; then brew trust --formula gehariharan/tap/whatsapp-axi; fi
+            brew install gehariharan/tap/whatsapp-axi
+            test "$(whatsapp-axi --version)" = "$actual_version"
+          fi
           printf 'PACKAGE_VERSION=%s\n' "$actual_version" >> "$GITHUB_ENV"
       - name: Explicit CI-only exception for unsigned preview
         if: inputs.allow_unsigned_preview

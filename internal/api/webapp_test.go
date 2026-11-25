@@ -187,7 +187,7 @@ func TestSentPageShowsWhoSentWhatToWhomAndHowItWent(t *testing.T) {
 	}
 	log := sentlog.New(f.dir)
 	for _, e := range []sentlog.Entry{
-		{Time: at, Actor: "whatsapp-axi", Kind: "send", Chat: familyChat, MessageID: "OUT1", Outcome: sentlog.OutcomeSent},
+		{Time: at, Actor: "wasync-axi", Kind: "send", Chat: familyChat, MessageID: "OUT1", Outcome: sentlog.OutcomeSent},
 		{Time: at.Add(time.Minute), Actor: sentlog.Owner, Kind: "reply", Chat: phoneChat, Outcome: sentlog.OutcomeFailed},
 		{Time: at.Add(2 * time.Minute), Actor: "<i>helper</i>", Kind: "send", Chat: familyChat, MessageID: "GONE1", Outcome: sentlog.OutcomeUnknown},
 	} {
@@ -199,7 +199,7 @@ func TestSentPageShowsWhoSentWhatToWhomAndHowItWent(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("sent page: %d", code)
 	}
-	for _, want := range []string{"Family Group", "whatsapp-axi", "Sent: WhatsApp accepted it", "Not sent", "Not confirmed: check WhatsApp", "text not kept", "(reply)", "You", "&lt;b&gt;today&lt;/b&gt;"} {
+	for _, want := range []string{"Family Group", "wasync-axi", "Sent: WhatsApp accepted it", "Not sent", "Not confirmed: check WhatsApp", "text not kept", "(reply)", "You", "&lt;b&gt;today&lt;/b&gt;"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("sent page lacks %q:\n%s", want, page)
 		}

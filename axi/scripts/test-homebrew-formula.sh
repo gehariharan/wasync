@@ -11,14 +11,14 @@ pass() { echo "ok - $*"; }
 version=1.2.3
 sum=1111111111111111111111111111111111111111111111111111111111111111
 commit=0123456789ab
-python3 "$gen" "$version" "$sum" "$work/whatsapp-axi.rb" --commit "$commit"
+python3 "$gen" "$version" "$sum" "$work/wasync-axi.rb" --commit "$commit"
 python3 "$gen" "$version" "$sum" "$work/no-commit.rb"
 python3 "$project_dir/../scripts/homebrew-formulas.py" "$version" "$sum" "$work/combined" --commit "$commit"
 ruby "$project_dir/scripts/test-homebrew-formula.rb" "$work" "$version" "$sum" "$commit"
 pass "evaluated formula metadata, platform dependencies and build commands"
 
 python3 "$gen" "$version" "$sum" "$work/again.rb" --commit "$commit"
-cmp -s "$work/whatsapp-axi.rb" "$work/again.rb" || fail "rendering is not deterministic"
+cmp -s "$work/wasync-axi.rb" "$work/again.rb" || fail "rendering is not deterministic"
 pass "rendering is deterministic"
 
 # Bad input is refused and writes nothing.

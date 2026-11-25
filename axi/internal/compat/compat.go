@@ -1,6 +1,6 @@
 // Package compat decides whether the detected wasync can serve a command.
 // The rules live in the embedded compatibility.json: the minimum v1 API and
-// the wasync features each whatsapp-axi command requires.
+// the wasync features each wasync-axi command requires.
 //
 // JSON keeps decoding within the standard library.
 package compat
@@ -20,7 +20,7 @@ import (
 //go:embed compatibility.json
 var raw []byte
 
-// Command lists what one whatsapp-axi command needs from wasync.
+// Command lists what one wasync-axi command needs from wasync.
 type Command struct {
 	Features []string `json:"features"`
 }
@@ -99,9 +99,9 @@ func (m *Matrix) tooOld(format string, args ...any) *contract.Error {
 func (m *Matrix) CheckAPI(v contract.VersionInfo) error {
 	switch {
 	case v.APIVersion > contract.APIVersion:
-		return &contract.Error{Code: contract.CodeAXITooOld, Message: fmt.Sprintf("wasync speaks API %s; this whatsapp-axi supports API %d.x", v.API(), contract.APIVersion), Help: "upgrade whatsapp-axi to a build that supports this wasync"}
+		return &contract.Error{Code: contract.CodeAXITooOld, Message: fmt.Sprintf("wasync speaks API %s; this wasync-axi supports API %d.x", v.API(), contract.APIVersion), Help: "upgrade wasync-axi to a build that supports this wasync"}
 	case v.APIVersion < m.minMajor || (v.APIVersion == m.minMajor && v.APIMinor < m.minMinor):
-		return m.tooOld("wasync %s speaks API %s; whatsapp-axi needs API %s or newer", orUnknown(v.WasyncVersion), v.API(), m.MinAPI)
+		return m.tooOld("wasync %s speaks API %s; wasync-axi needs API %s or newer", orUnknown(v.WasyncVersion), v.API(), m.MinAPI)
 	}
 	return nil
 }
@@ -122,7 +122,7 @@ func (m *Matrix) Check(cmd string, v contract.VersionInfo) error {
 		}
 	}
 	if len(missing) > 0 {
-		return m.tooOld("wasync %s lacks feature(s) %s needed by `whatsapp-axi %s`", orUnknown(v.WasyncVersion), strings.Join(missing, ","), cmd)
+		return m.tooOld("wasync %s lacks feature(s) %s needed by `wasync-axi %s`", orUnknown(v.WasyncVersion), strings.Join(missing, ","), cmd)
 	}
 	return nil
 }

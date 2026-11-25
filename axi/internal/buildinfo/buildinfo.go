@@ -1,10 +1,10 @@
-// Package buildinfo holds the whatsapp-axi version. It is a leaf package
+// Package buildinfo holds the wasync-axi version. It is a leaf package
 // (no imports) so the --version fast path stays cheap. Release builds
 // (scripts/package.sh) set all three values with -ldflags, for example
 // "-X github.com/gehariharan/wasync/axi/internal/buildinfo.Version=...".
 package buildinfo
 
-// Version is the whatsapp-axi version.
+// Version is the wasync-axi version.
 var Version = "0.0.0-dev"
 
 // Commit is the source commit of a release build ("unknown" otherwise).

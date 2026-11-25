@@ -14,7 +14,7 @@ import (
 )
 
 // Writes act on WhatsApp as the user and exist only on the running wasync
-// API. whatsapp-axi adds no policy of its own: wasync decides, per grant,
+// API. wasync-axi adds no policy of its own: wasync decides, per grant,
 // whether a credential holds the scope and may touch the chat, and says why
 // when it refuses. Every write is one attempt; an unknown outcome is never
 // retried.
@@ -29,7 +29,7 @@ const writeRetryHint = "A server acknowledgement is not proof of delivery; if th
 // writeNeedsOwner explains that WhatsApp writes need the running API.
 func writeNeedsOwner(action string) error {
 	return &contract.Error{Code: contract.CodeOwnerOffline, Message: action + " needs the running wasync API; offline reads never write",
-		Help: "ask the user to start wasync (the TUI or `wasync serve`); whatsapp-axi never starts it or connects to WhatsApp", Transport: transport.NameQuery}
+		Help: "ask the user to start wasync (the TUI or `wasync serve`); wasync-axi never starts it or connects to WhatsApp", Transport: transport.NameQuery}
 }
 
 // writeTransport selects the API transport for a write, or explains why there is none.
@@ -95,7 +95,7 @@ func (a *App) writeResult(inv invocation, t transport.Transport, ref, label stri
 	return o.Err()
 }
 
-const replyUsage = "whatsapp-axi reply REF --text TEXT [--mentions JID,JID] [--json]"
+const replyUsage = "wasync-axi reply REF --text TEXT [--mentions JID,JID] [--json]"
 
 var replyCommand = &command{
 	name:        "reply",
@@ -109,7 +109,7 @@ var replyCommand = &command{
 	minArgs:  1,
 	maxArgs:  1,
 	argsName: "REF",
-	examples: []string{`whatsapp-axi reply m1_... --text "On my way"`, `whatsapp-axi reply m1_... --text "@15551234567 can you check?" --mentions 15551234567@s.whatsapp.net`},
+	examples: []string{`wasync-axi reply m1_... --text "On my way"`, `wasync-axi reply m1_... --text "@15551234567 can you check?" --mentions 15551234567@s.whatsapp.net`},
 	run:      (*App).runReply,
 }
 
@@ -142,7 +142,7 @@ func (a *App) runReply(ctx context.Context, inv invocation) error {
 	return a.writeResult(inv, t, ref, "reply", resp, res)
 }
 
-const sendUsage = "whatsapp-axi send (--chat CHAT_JID | --to PHONE_NUMBER) --text TEXT [--json]"
+const sendUsage = "wasync-axi send (--chat CHAT_JID | --to PHONE_NUMBER) --text TEXT [--json]"
 
 var sendCommand = &command{
 	name:        "send",
@@ -154,7 +154,7 @@ var sendCommand = &command{
 		{name: "--text", value: "TEXT", description: "the message text; WhatsApp text, at most 16000 bytes"},
 		jsonFlag,
 	},
-	examples: []string{`whatsapp-axi send --chat 120363000000000001@g.us --text "Rent sent today"`, `whatsapp-axi send --to +15551230000 --text "Hi, it is Sam from the flat"`},
+	examples: []string{`wasync-axi send --chat 120363000000000001@g.us --text "Rent sent today"`, `wasync-axi send --to +15551230000 --text "Hi, it is Sam from the flat"`},
 	run:      (*App).runSend,
 }
 

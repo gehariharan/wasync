@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/gehariharan/wasync/axi/internal/buildinfo"
 	"github.com/gehariharan/wasync/axi/internal/testutil"
 )
 
@@ -18,6 +19,7 @@ func init() { testutil.MaybeRunFakeDoctor() }
 const testToken = "wsa_SECRETtoken0123456789"
 
 type doctorJSON struct {
+	OldVersion    string        `json:"whatsapp_axi_version"`
 	Transport     string        `json:"transport"`
 	TransportNote string        `json:"transport_note"`
 	Summary       doctorSummary `json:"summary"`
@@ -88,7 +90,7 @@ func onlineHarness(t *testing.T, diag *testutil.Diagnostics) (*harness, *testuti
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
 	h.env["WASYNC_BIN"] = bin
-	h.env["WHATSAPP_AXI_TOKEN"] = testToken
+	h.env["WASYNC_AXI_TOKEN"] = testToken
 	return h, srv
 }
 
@@ -102,6 +104,9 @@ func TestDoctorAllPass(t *testing.T) {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
 	r.assertFixes(t)
+	if r.OldVersion != buildinfo.Version {
+		t.Fatalf("pre-rename whatsapp_axi_version key missing: %s", out)
+	}
 	if r.Transport != "api" || r.Summary.Result != statusPass || r.Summary.Fail != 0 || r.Summary.Warn != 0 {
 		t.Fatalf("%+v", r.Summary)
 	}
@@ -111,7 +116,7 @@ func TestDoctorAllPass(t *testing.T) {
 	if r.Health == nil || r.Health.LastEventAt == nil {
 		t.Fatalf("deep health missing: %s", out)
 	}
-	for _, name := range []string{"whatsapp_axi", "wasync_bin", "api", "diagnostics", "credential", "config_files", "scopes", "api_version", "features"} {
+	for _, name := range []string{"wasync_axi", "wasync_bin", "api", "diagnostics", "credential", "config_files", "scopes", "api_version", "features"} {
 		if c := r.check(t, name, sourceAXI); c.Status != statusPass && !(name == "config_files" && runtime.GOOS == "windows") {
 			t.Errorf("%s: %+v", name, c)
 		}
@@ -119,7 +124,7 @@ func TestDoctorAllPass(t *testing.T) {
 	if c := r.check(t, "hooks", sourceAXI); c.Status != statusPass || !strings.Contains(c.Detail, "--brief` for Claude Code") {
 		t.Errorf("hooks: %+v", c)
 	}
-	if c := r.check(t, "skill", sourceAXI); c.Status != statusSkip || !strings.Contains(c.Detail, "whatsapp-axi setup skill") {
+	if c := r.check(t, "skill", sourceAXI); c.Status != statusSkip || !strings.Contains(c.Detail, "wasync-axi setup skill") {
 		t.Errorf("skill: %+v", c)
 	}
 	for _, name := range []string{"version", "data_dir", "archive", "pairing", "owner", "health", "agents_registry", "agent", "journal"} {
@@ -144,7 +149,7 @@ func TestDoctorAllPass(t *testing.T) {
 		t.Fatal(text)
 	}
 	mustContain(t, text, "transport: api", "result: pass", "checks[", "{area,name,status,source,detail,fix}:",
-		"installation,wasync_bin,pass,whatsapp-axi", "pairing,pairing,pass,wasync", "hooks,hooks,pass", "last_event_at: \"2026-10-19T08:00:00Z\"")
+		"installation,wasync_bin,pass,wasync-axi", "pairing,pairing,pass,wasync", "hooks,hooks,pass", "last_event_at: \"2026-10-19T08:00:00Z\"")
 	if strings.Contains(text, testToken) || strings.Contains(out, testToken) {
 		t.Fatal("credential printed")
 	}
@@ -187,7 +192,7 @@ func TestDoctorOldWasyncWithoutAPIv1(t *testing.T) {
 	srv.RawVer = "404 page not found\n"
 	h := newHarness(t)
 	h.env["WASYNC_API_ADDR"] = srv.Addr()
-	h.env["WHATSAPP_AXI_TOKEN"] = testToken
+	h.env["WASYNC_AXI_TOKEN"] = testToken
 	r, out, code := runDoctorJSON(t, h)
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
@@ -214,11 +219,11 @@ func TestDoctorOldWasyncWithoutAPIv1(t *testing.T) {
 func TestDoctorOwnerDownFallsBackToQuery(t *testing.T) {
 	bin, log := testutil.FakeWasync(t, testutil.ModeOK)
 	doctorLog := testutil.FakeDoctorEnvelope(t, log, testutil.Envelope(testutil.FakeDiagnostics("query")))
-	t.Setenv("WHATSAPP_AXI_TOKEN", testToken) // must not reach the subprocess
+	t.Setenv("WASYNC_AXI_TOKEN", testToken) // must not reach the subprocess
 	h := newHarness(t)
 	h.env["WASYNC_BIN"] = bin
 	h.env["WASYNC_DATA_DIR"] = filepath.Join(home, "wasync-data")
-	h.env["WHATSAPP_AXI_TOKEN"] = testToken
+	h.env["WASYNC_AXI_TOKEN"] = testToken
 	r, out, code := runDoctorJSON(t, h)
 	if code != ExitOK {
 		t.Fatalf("warnings must exit 0, got %d\n%s", code, out)
@@ -244,19 +249,19 @@ func TestDoctorOwnerDownFallsBackToQuery(t *testing.T) {
 		t.Fatalf("call %+v", call)
 	}
 	text, _ := h.run(t, "doctor")
-	mustContain(t, text, "transport: query", "not scoped by an agent grant", "result: warn", "whatsapp-axi never starts it")
+	mustContain(t, text, "transport: query", "not scoped by an agent grant", "result: warn", "wasync-axi never starts it")
 }
 
 func TestDoctorAPIWithoutCredentialUsesQuery(t *testing.T) {
 	h, srv := onlineHarness(t, testutil.FakeDiagnostics("api"))
-	delete(h.env, "WHATSAPP_AXI_TOKEN")
+	delete(h.env, "WASYNC_AXI_TOKEN")
 	_, log := testutil.FakeWasync(t, testutil.ModeOK)
 	testutil.FakeDoctorEnvelope(t, log, testutil.Envelope(testutil.FakeDiagnostics("query")))
 	r, out, code := runDoctorJSON(t, h)
 	if code != ExitOK || r.Transport != "query" {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	if c := r.check(t, "credential", sourceAXI); c.Status != statusWarn || c.Fix != "wasync agents grant whatsapp-axi --scope read.chats,read.messages" {
+	if c := r.check(t, "credential", sourceAXI); c.Status != statusWarn || c.Fix != "wasync agents grant wasync-axi --scope read.chats,read.messages" {
 		t.Fatalf("%+v", c)
 	}
 	for _, req := range srv.Requests {
@@ -338,7 +343,7 @@ func TestDoctorBadFilePermissions(t *testing.T) {
 		t.Skip("POSIX permission bits")
 	}
 	h, _ := onlineHarness(t, testutil.FakeDiagnostics("api"))
-	dir := h.env["WHATSAPP_AXI_CONFIG_DIR"]
+	dir := h.env["WASYNC_AXI_CONFIG_DIR"]
 	cred := filepath.Join(dir, "credential")
 	if err := os.WriteFile(cred, []byte(testToken+"\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -354,7 +359,7 @@ func TestDoctorBadFilePermissions(t *testing.T) {
 		t.Fatalf("%+v", c)
 	}
 
-	delete(h.env, "WHATSAPP_AXI_TOKEN")
+	delete(h.env, "WASYNC_AXI_TOKEN")
 	if err := os.Chmod(cred, 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -450,5 +455,5 @@ func TestDoctorUsage(t *testing.T) {
 	if code != ExitOK {
 		t.Fatal(out)
 	}
-	mustContain(t, out, `usage: "whatsapp-axi doctor [--json]"`)
+	mustContain(t, out, `usage: "wasync-axi doctor [--json]"`)
 }
