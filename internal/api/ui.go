@@ -342,6 +342,12 @@ func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.setupLink(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/agent":
 		h.setupAgent(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/connect":
+		h.setupConnect(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/disconnect":
+		h.setupDisconnect(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/setup/connections":
+		h.setupConnections(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/service":
 		h.setupService(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/devices":

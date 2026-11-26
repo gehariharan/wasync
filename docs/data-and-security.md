@@ -36,6 +36,8 @@ encrypt data at rest.
 | `send.token` | Separate send/action-request credential; keep private |
 | `approve.token` | Approval credential (on macOS kept in the login Keychain instead); never give it to agents |
 | `agents.json` | Agent credentials (hashes only), their scopes and approved chats |
+| `agent-connections.json` | Apps connected from the setup page: which credential each got, the settings file wasync changed, its backup, the entry wasync wrote and any entry it replaced, so Disconnect undoes exactly that |
+| `codex-marketplace/` | The WhatsApp plugin as a local Codex marketplace, written from the copy built into wasync when Codex is connected; removed again on Disconnect |
 | `access-mode.json` | Whether agents' chat requests are asked each time or synced all |
 | `pending-approvals.json` | Requests waiting for a person, so a restart does not lose them |
 | `send-lists.json` | Approved phone-number lists for agents, their pacing, the numbers each list dropped after a STOP (so its agent's list status can name them), and for up to 30 days who a removed list already messaged |

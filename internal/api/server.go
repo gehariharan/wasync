@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/agentconnect"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/humancheck"
@@ -131,6 +132,9 @@ type Owner struct {
 	ServiceSpec service.Spec
 	// AxiPath says where wasync-axi reads its credential; nil uses its default.
 	AxiPath func() (string, error)
+	// AgentConnect is the computer "Connect an agent" writes app settings
+	// on; nil is this one (agentconnect.SystemEnv).
+	AgentConnect *agentconnect.Env
 	// Human, when enabled, makes every approval wait for the person to confirm
 	// with the operating system's own prompt (see internal/humancheck).
 	Human *humancheck.Gate
@@ -163,7 +167,7 @@ func StartOwner(o Owner) (*Server, error) {
 	h := &handler{dataDir: dir, agents: agentauth.NewAuthorizer(dir), mediaDownload: media, store: store, token: token, status: status, authority: listener.Addr().String(), approvals: approvals, approve: approve, reject: o.Reject, syncer: syncer, ops: ops, human: o.Human}
 	h.sender = o.Sender
 	h.sent = sentlog.New(dir)
-	h.setup, h.service, h.serviceSpec, h.axiPath = o.Setup, o.Service, o.ServiceSpec, o.AxiPath
+	h.setup, h.service, h.serviceSpec, h.axiPath, h.agentEnv = o.Setup, o.Service, o.ServiceSpec, o.AxiPath, o.AgentConnect
 	h.info, h.paired, h.unlink, h.stop = o.Info, o.Paired, o.Unlink, o.Stop
 	{ // Policy configuration is available even when the media owner is offline.
 		h.sendToken, err = loadNamedToken(dir, "send.token")
@@ -216,6 +220,8 @@ type handler struct {
 	service          service.Manager
 	serviceSpec      service.Spec
 	axiPath          func() (string, error)
+	agentEnv         *agentconnect.Env
+	connectMu        sync.Mutex
 	info             OwnerInfo
 	paired           func() bool
 	unlink           func(context.Context) error

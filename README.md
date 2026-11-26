@@ -88,8 +88,14 @@ wasync setup
    device*). The code refreshes by itself; if it expires, the page offers **Get a new code**.
 2. **Choose chats.** Tick the chats wasync should keep on this computer. Nothing else is
    archived, and agents see none of them until you connect one and approve what it may read.
-3. **Connect an agent** (optional). Pick a name; wasync creates a read-only credential that starts
-   with no chats and saves it straight to where `wasync-axi` reads it, never showing it.
+3. **Connect an agent** (optional). Pick ChatGPT & Codex, Claude Code or Claude Desktop. The
+   page first shows the exact lines it will add to that app's own settings file. When you
+   confirm, wasync gives the app its own credential (read, reply and react, in the chats you
+   approve), saves it where only that app's WhatsApp tools read it, keeps a copy of the settings
+   file, and adds the tools; for Codex it also adds the WhatsApp plugin. Restart the app, and the
+   page shows when it last called wasync. **Disconnect** takes the entry out and revokes the
+   credential. For any other agent, pick a name instead; wasync creates a read-only credential
+   that starts with no chats and saves it straight to where `wasync-axi` reads it, never showing it.
 4. **Start at login** (optional, macOS and Windows). Adds a login item for your account only,
    with no administrator rights, that runs `wasync serve`.
 

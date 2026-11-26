@@ -26,6 +26,9 @@ type Authorizer struct {
 	loaded  bool
 	clients map[string]record
 	buckets map[string]*bucket
+	// seen is when each client last presented a valid credential, in
+	// memory only, so the setup page can show that an agent called in.
+	seen map[string]time.Time
 }
 
 type bucket struct {
@@ -37,7 +40,15 @@ type bucket struct {
 // NewAuthorizer returns an authorizer for the registry and audit log in dir.
 // The registry is loaded lazily, so a missing file simply rejects everything.
 func NewAuthorizer(dir string) *Authorizer {
-	return &Authorizer{dir: dir, audit: NewAuditLog(dir), now: time.Now, buckets: map[string]*bucket{}}
+	return &Authorizer{dir: dir, audit: NewAuditLog(dir), now: time.Now, buckets: map[string]*bucket{}, seen: map[string]time.Time{}}
+}
+
+// LastSeen is when the client with this ID last presented its valid
+// credential since wasync started (zero when it has not).
+func (a *Authorizer) LastSeen(id string) time.Time {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.seen[id]
 }
 
 // AuditLog returns the authorizer's audit log.
@@ -119,6 +130,7 @@ func (a *Authorizer) Authenticate(header string) (*Client, error) {
 		e.Help = "A human must re-grant it in an interactive terminal: " + regrantCommand(&r.Client, "", "", 0)
 		return nil, e
 	}
+	a.seen[id] = a.now()
 	c := cloneClient(r.Client)
 	return &c, nil
 }
