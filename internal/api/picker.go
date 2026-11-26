@@ -151,12 +151,24 @@ func (h *handler) pickName(ctx context.Context, c storage.PickerChat, resolve bo
 	if phone := phoneOfID(c.ID); phone != "" {
 		return phone, true
 	}
-	if resolve && h.phoneOf != nil {
-		if phone := h.phoneOf(ctx, c.ID); phone != "" && strings.Trim(phone[1:], "0123456789") == "" {
+	if resolve {
+		if phone := h.sharedPhone(ctx, c.ID); phone != "" {
 			return phone, true
 		}
 	}
 	return unknownPerson, true
+}
+
+// sharedPhone is the "+digits" number WhatsApp has shared for a direct chat,
+// or "".
+func (h *handler) sharedPhone(ctx context.Context, id string) string {
+	if h.phoneOf == nil {
+		return ""
+	}
+	if phone := h.phoneOf(ctx, id); len(phone) > 1 && phone[0] == '+' && strings.Trim(phone[1:], "0123456789") == "" {
+		return phone
+	}
+	return ""
 }
 
 type pickEntry struct {
@@ -164,6 +176,8 @@ type pickEntry struct {
 	name    string
 	unnamed bool
 	group   bool
+	// phone is the chat's known number, looked up only for a number search.
+	phone string
 }
 
 // matches reports whether a chat matches the search: by name, or by phone
@@ -178,11 +192,7 @@ func (e pickEntry) matches(needle, needleDigits string) bool {
 	if e.group || len(needleDigits) < 3 {
 		return false
 	}
-	phone := phoneOfID(e.chat.ID)
-	if phone == "" && e.unnamed && strings.HasPrefix(e.name, "+") {
-		phone = e.name
-	}
-	return phone != "" && strings.Contains(digits(phone), needleDigits)
+	return e.phone != "" && strings.Contains(digits(e.phone), needleDigits)
 }
 
 // before orders the picker: named chats first, the most recently active
@@ -242,6 +252,11 @@ func (h *handler) listPick(ctx context.Context, q pickQuery) (pickList, error) {
 		}
 		e := pickEntry{chat: c, group: storage.ChatKind(c.ID) == "group"}
 		e.name, e.unnamed = h.pickName(ctx, c, false)
+		if len(needleDigits) >= 3 && !e.group {
+			if e.phone = phoneOfID(c.ID); e.phone == "" {
+				e.phone = h.sharedPhone(ctx, c.ID)
+			}
+		}
 		if !e.matches(needle, needleDigits) {
 			continue
 		}

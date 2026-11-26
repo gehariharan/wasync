@@ -152,9 +152,6 @@ type Owner struct {
 	Stop func()
 	// Update checks for and installs a newer wasync; nil when this owner cannot.
 	Update Updater
-	// Settings are the owner's everyday settings, shared with the WhatsApp
-	// connection so a change applies at once; nil opens them from Dir.
-	Settings *prefs.Store
 	// Pictures fetches a chat's profile picture from WhatsApp; nil while there
 	// is no WhatsApp connection, when only cached pictures are shown.
 	Pictures avatars.Fetcher
@@ -183,10 +180,7 @@ func StartOwner(o Owner) (*Server, error) {
 	h.setup, h.service, h.serviceSpec, h.axiPath, h.agentEnv = o.Setup, o.Service, o.ServiceSpec, o.AxiPath, o.AgentConnect
 	h.info, h.paired, h.unlink, h.stop = o.Info, o.Paired, o.Unlink, o.Stop
 	h.update = o.Update
-	h.prefs, h.phoneOf = o.Settings, o.PhoneOf
-	if h.prefs == nil {
-		h.prefs = prefs.Open(dir)
-	}
+	h.prefs, h.phoneOf = prefs.Open(dir), o.PhoneOf
 	h.avatars = avatars.New(dir, o.Pictures)
 	{ // Policy configuration is available even when the media owner is offline.
 		h.sendToken, err = loadNamedToken(dir, "send.token")

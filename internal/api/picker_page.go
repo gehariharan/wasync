@@ -37,6 +37,7 @@ type pickData struct {
 	Unnamed        int
 	UnnamedHref    string
 	MoreHref       string
+	Narrow         bool
 	Selected       []pickRow
 	Syncing, Total int
 	History        bool
@@ -108,7 +109,11 @@ func (h *handler) pickPage(w http.ResponseWriter, r *http.Request, sess uiSessio
 		d.Unnamed, d.UnnamedHref = list.Unnamed.Count, pickHref(pickTabUnnamed, "", pickPage)
 	}
 	if list.NextOffset != nil {
-		d.MoreHref = pickHref(d.Tab, d.Query, d.Show+pickPage)
+		if d.Show < pickMaxShow {
+			d.MoreHref = pickHref(d.Tab, d.Query, d.Show+pickPage)
+		} else {
+			d.Narrow = true
+		}
 	}
 	selected, err := h.listPick(r.Context(), pickQuery{Tab: pickTabSelected, Limit: pickMaxShow})
 	if err != nil {
@@ -191,7 +196,7 @@ var pickTemplate = template.Must(template.New("pick").Funcs(uiFuncs).Parse(uiHea
 {{else}}{{if not .Unnamed}}<p class="empty">No chats match.</p>{{end}}{{end}}
 {{if .Unnamed}}<div class="pickrow"><span></span><a href="{{.UnnamedHref}}">{{.Unnamed}} chats without a name</a><span></span></div>{{end}}
 </div>
-{{if .MoreHref}}<p><a href="{{.MoreHref}}">Show 50 more</a></p>{{end}}
+{{if .MoreHref}}<p><a href="{{.MoreHref}}">Show 50 more</a></p>{{else if .Narrow}}<p class="mut">More chats match. Search to narrow the list.</p>{{end}}
 <label><input type="checkbox" name="history" value="yes"{{if .History}} checked{{end}}> Also ask your phone for older messages when a chat starts syncing (best effort)</label>
 <h2>Selected · {{.Syncing}}</h2>
 <div class="pickbox">

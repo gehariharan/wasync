@@ -131,6 +131,30 @@ func TestPickerShowsTheNumberBehindAHiddenAddressWhenKnown(t *testing.T) {
 	if got := names(pickJSON(t, c, "?tab=unnamed").Chats); got != "Unknown person, +15551234567, +15557654321, +15559998888" {
 		t.Fatalf("unnamed tab: %s", got)
 	}
+	// The number shown is also the number search finds.
+	if got := names(pickJSON(t, c, "?q=5559998888").Chats); got != "+15559998888" {
+		t.Fatalf("number search of a hidden address: %q", got)
+	}
+	if got := pickJSON(t, c, "?q=223456789012"); len(got.Chats) != 0 {
+		t.Fatalf("hidden address matched by its raw digits: %s", names(got.Chats))
+	}
+}
+
+func TestPickerFindsANamedHiddenAddressByItsNumber(t *testing.T) {
+	f, c, _ := pickerFixture(t, func(o *Owner) {
+		o.PhoneOf = func(_ context.Context, chat string) string {
+			if chat == shownLID {
+				return "+15559998888"
+			}
+			return ""
+		}
+	})
+	if err := f.store.SaveDiscoveredChat(context.Background(), f.account, storage.Group{ID: shownLID, Name: "Ravi"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := names(pickJSON(t, c, "?q=555999").Chats); got != "Ravi" {
+		t.Fatalf("number search of a named hidden address: %q", got)
+	}
 }
 
 func TestPickerSearchesNamesAndNumbers(t *testing.T) {
@@ -195,6 +219,25 @@ func TestPickerPagesFiftyAtATimeWithNoCap(t *testing.T) {
 	}
 	if _, page, _ = c.get("/ui/chats/pick?tab=groups&show=400"); strings.Count(page, `name="sync"`) != 343 || strings.Contains(page, "Show 50 more") {
 		t.Fatalf("all chats were not reachable without script")
+	}
+}
+
+func TestPickerPageWithoutScriptAsksToNarrowPastItsLimit(t *testing.T) {
+	f, c, _ := pickerFixture(t, nil)
+	var many []storage.Group
+	for i := range pickMaxShow + 10 {
+		many = append(many, storage.Group{ID: fmt.Sprintf("1203630000002%05d@g.us", i), Name: fmt.Sprintf("Group %04d", i)})
+	}
+	if err := f.store.SaveGroups(context.Background(), f.account, many); err != nil {
+		t.Fatal(err)
+	}
+	_, page, _ := c.get(fmt.Sprintf("/ui/chats/pick?tab=groups&show=%d", pickMaxShow-pickPage))
+	if !strings.Contains(page, fmt.Sprintf("show=%d&amp;tab=groups\">Show 50 more", pickMaxShow)) {
+		t.Fatalf("no link to the last page within the limit")
+	}
+	_, page, _ = c.get(fmt.Sprintf("/ui/chats/pick?tab=groups&show=%d", pickMaxShow))
+	if strings.Count(page, `name="sync"`) != pickMaxShow || strings.Contains(page, "Show 50 more") || !strings.Contains(page, "Search to narrow the list.") {
+		t.Fatalf("at the limit the page offers a link that cannot show more")
 	}
 }
 
