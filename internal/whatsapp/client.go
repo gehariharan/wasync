@@ -117,6 +117,10 @@ func (c *Client) useDevice(device *store.Device) {
 	wa.BackgroundEventCtx = c.background
 	wa.InitialAutoReconnect = true
 	wa.SynchronousAck = true
+	// Ask the phone for a copy of a message this device could not decrypt or
+	// that arrived as unavailable, so the archive can still capture it.
+	// whatsmeow only sends these requests when this is enabled.
+	wa.AutomaticMessageRerequestFromPhone = true
 	wa.AddEventHandlerWithSuccessStatus(c.handleEvent)
 	c.client.Store(wa)
 	c.health.paired.Store(device.ID != nil)

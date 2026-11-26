@@ -29,6 +29,11 @@ func TestUnpairedSessionReopensWithoutNetwork(t *testing.T) {
 		if c.Paired() {
 			t.Fatal("fresh store appears paired")
 		}
+		// Without this, whatsmeow never asks the phone for messages this
+		// device could not decrypt, and they stay missing from the archive.
+		if wa := c.wa(); !wa.SynchronousAck || !wa.AutomaticMessageRerequestFromPhone {
+			t.Fatal("client does not ask the phone for undecryptable or unavailable messages")
+		}
 		if err = c.Connect(ctx); !errors.Is(err, ErrNotPaired) {
 			t.Fatalf("unpaired connect: %v", err)
 		}

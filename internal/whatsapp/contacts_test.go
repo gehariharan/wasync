@@ -179,6 +179,18 @@ func TestEventsKeepDirectChatNamesCurrent(t *testing.T) {
 		t.Fatalf("contact sync: got %q", got)
 	}
 
+	// Removing a saved contact now arrives as a contact event with no action,
+	// after whatsmeow clears the saved name; the chat falls back to the push name.
+	f.contacts[pnOne] = types.ContactInfo{Found: true, PushName: "alex"}
+	if !c.handleEvent(&events.Contact{JID: pnOne, Action: nil}) {
+		t.Fatal("contact removal rejected")
+	}
+	for _, id := range []string{pnOne.String(), lidOne.String()} {
+		if got, _ := nameOf(t, s, account, id); got != "alex" {
+			t.Fatalf("%s: got %q after contact removal", id, got)
+		}
+	}
+
 	// Contact events never create chats.
 	stranger := types.NewJID("15550000099", types.DefaultUserServer)
 	f.contacts[stranger] = types.ContactInfo{Found: true, FullName: "Not A Chat"}
