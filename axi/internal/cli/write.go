@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"strings"
 
@@ -142,26 +143,34 @@ func (a *App) runReply(ctx context.Context, inv invocation) error {
 	return a.writeResult(inv, t, ref, "reply", resp, res)
 }
 
-const sendUsage = "wasync-axi send (--chat CHAT_JID | --to PHONE_NUMBER) --text TEXT [--json]"
+const sendUsage = "wasync-axi send (--chat CHAT_JID | --to PHONE_NUMBER) (--text TEXT | --video FILE.mp4 [--text CAPTION] [--thumbnail IMAGE]) [--json]"
 
 var sendCommand = &command{
 	name:        "send",
 	usage:       sendUsage,
-	description: "Send a new message to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number on the list they approved for you or while open sending is on); sends once, never retries",
+	description: "Send a new message or a video to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number on the list they approved for you or while open sending is on); sends once, never retries",
 	flags: []flagSpec{
 		{name: "--chat", value: "CHAT_JID", description: "the chat to send to, as listed by `chats`; it must be one the person approved for sending, unless open sending is on"},
 		{name: "--to", value: "PHONE_NUMBER", description: "a phone number with its country code, such as +15551230000; wasync refuses it unless it is on the list the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message until it replies) or open sending is on"},
-		{name: "--text", value: "TEXT", description: "the message text; WhatsApp text, at most 16000 bytes"},
+		{name: "--text", value: "TEXT", description: "the message text, or the video's caption; WhatsApp text, at most 16000 bytes"},
+		{name: "--video", value: "FILE", description: "an MP4 video (H.264 video, AAC audio, up to 64 MiB) to send as a playable video; the same approval and pacing as text apply"},
+		{name: "--thumbnail", value: "IMAGE", description: "a JPEG or PNG preview for --video; without it a frame is taken with ffmpeg when it is installed, otherwise the video gets a plain preview"},
 		jsonFlag,
 	},
-	examples: []string{`wasync-axi send --chat 120363000000000001@g.us --text "Rent sent today"`, `wasync-axi send --to +15551230000 --text "Hi, it is Sam from the flat"`},
+	examples: []string{`wasync-axi send --chat 120363000000000001@g.us --text "Rent sent today"`, `wasync-axi send --to +15551230000 --text "Hi, it is Sam from the flat"`, `wasync-axi send --to +15551230000 --video explainer.mp4 --text "A 75-second look at how it works"`},
 	run:      (*App).runSend,
+}
+
+// transferWriter is the API's write for a request that carries an attachment.
+type transferWriter interface {
+	PostTransfer(ctx context.Context, path string, body any, out any) error
 }
 
 // runSend posts one new message. It is not a quoted reply: it needs no earlier
 // message to anchor on. The chat must be one the person approved, the number
 // on the list they approved for this agent, or open sending must be on; wasync
-// refuses anything else and says why.
+// refuses anything else and says why. A video goes as its bytes, with the
+// text as its caption.
 func (a *App) runSend(ctx context.Context, inv invocation) error {
 	chat, hasChat := inv.flag("--chat")
 	to, hasTo := inv.flag("--to")
@@ -172,24 +181,67 @@ func (a *App) runSend(ctx context.Context, inv invocation) error {
 	case (!hasChat || chat == "") && (!hasTo || to == ""):
 		return usageErr("usage: "+sendUsage, "`send` needs --chat (the chat JID from `chats`) or --to (a phone number)")
 	}
-	text, ok := inv.flag("--text")
-	if !ok {
-		return usageErr("usage: "+sendUsage, "`send` needs --text")
+	text, hasText := inv.flag("--text")
+	videoPath, hasVideo := inv.flag("--video")
+	thumbPath, hasThumb := inv.flag("--thumbnail")
+	switch {
+	case !hasText && !hasVideo:
+		return usageErr("usage: "+sendUsage, "`send` needs --text, or --video")
+	case hasThumb && !hasVideo:
+		return usageErr("usage: "+sendUsage, "--thumbnail goes with --video")
+	case hasVideo && strings.TrimSpace(videoPath) == "":
+		return usageErr("usage: "+sendUsage, "--video needs a file")
 	}
-	body, target, command := map[string]any{"text": text}, chat, "send"
+	body, target, command := map[string]any{}, chat, "send"
+	if hasText {
+		body["text"] = text
+	}
 	if hasTo {
 		body["to"], target, command = to, to, "send.to"
 	} else {
 		body["chat"] = chat
+	}
+	note := ""
+	if hasVideo {
+		command += ".video"
+		video, err := readAttachment("--video", videoPath, maxVideoBytes)
+		if err != nil {
+			return err
+		}
+		body["video"] = video
+		var thumb []byte
+		if hasThumb {
+			if thumb, err = readAttachment("--thumbnail", thumbPath, maxThumbnailBytes); err != nil {
+				return err
+			}
+		} else if thumb, err = videoFrame(ctx, videoPath); err != nil {
+			note = "no preview frame (" + err.Error() + "), so the video has a plain preview; pass --thumbnail IMAGE for a real one"
+			thumb = nil
+		}
+		if thumb != nil {
+			body["thumbnail"] = thumb
+		}
 	}
 	w, t, err := a.writeTransport(ctx, command, "sending")
 	if err != nil {
 		return err
 	}
 	var res contract.WriteResult
-	resp, err := post(ctx, w, t, "/messages", body, &res)
+	var resp contract.Response
+	if hasVideo {
+		tw, ok := w.(transferWriter)
+		if !ok {
+			return writeNeedsOwner("sending a video")
+		}
+		resp, err = ack(t, &res, func(r *contract.Response) error { return tw.PostTransfer(ctx, "/messages", body, r) })
+	} else {
+		resp, err = post(ctx, w, t, "/messages", body, &res)
+	}
 	if err != nil {
 		return writeExplain(err, "send")
+	}
+	if note != "" && !inv.json {
+		fmt.Fprintln(a.Out, "note: "+note)
 	}
 	return a.writeResult(inv, t, target, "send", resp, res)
 }

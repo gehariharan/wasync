@@ -23,5 +23,21 @@ func (a *API) Post(ctx context.Context, path string, body any, out any) error {
 	if err != nil {
 		return &contract.Error{Code: contract.CodeInternal, Message: "cannot encode request body", Transport: NameAPI}
 	}
-	return a.send(ctx, http.MethodPost, path, nil, b, true, out)
+	return a.send(ctx, a.client, http.MethodPost, path, nil, b, true, out)
+}
+
+// PostTransfer is Post for a write that carries an attachment, which may take
+// minutes while wasync uploads it to WhatsApp; it waits up to TransferTimeout.
+func (a *API) PostTransfer(ctx context.Context, path string, body any, out any) error {
+	if err := validatePath(path); err != nil {
+		return err
+	}
+	if a.cred == nil {
+		return &contract.Error{Code: contract.CodeCredentialAbsent, Message: "no wasync-axi agent credential is configured", Help: config.GrantHelp, Transport: NameAPI}
+	}
+	b, err := json.Marshal(body)
+	if err != nil {
+		return &contract.Error{Code: contract.CodeInternal, Message: "cannot encode request body", Transport: NameAPI}
+	}
+	return a.send(ctx, a.transfer, http.MethodPost, path, nil, b, true, out)
 }

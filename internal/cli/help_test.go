@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -154,7 +155,7 @@ func TestHelpFlagAsValueIsNotHelp(t *testing.T) {
 	if err := app.Run(context.Background(), []string{"--data-dir", filepath.Join(t.TempDir(), "data"), "send", "--to", "123@g.us", "--text", "--help"}); err != nil {
 		t.Fatal(err)
 	}
-	if len(client.sent) != 1 || client.sent[0] != (whatsapp.SendInput{To: "123@g.us", Text: "--help"}) {
+	if len(client.sent) != 1 || !reflect.DeepEqual(client.sent[0], whatsapp.SendInput{To: "123@g.us", Text: "--help"}) {
 		t.Fatalf("literal text was not sent exactly once: %+v", client.sent)
 	}
 }

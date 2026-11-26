@@ -144,6 +144,10 @@ cap does not make WhatsApp accept an unsupported file. Cancellation and normal
 network/protocol failures remain possible. Large transfers need disk space for
 temporary encrypted data in addition to their final file.
 
+A video sent with `--type video` (or by an agent) is the exception: it must be an MP4 with
+H.264 video and AAC audio of at most 64 MiB, the most WhatsApp's linked devices send as a
+playable video. Send a larger file as a document; see [Sending](cli.md#sending-replying-reacting-and-editing).
+
 For a long explicit upload, increase the CLI's command timeout, for example:
 
 ```sh

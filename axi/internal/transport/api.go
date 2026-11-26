@@ -42,7 +42,14 @@ type API struct {
 	base   string
 	cred   *config.Credential
 	client *http.Client
+	// transfer carries a write with an attachment: wasync answers only after
+	// it has uploaded the file to WhatsApp, which takes longer than a read.
+	transfer *http.Client
 }
+
+// TransferTimeout bounds one write that carries an attachment, from sending
+// the request to wasync's acknowledgement.
+const TransferTimeout = 10 * time.Minute
 
 // NewAPI validates the address and builds the transport.
 func NewAPI(cfg APIConfig) (*API, error) {
@@ -60,16 +67,16 @@ func NewAPI(cfg APIConfig) (*API, error) {
 		IdleConnTimeout:       30 * time.Second,
 		DisableCompression:    true,
 	}
+	noRedirect := func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse // never follow redirects
+	}
+	slow := rt.Clone()
+	slow.ResponseHeaderTimeout = 0 // the whole exchange is bounded by TransferTimeout
 	return &API{
-		base: "http://" + cfg.Addr + "/api/v1",
-		cred: cfg.Credential,
-		client: &http.Client{
-			Transport: rt,
-			Timeout:   cfg.Timeout,
-			CheckRedirect: func(*http.Request, []*http.Request) error {
-				return http.ErrUseLastResponse // never follow redirects
-			},
-		},
+		base:     "http://" + cfg.Addr + "/api/v1",
+		cred:     cfg.Credential,
+		client:   &http.Client{Transport: rt, Timeout: cfg.Timeout, CheckRedirect: noRedirect},
+		transfer: &http.Client{Transport: slow, Timeout: TransferTimeout, CheckRedirect: noRedirect},
 	}, nil
 }
 
@@ -96,11 +103,11 @@ func (a *API) Get(ctx context.Context, path string, query url.Values, out any) e
 }
 
 func (a *API) do(ctx context.Context, path string, query url.Values, auth bool, out any) error {
-	return a.send(ctx, http.MethodGet, path, query, nil, auth, out)
+	return a.send(ctx, a.client, http.MethodGet, path, query, nil, auth, out)
 }
 
 // send performs one request; payload, when not nil, is sent as JSON.
-func (a *API) send(ctx context.Context, method, path string, query url.Values, payload []byte, auth bool, out any) error {
+func (a *API) send(ctx context.Context, client *http.Client, method, path string, query url.Values, payload []byte, auth bool, out any) error {
 	u := a.base + path
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -120,7 +127,7 @@ func (a *API) send(ctx context.Context, method, path string, query url.Values, p
 	if auth {
 		req.Header.Set("Authorization", "Bearer "+a.cred.Secret)
 	}
-	resp, err := a.client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return &contract.Error{Code: contract.CodeOwnerOffline, Message: "wasync API is not reachable: " + describeNetErr(err), Help: "start wasync (TUI or `wasync serve`) for live reads, or keep using offline reads", Transport: NameAPI}
 	}

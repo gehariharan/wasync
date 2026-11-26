@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,12 +33,29 @@ import (
 // replies). Open sending, a time-boxed switch, lets any such agent reach any
 // chat or number, up to a small cap per hour. Every such message is marked in
 // the sent log.
+//
+// A send may carry a video: its MP4 bytes, base64 in "video", with "text" as
+// the caption and an optional preview image in "thumbnail". The agent sends
+// the bytes it has rather than a path, so wasync never opens a file on an
+// agent's behalf, and it never runs ffmpeg on them either; without a
+// thumbnail the video gets a plain preview. A video is checked before the
+// send is counted against any pacing, and goes through exactly the same
+// scope, allowlist, list, open-sending and rate-limit decisions as text.
 func init() {
 	registerV1(v1Route{Pattern: "POST /api/v1/messages", Scope: agentauth.ScopeSend, Mutation: true, Authorize: (*handler).authorizeSend, Handle: (*handler).v1Send})
 	registerV1(v1Route{Pattern: "/api/v1/messages", Handle: v1MethodNotAllowed("POST", `use POST /api/v1/messages with {"chat":"CHAT_JID","text":"..."} or {"to":"PHONE_NUMBER","text":"..."}`)})
 	query.RegisterFeature("write.send")
 	query.RegisterFeature("write.send.to")
+	query.RegisterFeature("write.send.video")
 }
+
+// maxSendBody bounds a send request: the largest video and preview, base64
+// encoded, plus room for the text and addressing.
+var maxSendBody = int64(base64.StdEncoding.EncodedLen(whatsapp.MaxVideoBytes) + base64.StdEncoding.EncodedLen(whatsapp.MaxThumbnailBytes) + 128<<10)
+
+// sendTransferTime is how long reading a send request may take; a video is
+// tens of megabytes even on the loopback connection.
+const sendTransferTime = 2 * time.Minute
 
 // v1WideKey carries how a send outside the agent's allowlist was allowed:
 // wideList or wideOpen.
@@ -52,9 +70,9 @@ const (
 // back for the handler, which decodes it strictly. A body that cannot be read
 // names no target, so it fails closed.
 func sendTarget(r *http.Request) (chat, to string) {
-	raw, err := io.ReadAll(io.LimitReader(r.Body, 128<<10+1))
+	raw, err := io.ReadAll(io.LimitReader(r.Body, maxSendBody+1))
 	r.Body = io.NopCloser(bytes.NewReader(raw))
-	if err != nil {
+	if err != nil || int64(len(raw)) > maxSendBody {
 		return "", ""
 	}
 	var in struct {
@@ -76,6 +94,18 @@ func numberJID(number string) (string, bool) { return sendlist.NumberChat(number
 // agent's approved recipient list, or open sending is on, and the agent holds
 // the send scope. The list comes first, so its stricter pacing applies.
 func (h *handler) authorizeSend(w http.ResponseWriter, r *http.Request, id string) bool {
+	// A video takes longer to read than the server's usual request deadline,
+	// and its upload to WhatsApp longer than the usual response deadline, as
+	// for the owner's own attachment sends.
+	rc := http.NewResponseController(w)
+	if err := rc.SetReadDeadline(time.Now().Add(sendTransferTime)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		v1Fail(w, id, 500, query.CodeInternal, "could not configure the transfer", "")
+		return false
+	}
+	if err := rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		v1Fail(w, id, 500, query.CodeInternal, "could not configure the transfer", "")
+		return false
+	}
 	chat, to := sendTarget(r)
 	target, numberGiven := chat, false
 	if target == "" && to != "" {
@@ -114,11 +144,13 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	var body struct {
-		Chat string `json:"chat"`
-		To   string `json:"to"`
-		Text string `json:"text"`
+		Chat      string `json:"chat"`
+		To        string `json:"to"`
+		Text      string `json:"text"`
+		Video     []byte `json:"video"`
+		Thumbnail []byte `json:"thumbnail"`
 	}
-	if !v1WriteBody(w, r, id, &body) {
+	if !v1WriteBodyLimit(w, r, id, &body, maxSendBody) {
 		return
 	}
 	target := strings.TrimSpace(body.Chat)
@@ -133,10 +165,24 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 	}
-	in := whatsapp.SendInput{To: target, Text: body.Text}
+	in := whatsapp.SendInput{To: target, Text: body.Text, Video: body.Video, Thumbnail: body.Thumbnail}
+	if len(in.Video) > 0 {
+		in.Type = "video"
+	}
 	if err := in.Validate(); err != nil {
 		v1WriteInvalid(w, id, err)
 		return
+	}
+	if len(in.Video) > 0 {
+		// Refuse a video WhatsApp would not play before it uses up any pacing.
+		info, err := whatsapp.ProbeMP4(bytes.NewReader(in.Video), int64(len(in.Video)))
+		if err == nil {
+			_, err = whatsapp.VideoThumbnail(in.Thumbnail, info)
+		}
+		if err != nil {
+			v1WriteInvalid(w, id, err)
+			return
+		}
 	}
 	entry := sentlog.Entry{Actor: agentName(r), Kind: "send", Chat: in.To}
 	wide, _ := r.Context().Value(v1WideKey{}).(string)

@@ -498,12 +498,30 @@ func (h *handler) sentPage(w http.ResponseWriter, r *http.Request, sess uiSessio
 		row.Outcome, row.Problem = sentOutcome(e), e.Outcome != sentlog.OutcomeSent
 		if e.MessageID != "" {
 			if m, err := h.store.MessageByWhatsAppID(r.Context(), account.ID, e.Chat, e.MessageID); err == nil && m.DeletedAt == nil {
-				row.Text = bodyText(m.Text)
+				row.Text = sentText(e.Chat, m)
 			}
 		}
 		d.Rows = append(d.Rows, row)
 	}
 	h.webRender(w, sentTemplate, d)
+}
+
+// sentText is what the Sent page shows for an archived message: its text, and
+// for an attachment what kind it is, so a video without a caption still shows.
+func sentText(chat string, m storage.Message) string {
+	text := ""
+	if strings.TrimSpace(m.Text) != "" {
+		text = bodyText(m.Text)
+	}
+	a := attachmentFor(chat, m)
+	switch {
+	case a == nil:
+		return text
+	case text == "":
+		return a.Icon + " " + a.Label
+	default:
+		return a.Icon + " " + a.Label + ": " + text
+	}
 }
 
 // uiWideCSS is the two-pane layout the chats pages share, added to the page
