@@ -251,18 +251,22 @@ func (f fixture) listReadAudit(t *testing.T) map[string][]string {
 	return out
 }
 
-// A request over every chat the agent may see that reaches its list chats is
-// audited as read_list for each of them, and refused when the audit log
-// cannot be written, like a read that names one.
-func TestReadsOverEveryChatThatReachListChatsAreAudited(t *testing.T) {
+// A chat list or a search over every chat audits as read_list each list chat
+// it returns, and nothing else, and is refused when the audit log cannot be
+// written, like a read that names one. Routes that return no list chat write
+// no read_list entry.
+func TestReadsOverEveryChatAuditTheListChatsTheyReturn(t *testing.T) {
 	f, agent, _ := listReaderSetup(t)
 	lister := f.grantOnDemand(t, "lister", agentauth.ScopeReadChats, agentauth.ScopeReadMessages)
 	f.approveList(t, "lister", nil, "15551230000")
 	reads := []struct {
 		token, path string
+		want        []string
 	}{
-		{agent, "/api/v1/messages/search?q=please"},
-		{lister, "/api/v1/chats"},
+		// Only the messaged number's chat holds "please"; its hidden-ID chat
+		// is readable but not in the result.
+		{agent, "/api/v1/messages/search?q=please", []string{listed}},
+		{lister, "/api/v1/chats", []string{listed, hiddenChat}},
 	}
 	for _, read := range reads {
 		status, body := f.send(t, "GET", read.path, read.token, "")
@@ -272,15 +276,29 @@ func TestReadsOverEveryChatThatReachListChatsAreAudited(t *testing.T) {
 		if status != 200 || json.Unmarshal(body, &got) != nil || got.RequestID == "" {
 			t.Fatalf("%s: %d %s", read.path, status, body)
 		}
-		if chats := f.listReadAudit(t)[got.RequestID]; !slices.Equal(chats, []string{listed, hiddenChat}) {
-			t.Fatalf("%s audited list chats %v, want %v", read.path, chats, []string{listed, hiddenChat})
+		chats := f.listReadAudit(t)[got.RequestID]
+		slices.Sort(chats)
+		if !slices.Equal(chats, read.want) {
+			t.Fatalf("%s audited list chats %v, want %v", read.path, chats, read.want)
 		}
 	}
-	// A read that reaches no list chat is not a list read.
-	plain := f.grantOnDemand(t, "plain", agentauth.ScopeReadMessages)
 	before := len(f.listReadAudit(t))
-	if status, body := f.send(t, "GET", "/api/v1/messages/search?q=please", plain, ""); status != 200 || len(f.listReadAudit(t)) != before {
-		t.Fatalf("an agent without a list: %d %s", status, body)
+	for _, read := range []struct {
+		token, path string
+		status      int
+	}{
+		{lister, "/api/v1/health/deep", 200},
+		{lister, "/api/v1/messages/not-a-ref", 400},
+		{lister, "/api/v1/messages/not-a-ref/thread", 400},
+		{agent, "/api/v1/messages/search?q=nothing-matches-this", 200},
+		{f.grantOnDemand(t, "plain", agentauth.ScopeReadMessages), "/api/v1/messages/search?q=please", 200},
+	} {
+		if status, body := f.send(t, "GET", read.path, read.token, ""); status != read.status {
+			t.Fatalf("%s: %d %s", read.path, status, body)
+		}
+	}
+	if after := len(f.listReadAudit(t)); after != before {
+		t.Fatalf("reads that returned no list chat were audited as list reads: %d new", after-before)
 	}
 
 	path := filepath.Join(f.dir, agentauth.AuditFileName)
@@ -297,6 +315,9 @@ func TestReadsOverEveryChatThatReachListChatsAreAudited(t *testing.T) {
 	}
 	if status, body := f.send(t, "GET", "/api/v1/chats/"+url.PathEscape(listed)+"/messages", agent, ""); status != 500 || strings.Contains(string(body), "yes please") {
 		t.Fatalf("a list chat was read without its audit entry: %d %s", status, body)
+	}
+	if status, body := f.send(t, "GET", "/api/v1/messages/search?q=nothing-matches-this", agent, ""); status != 200 {
+		t.Fatalf("a search that returns no list chat needs no list audit: %d %s", status, body)
 	}
 }
 

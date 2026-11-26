@@ -658,11 +658,11 @@ func TestListChatsAllowOnlyTheReadScopesTheCredentialHolds(t *testing.T) {
 			t.Fatalf("%s on a list chat: want %v", scope, want)
 		}
 	}
-	if err = a.AuthorizeListRead(c, ScopeReadMessages, []string{chatA}, "ref1", "req1"); err != nil {
+	if err = a.AuthorizeListRead(c, ScopeReadMessages, chatA, "ref1", "req1"); err != nil {
 		t.Fatalf("list read: %v", err)
 	}
 	// It holds no read.chats, and media is never a list read.
-	if code(a.AuthorizeListRead(c, ScopeReadChats, []string{chatA}, "", "req2")) != CodeForbidden || code(a.AuthorizeListRead(c, ScopeReadMedia, []string{chatA}, "", "req3")) != CodeForbidden {
+	if code(a.AuthorizeListRead(c, ScopeReadChats, chatA, "", "req2")) != CodeForbidden || code(a.AuthorizeListRead(c, ScopeReadMedia, chatA, "", "req3")) != CodeForbidden {
 		t.Fatal("a list read went beyond the read scopes the credential holds")
 	}
 	entries := readAudit(t, filepath.Join(dir, AuditFileName))
@@ -676,7 +676,7 @@ func TestListChatsAllowOnlyTheReadScopesTheCredentialHolds(t *testing.T) {
 	if _, err = Revoke(dir, "lister", time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if code(a.AuthorizeListRead(c, ScopeReadMessages, []string{chatA}, "", "req4")) != CodeUnauthorized {
+	if code(a.AuthorizeListRead(c, ScopeReadMessages, chatA, "", "req4")) != CodeUnauthorized {
 		t.Fatal("a revoked agent read its list chat")
 	}
 }

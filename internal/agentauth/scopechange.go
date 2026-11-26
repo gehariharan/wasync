@@ -109,22 +109,17 @@ func (a *Authorizer) AuthorizeListSend(c *Client, chatJID, requestID string) err
 }
 
 func (a *Authorizer) authorizeWideSend(c *Client, chatJID, requestID, event string) error {
-	entry := AuditEntry{Event: event, Scope: ScopeSend, RequestID: requestID}
-	return a.authorizeWide(c, entry, []string{chatJID}, "send", "Ask the person to allow sending for this agent on the Agents page of the wasync web app (wasync web).")
+	entry := AuditEntry{Event: event, Scope: ScopeSend, Chat: chatJID, RequestID: requestID}
+	return a.authorizeWide(c, entry, "send", "Ask the person to allow sending for this agent on the Agents page of the wasync web app (wasync web).")
 }
 
 // authorizeWide checks a request the caller allowed by something other than
-// the agent's chat allowlist (open sending, or its approved recipient list)
-// for chats: the credential must still be active and hold entry.Scope, and the
-// request consumes one rate-limit token. The attempt is audited either way,
-// one entry for each chat, and an allowed one is refused when the audit log
-// cannot be written.
-func (a *Authorizer) authorizeWide(c *Client, entry AuditEntry, chats []string, what, missingHelp string) error {
-	chat := ""
-	if len(chats) == 1 {
-		chat = chats[0]
-	}
-	err := a.checkWide(c, entry.Scope, chat, missingHelp)
+// the agent's chat allowlist (open sending, or its approved recipient list):
+// the credential must still be active and hold entry.Scope, and the request
+// consumes one rate-limit token. The attempt is audited either way, and an
+// allowed one is refused when the audit log cannot be written.
+func (a *Authorizer) authorizeWide(c *Client, entry AuditEntry, what, missingHelp string) error {
+	err := a.checkWide(c, entry.Scope, entry.Chat, missingHelp)
 	entry.Outcome = OutcomeAllowed
 	if c != nil {
 		entry.ClientID, entry.ClientName = c.ID, c.Name
@@ -135,14 +130,11 @@ func (a *Authorizer) authorizeWide(c *Client, entry AuditEntry, chats []string, 
 			entry.Code = authErr.Code
 		}
 	}
-	for _, chat := range chats {
-		entry.Chat = chat
-		if auditErr := a.audit.Append(entry); auditErr != nil {
-			if err != nil {
-				return err
-			}
-			return fmt.Errorf("audit log unavailable; %s refused: %w", what, auditErr)
+	if auditErr := a.audit.Append(entry); auditErr != nil {
+		if err != nil {
+			return err
 		}
+		return fmt.Errorf("audit log unavailable; %s refused: %w", what, auditErr)
 	}
 	return err
 }

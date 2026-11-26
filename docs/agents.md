@@ -200,10 +200,10 @@ ends, when the number replies STOP, or when you approve it again without that nu
 list can still be read. So that the agent can record an opt-out, `GET /api/v1/send-list` names
 the numbers its list dropped after a STOP, with no message text. The agent reads the whole
 archived chat with that person, not only what came after its first message, so list only
-numbers whose chat you are happy for the agent to read. Each read that reaches such a chat,
-whether it names the chat or covers every chat the agent may see (a chat list or a search), is
-recorded in the audit log as `read_list`, one entry per chat, and the Chats page marks those
-chats as readable by an agent.
+numbers whose chat you are happy for the agent to read. Each read that names such a chat, and
+each chat list or search over every chat that returns one, is recorded in the audit log as
+`read_list`, one entry per such chat, and the Chats page marks those chats as readable by an
+agent.
 
 ### Open sending
 

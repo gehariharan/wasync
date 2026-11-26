@@ -5,6 +5,7 @@ import (
 	"errors"
 	"math"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -120,29 +121,45 @@ func v1Client(r *http.Request) *agentauth.Client {
 // A restricted agent with an approved recipient list may also read, with the
 // read scopes it holds, the chats of the numbers its list messaged (see
 // listReads): those chats are added to the client for this request, and a read
-// that reaches one only the list allows, by naming it or by covering every
-// chat the agent may see, is authorized and audited as a list read.
+// naming one only the list allows is authorized and audited as a list read.
+// A chat list or a search over every chat audits the list chats it returns
+// itself (see auditListReads).
 func (h *handler) v1Authorize(w http.ResponseWriter, r *http.Request, id, scope, chat string, mutation bool) bool {
 	var check func(*agentauth.Client) error
 	if scope != "" {
 		check = func(c *agentauth.Client) error {
 			if agentauth.ListReadable(scope) && c.Restricted() && c.HasScope(scope) {
-				listChats := h.listReads(r.Context(), c.ID)
-				var listOnly []string
-				for _, listChat := range listChats {
-					if (chat == "" || chat == listChat) && !c.AllowsChatScope(scope, listChat) {
-						listOnly = append(listOnly, listChat)
-					}
-				}
-				c.ListChats = listChats
-				if len(listOnly) > 0 {
-					return h.agents.AuthorizeListRead(c, scope, listOnly, r.PathValue("ref"), id)
+				c.ListChats = h.listReads(r.Context(), c.ID)
+				if chat != "" && c.OnlyListAllows(scope, chat) {
+					return h.agents.AuthorizeListRead(c, scope, chat, r.PathValue("ref"), id)
 				}
 			}
 			return h.agents.AuthorizeAndAudit(c, scope, chat, r.PathValue("ref"), id, mutation)
 		}
 	}
 	return h.v1Decide(w, r, id, scope, chat, check)
+}
+
+// auditListReads records each of chats, the chats a response over every chat
+// the agent may see returns, that only its approved list allows, before the
+// response is written. It writes the refusal itself when the audit log cannot
+// be written.
+func (h *handler) auditListReads(w http.ResponseWriter, r *http.Request, id, scope string, chats []string) bool {
+	c := v1Client(r)
+	var listOnly []string
+	for _, chat := range chats {
+		if c.OnlyListAllows(scope, chat) && !slices.Contains(listOnly, chat) {
+			listOnly = append(listOnly, chat)
+		}
+	}
+	if len(listOnly) == 0 {
+		return true
+	}
+	if err := h.agents.AuditListReads(c, scope, listOnly, id); err != nil {
+		v1Fail(w, id, 500, query.CodeInternal, "audit log unavailable", "check permissions of agent-audit.log in the wasync data directory")
+		return false
+	}
+	return true
 }
 
 // v1Decide authenticates the agent, runs check on it (when there is one) and

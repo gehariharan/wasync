@@ -123,6 +123,17 @@ func (c *Client) AllowsChatScope(scope, chat string) bool {
 	return !c.Restricted() && !RequiresAllowlist(scope)
 }
 
+// OnlyListAllows reports whether scope may be used on chat only because chat
+// is one of the client's list chats: neither pre-approved nor granted that
+// scope.
+func (c *Client) OnlyListAllows(scope, chat string) bool {
+	if !ListReadable(scope) || !contains(c.ListChats, chat) || contains(c.Chats, chat) {
+		return false
+	}
+	g := c.grantFor(chat)
+	return g == nil || !contains(g.Scopes, scope)
+}
+
 // AllowedChats lists every pre-approved, granted and list chat, sorted. Together with
 // Restricted it tells list queries which chats to include: an empty result for a
 // restricted client means no chats, not all of them.

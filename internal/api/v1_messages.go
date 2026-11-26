@@ -99,6 +99,13 @@ func (h *handler) v1Chats(w http.ResponseWriter, r *http.Request, id string) {
 		writeJSON(w, 409, query.V1Error{RequestID: id, ErrorCode: query.CodeChatAmbiguous, Error: ambiguous.Error(), Help: query.ChatAmbiguousHelp, Details: ambiguous})
 		return
 	}
+	chats := make([]string, 0, len(list.Items))
+	for _, g := range list.Items {
+		chats = append(chats, g.ID)
+	}
+	if !h.auditListReads(w, r, id, agentauth.ScopeReadChats, chats) {
+		return
+	}
 	v1OK(w, id, list, nil)
 }
 
@@ -203,6 +210,17 @@ func (h *handler) v1List(w http.ResponseWriter, r *http.Request, id string, a *s
 	if err != nil {
 		v1Fail(w, id, 503, query.CodeArchiveUnavailable, "archive query failed", "check wasync status")
 		return
+	}
+	if chat == "" {
+		chats := make([]string, 0, len(page.Items))
+		for _, m := range page.Items {
+			if v1Client(r).AllowsChat(m.GroupID) {
+				chats = append(chats, m.GroupID)
+			}
+		}
+		if !h.auditListReads(w, r, id, agentauth.ScopeReadMessages, chats) {
+			return
+		}
 	}
 	var total int64
 	if client := v1Client(r); !client.Restricted() {
