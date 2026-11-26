@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -334,8 +335,8 @@ func TestSendListStatusReportsTheAllowanceLeft(t *testing.T) {
 		if status != 200 || json.Unmarshal(body, &got) != nil {
 			t.Fatalf("send-list: %d %s", status, body)
 		}
-		if strings.Contains(string(body), "1555") {
-			t.Fatalf("the status must not list the numbers: %s", body)
+		if strings.Contains(string(body), "15551230001") || strings.Contains(string(body), "15551230002") {
+			t.Fatalf("the status must not list the numbers still on the list: %s", body)
 		}
 		return got.Data
 	}
@@ -347,7 +348,7 @@ func TestSendListStatusReportsTheAllowanceLeft(t *testing.T) {
 	f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551230000","text":"x"}`)
 	f.incoming(t, listed, "R1", "STOP")
 	v := read(agent)
-	if !v.Active || v.Numbers != 2 || v.NotMessaged != 2 || v.Stopped != 1 || v.NewNumbersLeft != sendlist.DefaultPerHour-1 || v.MessagesLeft != sendlist.MessagesPerNew*sendlist.DefaultPerHour-1 || v.ExpiresAt == nil || v.NextNewAt == nil || v.NewPerHour != sendlist.DefaultPerHour {
+	if !v.Active || v.Numbers != 2 || v.NotMessaged != 2 || v.Stopped != 1 || v.NewNumbersLeft != sendlist.DefaultPerHour-1 || v.MessagesLeft != sendlist.MessagesPerNew*sendlist.DefaultPerHour-1 || v.ExpiresAt == nil || v.NextNewAt == nil || v.NewPerHour != sendlist.DefaultPerHour || !slices.Equal(v.StoppedNumbers, []string{listed}) {
 		t.Fatalf("status: %+v", v)
 	}
 	if v := read(f.agent); v.Active || v.CanSend {

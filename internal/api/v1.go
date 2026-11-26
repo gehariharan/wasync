@@ -120,16 +120,23 @@ func v1Client(r *http.Request) *agentauth.Client {
 // A restricted agent with an approved recipient list may also read, with the
 // read scopes it holds, the chats of the numbers its list messaged (see
 // listReads): those chats are added to the client for this request, and a read
-// of one that only the list allows is authorized and audited as a list read.
+// that reaches one only the list allows, by naming it or by covering every
+// chat the agent may see, is authorized and audited as a list read.
 func (h *handler) v1Authorize(w http.ResponseWriter, r *http.Request, id, scope, chat string, mutation bool) bool {
 	var check func(*agentauth.Client) error
 	if scope != "" {
 		check = func(c *agentauth.Client) error {
 			if agentauth.ListReadable(scope) && c.Restricted() && c.HasScope(scope) {
-				allowed := chat == "" || c.AllowsChatScope(scope, chat)
-				c.ListChats = h.listReads(r.Context(), c.ID)
-				if !allowed && c.AllowsChatScope(scope, chat) {
-					return h.agents.AuthorizeListRead(c, scope, chat, r.PathValue("ref"), id)
+				listChats := h.listReads(r.Context(), c.ID)
+				var listOnly []string
+				for _, listChat := range listChats {
+					if (chat == "" || chat == listChat) && !c.AllowsChatScope(scope, listChat) {
+						listOnly = append(listOnly, listChat)
+					}
+				}
+				c.ListChats = listChats
+				if len(listOnly) > 0 {
+					return h.agents.AuthorizeListRead(c, scope, listOnly, r.PathValue("ref"), id)
 				}
 			}
 			return h.agents.AuthorizeAndAudit(c, scope, chat, r.PathValue("ref"), id, mutation)

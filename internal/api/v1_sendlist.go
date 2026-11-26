@@ -20,8 +20,10 @@ import (
 // Approved recipient lists: the person gives one agent a list of phone numbers
 // on the Agents page, and that agent may message them with
 // POST /api/v1/messages, paced here. GET /api/v1/send-list tells the agent
-// whether it has a list and how much of this hour's allowance is left. It
-// never lists the numbers, which the agent's own records already hold.
+// whether it has a list, how much of this hour's allowance is left and which
+// of its numbers were dropped after they replied STOP, so it can record the
+// opt-out. It never lists the other numbers, which the agent's own records
+// already hold.
 func init() {
 	registerV1(v1Route{Pattern: "GET /api/v1/send-list", Handle: (*handler).v1SendList})
 	registerV1(v1Route{Pattern: "/api/v1/send-list", Handle: v1MethodNotAllowed("GET, HEAD", "use GET /api/v1/send-list")})
@@ -31,14 +33,15 @@ func init() {
 // sendListView is the agent-facing state of its list.
 type sendListView struct {
 	Active         bool       `json:"active"`
-	Paused         bool       `json:"paused"`                // the person paused it: no sends until they resume it
-	CanSend        bool       `json:"can_send"`              // holds the send scope
-	Numbers        int        `json:"numbers"`               // on the list now
-	NotMessaged    int        `json:"not_messaged"`          // never messaged yet
-	Stopped        int        `json:"stopped"`               // removed after they replied STOP
-	NewNumbersLeft int        `json:"new_numbers_left"`      // first messages left this hour
-	MessagesLeft   int        `json:"messages_left"`         // list messages left this hour
-	NextNewAt      *time.Time `json:"next_new_at,omitempty"` // no new number before this
+	Paused         bool       `json:"paused"`                    // the person paused it: no sends until they resume it
+	CanSend        bool       `json:"can_send"`                  // holds the send scope
+	Numbers        int        `json:"numbers"`                   // on the list now
+	NotMessaged    int        `json:"not_messaged"`              // never messaged yet
+	Stopped        int        `json:"stopped"`                   // removed after they replied STOP
+	StoppedNumbers []string   `json:"stopped_numbers,omitempty"` // those of them it can name, as phone-number addresses
+	NewNumbersLeft int        `json:"new_numbers_left"`          // first messages left this hour
+	MessagesLeft   int        `json:"messages_left"`             // list messages left this hour
+	NextNewAt      *time.Time `json:"next_new_at,omitempty"`     // no new number before this
 	ExpiresAt      *time.Time `json:"expires_at,omitempty"`
 	NewPerHour     int        `json:"new_numbers_per_hour"`
 	MessagesHour   int        `json:"messages_per_hour"`
@@ -63,6 +66,7 @@ func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) 
 	view := sendListView{CanSend: c.HasScope(agentauth.ScopeSend)}
 	if list, ok := sendlist.For(h.dataDir, c.ID, now); ok {
 		view.Active, view.Numbers, view.NotMessaged, view.Stopped, view.ExpiresAt = true, len(list.Numbers), list.NotMessaged(), list.Stopped, list.Until
+		view.StoppedNumbers = list.StoppedChats
 		view.NewPerHour, view.MessagesHour = list.NewPerHour(), list.MessagesPerHour()
 		if list.Paused() {
 			view.Paused = true
@@ -161,9 +165,9 @@ func (h *handler) dropStopped(ctx context.Context, now time.Time, agentID string
 }
 
 // listReads returns the chats agentID may read because of its approved
-// recipient list in force: the numbers on it that a list messaged, those
-// dropped after they replied STOP, and the hidden-address chats the archive
-// links to those numbers. A paused list still counts, so replies can be read;
+// recipient list in force: the numbers on it that a list messaged, and the
+// hidden-address chats the archive links to those numbers. A number dropped
+// after it replied STOP is no longer on the list and is not readable. A paused list still counts, so replies can be read;
 // a removed or expired one does not. A problem reading the list gives no
 // chats, and one reading the archive leaves out the hidden-address chats, so
 // an error never widens access.

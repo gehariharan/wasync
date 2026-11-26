@@ -191,16 +191,19 @@ same number, after a list is removed, or when the same numbers are approved for 
 
 The agent may also read those chats, so it can see the replies and any STOP without you
 approving each chat: with the `read.messages` and `read.chats` scopes it already holds, it may
-read the chat of every number on its list that a list has messaged, the hidden-ID chat wasync
-links to that number, and the chat of a number its list dropped after a STOP, so it can see why.
-It cannot read a number on its list that no list has messaged yet, another agent's numbers, or
-any other chat, and a list never adds a scope, media or the change feed. A number counts as
-messaged once any agent's list messaged it, the same rule the sending follows. Reading stops
-when you remove the list, when it ends, or when you approve it again without that number; a
-paused list can still be read. The agent reads the whole archived chat with that person, not
-only what came after its first message, so list only numbers whose chat you are happy for the
-agent to read. Each such read is recorded in the audit log as `read_list`, and the Chats page
-marks those chats as readable by an agent.
+read the chat of every number on its list that a list has messaged and the hidden-ID chat wasync
+links to that number. It cannot read a number on its list that no list has messaged yet, a
+number its list dropped after a STOP, another agent's numbers, or any other chat, and a list
+never adds a scope, media or the change feed. A number counts as messaged once any agent's list
+messaged it, the same rule the sending follows. Reading stops when you remove the list, when it
+ends, when the number replies STOP, or when you approve it again without that number; a paused
+list can still be read. So that the agent can record an opt-out, `GET /api/v1/send-list` names
+the numbers its list dropped after a STOP, with no message text. The agent reads the whole
+archived chat with that person, not only what came after its first message, so list only
+numbers whose chat you are happy for the agent to read. Each read that reaches such a chat,
+whether it names the chat or covers every chat the agent may see (a chat list or a search), is
+recorded in the audit log as `read_list`, one entry per chat, and the Chats page marks those
+chats as readable by an agent.
 
 ### Open sending
 

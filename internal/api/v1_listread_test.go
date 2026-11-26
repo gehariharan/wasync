@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"net/url"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -184,7 +186,7 @@ func TestAMessageRefInAListChatReadsOnlyWhileTheListLasts(t *testing.T) {
 	f.readChat(t, other, othersOwn, 200)
 }
 
-func TestAListChatStaysReadableWhilePausedAndAfterStopButNotAfterItExpires(t *testing.T) {
+func TestAListChatStaysReadableWhilePausedButNotAfterStopOrExpiry(t *testing.T) {
 	f, agent, _ := listReaderSetup(t)
 	c, _ := agentauth.ActiveByName(f.dir, "outreach")
 	if err := sendlist.Pause(f.dir, c.ID, true, time.Now()); err != nil {
@@ -195,18 +197,32 @@ func TestAListChatStaysReadableWhilePausedAndAfterStopButNotAfterItExpires(t *te
 		t.Fatal(err)
 	}
 
-	// The STOP drops the number from the list, but its chat stays readable so
-	// the agent sees why.
+	// The STOP drops the number from the list: the agent learns it from its
+	// list status, which names the number, and can no longer read its chats.
 	f.archive(t, hiddenChat, "R3", "STOP", "15551230000@s.whatsapp.net")
 	status, body := f.send(t, "GET", "/api/v1/send-list", agent, "")
-	if status != 200 || !strings.Contains(string(body), `"stopped":1`) {
-		t.Fatalf("the STOP did not drop the number: %d %s", status, body)
+	var view struct {
+		Data struct {
+			Stopped        int      `json:"stopped"`
+			StoppedNumbers []string `json:"stopped_numbers"`
+		} `json:"data"`
 	}
-	if got := f.readChat(t, agent, hiddenChat, 200); len(got) != 2 || !slices.Contains(got, "STOP") {
-		t.Fatalf("the STOP is not readable: %q", got)
+	if status != 200 || json.Unmarshal(body, &view) != nil || view.Data.Stopped != 1 || !slices.Equal(view.Data.StoppedNumbers, []string{listed}) {
+		t.Fatalf("the list status does not name the number that replied STOP: %d %s", status, body)
 	}
-	f.readChat(t, agent, listed, 200)
-	// Approving the list again keeps it readable; leaving the number out does not.
+	if strings.Contains(string(body), "STOP") || strings.Contains(string(body), "yes please") {
+		t.Fatalf("the list status shows message text: %s", body)
+	}
+	f.readChat(t, agent, listed, 403)
+	f.readChat(t, agent, hiddenChat, 403)
+	// Approving the list again with the number keeps it off and unreadable.
+	f.approveList(t, "outreach", nil, "15551230000", "15551230001")
+	f.readChat(t, agent, listed, 403)
+	f.readChat(t, agent, hiddenChat, 403)
+}
+
+func TestAListChatIsNotReadableAfterTheListEndsOrLeavesTheNumberOut(t *testing.T) {
+	f, agent, _ := listReaderSetup(t)
 	f.approveList(t, "outreach", nil, "15551230000", "15551230001")
 	f.readChat(t, agent, hiddenChat, 200)
 	f.approveList(t, "outreach", nil, "15551230001")
@@ -216,6 +232,72 @@ func TestAListChatStaysReadableWhilePausedAndAfterStopButNotAfterItExpires(t *te
 	f.approveList(t, "outreach", &past, "15551230000", "15551230001")
 	f.readChat(t, agent, listed, 403)
 	f.readChat(t, agent, hiddenChat, 403)
+}
+
+// listReadAudit returns the chats of the allowed read_list entries in the
+// audit log for each request ID.
+func (f fixture) listReadAudit(t *testing.T) map[string][]string {
+	t.Helper()
+	out := map[string][]string{}
+	for _, line := range strings.Split(strings.TrimSpace(f.auditLog(t)), "\n") {
+		var e agentauth.AuditEntry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("audit line %q: %v", line, err)
+		}
+		if e.Event == "read_list" && e.Outcome == agentauth.OutcomeAllowed {
+			out[e.RequestID] = append(out[e.RequestID], e.Chat)
+		}
+	}
+	return out
+}
+
+// A request over every chat the agent may see that reaches its list chats is
+// audited as read_list for each of them, and refused when the audit log
+// cannot be written, like a read that names one.
+func TestReadsOverEveryChatThatReachListChatsAreAudited(t *testing.T) {
+	f, agent, _ := listReaderSetup(t)
+	lister := f.grantOnDemand(t, "lister", agentauth.ScopeReadChats, agentauth.ScopeReadMessages)
+	f.approveList(t, "lister", nil, "15551230000")
+	reads := []struct {
+		token, path string
+	}{
+		{agent, "/api/v1/messages/search?q=please"},
+		{lister, "/api/v1/chats"},
+	}
+	for _, read := range reads {
+		status, body := f.send(t, "GET", read.path, read.token, "")
+		var got struct {
+			RequestID string `json:"request_id"`
+		}
+		if status != 200 || json.Unmarshal(body, &got) != nil || got.RequestID == "" {
+			t.Fatalf("%s: %d %s", read.path, status, body)
+		}
+		if chats := f.listReadAudit(t)[got.RequestID]; !slices.Equal(chats, []string{listed, hiddenChat}) {
+			t.Fatalf("%s audited list chats %v, want %v", read.path, chats, []string{listed, hiddenChat})
+		}
+	}
+	// A read that reaches no list chat is not a list read.
+	plain := f.grantOnDemand(t, "plain", agentauth.ScopeReadMessages)
+	before := len(f.listReadAudit(t))
+	if status, body := f.send(t, "GET", "/api/v1/messages/search?q=please", plain, ""); status != 200 || len(f.listReadAudit(t)) != before {
+		t.Fatalf("an agent without a list: %d %s", status, body)
+	}
+
+	path := filepath.Join(f.dir, agentauth.AuditFileName)
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, read := range reads {
+		if status, body := f.send(t, "GET", read.path, read.token, ""); status != 500 || strings.Contains(string(body), "yes please") || strings.Contains(string(body), listed) {
+			t.Fatalf("%s ran without its audit entry: %d %s", read.path, status, body)
+		}
+	}
+	if status, body := f.send(t, "GET", "/api/v1/chats/"+url.PathEscape(listed)+"/messages", agent, ""); status != 500 || strings.Contains(string(body), "yes please") {
+		t.Fatalf("a list chat was read without its audit entry: %d %s", status, body)
+	}
 }
 
 func TestAListAgentWithReadChatsSeesOnlyItsListChatsInTheChatList(t *testing.T) {

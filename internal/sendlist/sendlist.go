@@ -81,9 +81,10 @@ type List struct {
 	Numbers   []Number   `json:"numbers"`
 	Stopped   int        `json:"stopped,omitempty"`   // numbers dropped after they replied STOP
 	PausedAt  *time.Time `json:"paused_at,omitempty"` // no sends while set
-	// StoppedChats are the numbers Stopped counts, kept so the agent can
-	// still read the chat that holds the STOP. Lists saved before it was
-	// kept count numbers here without naming them.
+	// StoppedChats are the numbers Stopped counts, kept so the agent's list
+	// status can name the numbers that replied STOP. They never let the
+	// agent read those chats. Lists saved before it was kept count numbers
+	// here without naming them.
 	StoppedChats []string `json:"stopped_chats,omitempty"`
 }
 
@@ -145,10 +146,10 @@ func (l List) NotMessaged() int {
 	return n
 }
 
-// Messaged lists the numbers on the list that a list has messaged, and the
-// numbers dropped from it after they replied STOP: the chats the agent may
-// read to see replies. A number counts as messaged once any agent's list
-// messaged it, as for sending.
+// Messaged lists the numbers on the list that a list has messaged: the chats
+// the agent may read to see replies. A number counts as messaged once any
+// agent's list messaged it, as for sending. A number dropped after it replied
+// STOP is no longer on the list, so it is not among them.
 func (l List) Messaged() []string {
 	var out []string
 	for _, x := range l.Numbers {
@@ -156,7 +157,7 @@ func (l List) Messaged() []string {
 			out = append(out, x.Chat)
 		}
 	}
-	return append(out, l.StoppedChats...)
+	return out
 }
 
 // Drop removes the numbers in stop from the list, counting them as stopped,

@@ -108,9 +108,10 @@ func TestDropCountsStoppedNumbers(t *testing.T) {
 	}
 }
 
-// The chats a list may read are the numbers a list messaged and those that
-// replied STOP, and stay so when the same numbers are approved again.
-func TestMessagedListsTheNumbersMessagedAndThoseThatStopped(t *testing.T) {
+// The chats a list may read are the numbers on it a list messaged; a number
+// that replied STOP is only named among the stopped numbers, also when the
+// same numbers are approved again.
+func TestMessagedListsOnlyTheMessagedNumbersStillOnTheList(t *testing.T) {
 	dir := privateDir(t)
 	x, y, z := "15551230000@s.whatsapp.net", "15551230001@s.whatsapp.net", "15551230002@s.whatsapp.net"
 	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: x}, {Chat: y}, {Chat: z}}}); err != nil {
@@ -133,7 +134,7 @@ func TestMessagedListsTheNumbersMessagedAndThoseThatStopped(t *testing.T) {
 	}
 	for range 2 {
 		got, _ := For(dir, "a1", time.Now())
-		if m := got.Messaged(); len(m) != 2 || !slices.Contains(m, x) || !slices.Contains(m, y) || got.Find(x) != nil {
+		if m := got.Messaged(); !slices.Equal(m, []string{y}) || got.Find(x) != nil || !slices.Equal(got.StoppedChats, []string{x}) {
 			t.Fatalf("messaged: %v from %+v", m, got)
 		}
 		if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: x}, {Chat: y}, {Chat: z}}}); err != nil {
