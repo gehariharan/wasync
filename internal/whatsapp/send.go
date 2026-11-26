@@ -23,8 +23,9 @@ type SendInput struct {
 	Text string `json:"text,omitempty"`
 	File string `json:"file,omitempty"`
 	Type string `json:"type,omitempty"`
-	// Thumbnail is a preview image (JPEG or PNG) for a video. Without one the
-	// video message carries a plain preview and still plays.
+	// Thumbnail carries a video's preview frame, a JPEG of at most 320 pixels
+	// on each side that the sending command took with ffmpeg; it is not a
+	// user option. Without one the video carries a plain preview and still plays.
 	Thumbnail []byte `json:"thumbnail,omitempty"`
 	// Video holds a video's bytes when an agent sends one through the API,
 	// in place of a file wasync opens. It is never read from JSON, so only
@@ -68,9 +69,9 @@ func (in SendInput) Validate() error {
 	case len(in.Video) > MaxVideoBytes:
 		return fmt.Errorf("video exceeds %d MiB, the most WhatsApp sends as playable video; shorten or compress it", MaxVideoBytes>>20)
 	case len(in.Thumbnail) > 0 && in.Type != "video":
-		return fmt.Errorf("a thumbnail is only sent with a video")
+		return fmt.Errorf("a preview frame is only sent with a video")
 	case len(in.Thumbnail) > MaxThumbnailBytes:
-		return fmt.Errorf("thumbnail exceeds %d MiB", MaxThumbnailBytes>>20)
+		return fmt.Errorf("preview frame exceeds %d KiB", MaxThumbnailBytes>>10)
 	}
 	return nil
 }

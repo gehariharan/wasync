@@ -18,6 +18,10 @@ import (
 // preview and the video still plays. ffmpeg runs in that command's process on
 // a file the person named, never inside the running owner on bytes an agent
 // sent.
+//
+// wasync-axi has its own copy of this helper (axi/internal/cli/video.go):
+// it is a separate Go module that may not import wasync's internal packages
+// (ADR-001), so the two cannot share one.
 
 // ErrNoFFmpeg means ffmpeg is not installed, so no frame could be taken.
 var ErrNoFFmpeg = errors.New("ffmpeg is not installed")

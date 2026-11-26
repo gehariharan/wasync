@@ -7,11 +7,8 @@ import (
 	"github.com/gehariharan/wasync/internal/api"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/storage"
-	"image"
 	"image/jpeg"
-	"image/png"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -105,42 +102,40 @@ func videoFixture(name string) string {
 	return filepath.Join("..", "whatsapp", "testdata", "video", name)
 }
 
+// wantPreview checks the preview a video send carried: the JPEG frame ffmpeg
+// took, at most 320 pixels on each side, or none when ffmpeg is missing.
+func wantPreview(t *testing.T, thumbnail []byte) {
+	t.Helper()
+	if _, err := whatsapp.VideoFrame(context.Background(), videoFixture("h264-aac.mp4")); errors.Is(err, whatsapp.ErrNoFFmpeg) {
+		if len(thumbnail) != 0 {
+			t.Fatal("a preview without ffmpeg")
+		}
+		return
+	}
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(thumbnail))
+	if err != nil || cfg.Width > 320 || cfg.Height > 320 {
+		t.Fatalf("preview %+v %v", cfg, err)
+	}
+}
+
 func TestSendVideoCarriesItsPreview(t *testing.T) {
-	thumb := filepath.Join(t.TempDir(), "preview.png")
-	img := image.NewGray(image.Rect(0, 0, 640, 360))
-	var pngData bytes.Buffer
-	if err := png.Encode(&pngData, img); err != nil {
+	var output, diagnostics bytes.Buffer
+	client := &fakeSendingClient{}
+	app := &App{Out: &output, Err: &diagnostics, OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return client, nil }}
+	args := []string{"--data-dir", filepath.Join(t.TempDir(), "data"), "send", "--to", "one@g.us", "--file", videoFixture("h264-aac.mp4"), "--type", "video", "--text", "Watch"}
+	if err := app.Run(context.Background(), args); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(thumb, pngData.Bytes(), 0o600); err != nil {
-		t.Fatal(err)
+	if len(client.sent) != 1 {
+		t.Fatal("not sent once")
 	}
-	for _, extra := range [][]string{{"--thumbnail", thumb}, nil} {
-		var output, diagnostics bytes.Buffer
-		client := &fakeSendingClient{}
-		app := &App{Out: &output, Err: &diagnostics, OpenClient: func(context.Context, string, *slog.Logger) (Client, error) { return client, nil }}
-		args := append([]string{"--data-dir", filepath.Join(t.TempDir(), "data"), "send", "--to", "one@g.us", "--file", videoFixture("h264-aac.mp4"), "--type", "video", "--text", "Watch"}, extra...)
-		if err := app.Run(context.Background(), args); err != nil {
-			t.Fatal(err)
-		}
-		if len(client.sent) != 1 {
-			t.Fatal("not sent once")
-		}
-		in := client.sent[0]
-		if in.Type != "video" || !filepath.IsAbs(in.File) || in.Text != "Watch" {
-			t.Fatalf("%+v", in)
-		}
-		if len(in.Thumbnail) == 0 {
-			// Only a computer without ffmpeg sends no preview, and it says so.
-			if extra != nil || !strings.Contains(diagnostics.String(), "plain preview") {
-				t.Fatalf("no preview: %q", diagnostics.String())
-			}
-			continue
-		}
-		cfg, err := jpeg.DecodeConfig(bytes.NewReader(in.Thumbnail))
-		if err != nil || cfg.Width > 320 || cfg.Height > 320 {
-			t.Fatalf("preview %+v %v", cfg, err)
-		}
+	in := client.sent[0]
+	if in.Type != "video" || !filepath.IsAbs(in.File) || in.Text != "Watch" {
+		t.Fatalf("%+v", in)
+	}
+	wantPreview(t, in.Thumbnail)
+	if len(in.Thumbnail) == 0 && !strings.Contains(diagnostics.String(), "plain preview") {
+		t.Fatalf("a send without a preview frame did not say so: %q", diagnostics.String())
 	}
 }
 
@@ -152,11 +147,10 @@ func TestUnplayableVideoIsRefusedBeforeConnecting(t *testing.T) {
 	}}
 	data := filepath.Join(t.TempDir(), "data")
 	for name, args := range map[string][]string{
-		"hevc":                {"--file", videoFixture("hevc.mp4"), "--type", "video"},
-		"quicktime":           {"--file", videoFixture("quicktime.mov"), "--type", "video"},
-		"thumbnail for image": {"--file", videoFixture("h264-aac.mp4"), "--type", "image", "--thumbnail", videoFixture("h264-aac.mp4")},
-		"thumbnail not image": {"--file", videoFixture("h264-aac.mp4"), "--type", "video", "--thumbnail", videoFixture("h264-aac.mp4")},
-		"missing file":        {"--file", filepath.Join(data, "absent.mp4"), "--type", "video"},
+		"hevc":              {"--file", videoFixture("hevc.mp4"), "--type", "video"},
+		"quicktime":         {"--file", videoFixture("quicktime.mov"), "--type", "video"},
+		"a preview of mine": {"--file", videoFixture("h264-aac.mp4"), "--type", "video", "--thumbnail", videoFixture("h264-aac.mp4")},
+		"missing file":      {"--file", filepath.Join(data, "absent.mp4"), "--type", "video"},
 	} {
 		if err := app.Run(context.Background(), append([]string{"--data-dir", data, "send", "--to", "one@g.us"}, args...)); err == nil {
 			t.Errorf("%s accepted", name)
@@ -179,22 +173,12 @@ func TestSendVideoThroughOwnerKeepsThePreview(t *testing.T) {
 		t.Fatal("opened a competing client")
 		return nil, nil
 	}
-	thumb := filepath.Join(t.TempDir(), "preview.png")
-	var pngData bytes.Buffer
-	if err = png.Encode(&pngData, image.NewGray(image.Rect(0, 0, 64, 36))); err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(thumb, pngData.Bytes(), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	flags := []string{"--data-dir", dir, "--api-addr", strings.TrimPrefix(server.URL, "http://")}
-	if err = app.Run(context.Background(), append(flags, "send", "--to", "one@g.us", "--file", videoFixture("h264-aac.mp4"), "--type", "video", "--thumbnail", thumb)); err != nil {
+	if err = app.Run(context.Background(), append(flags, "send", "--to", "one@g.us", "--file", videoFixture("h264-aac.mp4"), "--type", "video")); err != nil {
 		t.Fatal(err)
 	}
-	if got.Type != "video" || !filepath.IsAbs(got.File) || len(got.Thumbnail) == 0 {
+	if got.Type != "video" || !filepath.IsAbs(got.File) {
 		t.Fatalf("%+v", got)
 	}
-	if _, err = jpeg.DecodeConfig(bytes.NewReader(got.Thumbnail)); err != nil {
-		t.Fatal(err)
-	}
+	wantPreview(t, got.Thumbnail)
 }

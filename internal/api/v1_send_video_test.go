@@ -5,7 +5,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"image"
-	"image/png"
+	"image/jpeg"
+	"io"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,7 +49,7 @@ func TestV1SendCarriesAVideoToAnAllowedChat(t *testing.T) {
 	agent := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
 	video := videoBytes(t, "h264-aac.mp4")
 	var thumb bytes.Buffer
-	if err := png.Encode(&thumb, image.NewGray(image.Rect(0, 0, 64, 36))); err != nil {
+	if err := jpeg.Encode(&thumb, image.NewGray(image.Rect(0, 0, 64, 36)), nil); err != nil {
 		t.Fatal(err)
 	}
 	body := videoBody(t, map[string]any{"chat": "one@g.us"}, map[string]any{"text": "Our explainer", "video": video, "thumbnail": thumb.Bytes()})
@@ -131,6 +133,7 @@ func TestV1SendRefusesBadVideoRequests(t *testing.T) {
 		"quicktime":           {"video": videoBytes(t, "quicktime.mov")},
 		"mp3 sound":           {"video": videoBytes(t, "mp3-audio.mp4")},
 		"thumbnail not image": {"video": video, "thumbnail": []byte("nope")},
+		"thumbnail too wide":  {"video": video, "thumbnail": jpegFrame(t, 321, 180)},
 		"thumbnail alone":     {"text": "hi", "thumbnail": []byte("nope")},
 		"a file path":         {"video": video, "file": "/etc/passwd"},
 		"a type":              {"video": video, "type": "document"},
@@ -171,5 +174,63 @@ func TestV1SendAdvertisesVideo(t *testing.T) {
 	status, body := f.send(t, "GET", "/api/v1/version", f.agent, "")
 	if status != 200 || !strings.Contains(string(body), `"write.send.video"`) {
 		t.Fatalf("version: %d %s", status, body)
+	}
+}
+
+func jpegFrame(t *testing.T, w, h int) []byte {
+	t.Helper()
+	var out bytes.Buffer
+	if err := jpeg.Encode(&out, image.NewGray(image.Rect(0, 0, w, h)), nil); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+// countingBody is a request body of n bytes that records how many were read.
+type countingBody struct{ left, read int64 }
+
+func (b *countingBody) Read(p []byte) (int, error) {
+	if b.left == 0 {
+		return 0, io.EOF
+	}
+	n := min(int64(len(p)), b.left)
+	for i := range p[:n] {
+		p[i] = 'A'
+	}
+	b.left -= n
+	b.read += n
+	return int(n), nil
+}
+
+func TestV1SendReadsAVideoSizedBodyOnlyForASendCredential(t *testing.T) {
+	f := setupSend(t, &sendRecorder{})
+	poster := f.grantWriter(t, "poster", []string{agentauth.ScopeSend}, 0, "one@g.us")
+	reactOnly := f.grantWriter(t, "reactor", []string{agentauth.ScopeReact}, 0, "one@g.us")
+	h := &handler{dataDir: f.dir, agents: agentauth.NewAuthorizer(f.dir)}
+	const smallLimit = 128 << 10
+	for _, tc := range []struct {
+		name, token string
+		status      int
+		readsAll    bool
+	}{
+		{"no credential", "", 401, false},
+		{"a credential without the send scope", reactOnly, 403, false},
+		{"a send credential", poster, 403, true},
+	} {
+		body := &countingBody{left: maxSendBody}
+		req := httptest.NewRequest("POST", "/api/v1/messages", io.NopCloser(body))
+		if tc.token != "" {
+			req.Header.Set("Authorization", "Bearer "+tc.token)
+		}
+		rec := httptest.NewRecorder()
+		if h.authorizeSend(rec, req, "r1") {
+			t.Fatalf("%s: a body naming no chat was allowed", tc.name)
+		}
+		if rec.Code != tc.status {
+			t.Fatalf("%s: %d %s", tc.name, rec.Code, rec.Body)
+		}
+		if tc.readsAll && body.read != maxSendBody || !tc.readsAll && body.read > smallLimit+1 {
+			t.Fatalf("%s: read %d bytes of the body", tc.name, body.read)
+		}
 	}
 }

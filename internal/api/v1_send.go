@@ -35,10 +35,13 @@ import (
 // the sent log.
 //
 // A send may carry a video: its MP4 bytes, base64 in "video", with "text" as
-// the caption and an optional preview image in "thumbnail". The agent sends
-// the bytes it has rather than a path, so wasync never opens a file on an
-// agent's behalf, and it never runs ffmpeg on them either; without a
-// thumbnail the video gets a plain preview. A video is checked before the
+// the caption and, in "thumbnail", the preview frame wasync-axi took with
+// ffmpeg (a JPEG of at most 64 KiB and 320 pixels on each side, passed on
+// unchanged). The agent sends the bytes it has rather than a path, so wasync
+// never opens a file on an agent's behalf, and it never runs ffmpeg on them
+// either; without a frame the video gets a plain preview. Only a caller whose
+// credential holds the send scope may send a body larger than 128 KiB or take
+// longer than the usual deadlines. A video is checked before the
 // send is counted against any pacing, and goes through exactly the same
 // scope, allowlist, list, open-sending and rate-limit decisions as text.
 func init() {
@@ -49,8 +52,8 @@ func init() {
 	query.RegisterFeature("write.send.video")
 }
 
-// maxSendBody bounds a send request: the largest video and preview, base64
-// encoded, plus room for the text and addressing.
+// maxSendBody bounds a send request: the largest video and preview frame,
+// base64 encoded, plus room for the text and addressing.
 var maxSendBody = int64(base64.StdEncoding.EncodedLen(whatsapp.MaxVideoBytes) + base64.StdEncoding.EncodedLen(whatsapp.MaxThumbnailBytes) + 128<<10)
 
 // sendTransferTime is how long reading a send request may take; a video is
@@ -69,10 +72,10 @@ const (
 // sendTarget peeks at the body for where the message is going, and puts the body
 // back for the handler, which decodes it strictly. A body that cannot be read
 // names no target, so it fails closed.
-func sendTarget(r *http.Request) (chat, to string) {
-	raw, err := io.ReadAll(io.LimitReader(r.Body, maxSendBody+1))
+func sendTarget(r *http.Request, limit int64) (chat, to string) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
 	r.Body = io.NopCloser(bytes.NewReader(raw))
-	if err != nil || int64(len(raw)) > maxSendBody {
+	if err != nil || int64(len(raw)) > limit {
 		return "", ""
 	}
 	var in struct {
@@ -94,19 +97,25 @@ func numberJID(number string) (string, bool) { return sendlist.NumberChat(number
 // agent's approved recipient list, or open sending is on, and the agent holds
 // the send scope. The list comes first, so its stricter pacing applies.
 func (h *handler) authorizeSend(w http.ResponseWriter, r *http.Request, id string) bool {
-	// A video takes longer to read than the server's usual request deadline,
-	// and its upload to WhatsApp longer than the usual response deadline, as
-	// for the owner's own attachment sends.
-	rc := http.NewResponseController(w)
-	if err := rc.SetReadDeadline(time.Now().Add(sendTransferTime)); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		v1Fail(w, id, 500, query.CodeInternal, "could not configure the transfer", "")
-		return false
+	limit := int64(128 << 10)
+	if h.agents != nil {
+		if c, err := h.agents.Authenticate(r.Header.Get("Authorization")); err == nil && c.HasScope(agentauth.ScopeSend) {
+			// A video takes longer to read than the server's usual request
+			// deadline, and its upload to WhatsApp longer than the usual
+			// response deadline, as for the owner's own attachment sends.
+			rc := http.NewResponseController(w)
+			if err := rc.SetReadDeadline(time.Now().Add(sendTransferTime)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+				v1Fail(w, id, 500, query.CodeInternal, "could not configure the transfer", "")
+				return false
+			}
+			if err := rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+				v1Fail(w, id, 500, query.CodeInternal, "could not configure the transfer", "")
+				return false
+			}
+			limit = maxSendBody
+		}
 	}
-	if err := rc.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
-		v1Fail(w, id, 500, query.CodeInternal, "could not configure the transfer", "")
-		return false
-	}
-	chat, to := sendTarget(r)
+	chat, to := sendTarget(r, limit)
 	target, numberGiven := chat, false
 	if target == "" && to != "" {
 		numberGiven = true

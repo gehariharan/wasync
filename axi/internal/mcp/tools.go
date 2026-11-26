@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"math"
 	"strconv"
+	"time"
+
+	"github.com/gehariharan/wasync/axi/internal/transport"
 )
 
 type annotations struct {
@@ -22,6 +25,9 @@ type tool struct {
 	ann         annotations
 	build       func(map[string]any) ([]string, error)
 	start       bool // runs the setup starter rather than a command
+	// deadline, when set, is how long a call with these arguments may run;
+	// otherwise toolDeadline.
+	deadline func(map[string]any) time.Duration
 }
 
 type prop = map[string]any
@@ -287,10 +293,16 @@ var tools = []tool{
 	},
 	{
 		name: "whatsapp_send", description: "Send a new message, or a video with an optional caption, to a chat or a phone number. It sends once and is never retried. wasync refuses unless the person granted the send scope and approved this chat; a number or chat you were not given is refused unless it is on the list of numbers the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message per number until it replies) or they have switched on open sending, so ask them to allow it rather than trying another route. A video counts as one message under the same rules.",
-		props: map[string]any{"chat": str("The chat JID, as listed by whatsapp_list_chats. Give this or to."), "to": str("A phone number with its country code, such as +15551230000. Give this or chat."), "text": str("The message text, or the video's caption (up to 16000 bytes). Needed unless video is given."), "video": str("Path to an MP4 file (H.264 video, AAC audio, up to 64 MiB) to send as a playable video."), "thumbnail": str("Path to a JPEG or PNG preview for the video; without it one is taken with ffmpeg when installed.")},
+		props: map[string]any{"chat": str("The chat JID, as listed by whatsapp_list_chats. Give this or to."), "to": str("A phone number with its country code, such as +15551230000. Give this or chat."), "text": str("The message text, or the video's caption (up to 16000 bytes). Needed unless video is given."), "video": str("Path to an MP4 file (H.264 video, AAC audio, up to 64 MiB) to send as a playable video; its preview is a frame taken with ffmpeg when installed.")},
 		ann:   hints("Send on WhatsApp", annotations{OpenWorldHint: true}),
+		deadline: func(a map[string]any) time.Duration {
+			if v, _ := a["video"].(string); v != "" {
+				return toolDeadline + transport.TransferTimeout
+			}
+			return toolDeadline
+		},
 		build: func(a map[string]any) ([]string, error) {
-			if err := unknown(a, "chat", "to", "text", "video", "thumbnail"); err != nil {
+			if err := unknown(a, "chat", "to", "text", "video"); err != nil {
 				return nil, err
 			}
 			chat, err := getStr(a, "chat", false, 256)
@@ -308,13 +320,6 @@ var tools = []tool{
 			if err != nil {
 				return nil, err
 			}
-			thumbnail, err := getStr(a, "thumbnail", false, 4096)
-			if err != nil {
-				return nil, err
-			}
-			if thumbnail != "" && video == "" {
-				return nil, fmt.Errorf("thumbnail goes with video")
-			}
 			text, err := getStr(a, "text", video == "", textMax)
 			if err != nil {
 				return nil, err
@@ -326,7 +331,6 @@ var tools = []tool{
 				b.args = append(b.args, "--chat", chat)
 			}
 			b.add("--video", video)
-			b.add("--thumbnail", thumbnail)
 			b.add("--text", text)
 			return b.args, nil
 		},

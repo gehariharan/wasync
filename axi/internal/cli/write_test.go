@@ -315,11 +315,17 @@ func noFFmpeg(t *testing.T) {
 }
 
 func TestSendVideoPostsItsBytesCaptionAndPreviewOnce(t *testing.T) {
+	fake := writeTemp(t, "ffmpeg", []byte("#!/bin/sh\nprintf 'synthetic jpeg'\n"))
+	if err := os.Chmod(fake, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	old := findFFmpeg
+	t.Cleanup(func() { findFFmpeg = old })
+	findFFmpeg = func() (string, error) { return fake, nil }
 	h, srv := writerHarness(t)
 	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
 	video := writeTemp(t, "explainer.mp4", []byte("synthetic mp4 bytes"))
-	thumb := writeTemp(t, "preview.jpg", []byte("synthetic jpeg"))
-	out, code := h.run(t, "send", "--to", "+15551230000", "--video", video, "--text", "A quick look", "--thumbnail", thumb)
+	out, code := h.run(t, "send", "--to", "+15551230000", "--video", video, "--text", "A quick look")
 	if code != ExitOK {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
@@ -345,7 +351,7 @@ func TestSendVideoWithoutFFmpegSendsNoPreviewAndSaysSo(t *testing.T) {
 	if code != ExitOK {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "plain preview", "--thumbnail")
+	mustContain(t, out, "plain preview")
 	_, body := posts(srv)
 	var sent map[string]any
 	if json.Unmarshal([]byte(body), &sent) != nil || sent["chat"] != "one@g.us" || sent["thumbnail"] != nil || sent["text"] != nil || sent["video"] == nil {

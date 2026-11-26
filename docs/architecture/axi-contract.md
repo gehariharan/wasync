@@ -72,7 +72,7 @@ are shared by reads and counts in [`storage`](../../internal/storage/messages.go
 | `GET /api/v1/messages/{ref}/thread` | `query thread --ref` | `thread` | `read.messages` |
 | `GET /api/v1/changes?after=&limit=` | `query changes --after` | `observe` | `observe` |
 | `GET/PUT /api/v1/checkpoints/{consumer}` | read only | `observe --consumer`, `observe ack` | `observe` |
-| `POST /api/v1/messages` | – (owner only) | `send --chat CHAT --text`, `send --to NUMBER --text`, `send ... --video FILE [--thumbnail IMAGE]` | `send`, chat allowlist; or `send` and a number on the agent's approved list; or `send` while open sending is on (feature `write.send.to` for `to`; feature `write.send.video` for a body carrying `video` bytes and an optional `thumbnail`, both base64) |
+| `POST /api/v1/messages` | – (owner only) | `send --chat CHAT --text`, `send --to NUMBER --text`, `send ... --video FILE` | `send`, chat allowlist; or `send` and a number on the agent's approved list; or `send` while open sending is on (feature `write.send.to` for `to`; feature `write.send.video` for a body carrying `video` bytes and, when wasync-axi took one with ffmpeg, a `thumbnail` preview frame (a JPEG of at most 64 KiB and 320 pixels on each side), both base64) |
 | `GET /api/v1/send-list` | – (owner only) | `whatsapp-axi` (home view) | any credential; its own list only (feature `write.send.list`) |
 | `POST /api/v1/messages/{ref}/reply` | – (owner only) | `reply` | `send`, chat allowlist |
 | `PUT/DELETE /api/v1/messages/{ref}/reaction` | – (owner only) | `react REF EMOJI`, `react REF --remove` | `react`, chat allowlist |

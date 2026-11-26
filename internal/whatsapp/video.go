@@ -6,9 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"image"
-	"image/color"
 	"image/jpeg"
-	_ "image/png" // a thumbnail may be given as PNG
 	"io"
 	"math"
 )
@@ -19,20 +17,20 @@ import (
 // wasync reads those from the file before sending. It parses the MP4 container
 // in Go rather than requiring ffmpeg; only the preview frame needs a video
 // decoder, and the caller that has the file (the wasync CLI or wasync-axi)
-// extracts it with ffmpeg when that is installed, or passes one in.
+// extracts it with ffmpeg when that is installed and passes it along.
 
 // MaxVideoBytes is the largest video wasync sends as a playable video. It is
 // the limit WhatsApp's linked-device clients apply before they fall back to
 // sending a video as a document; larger clips must be shortened or compressed.
 const MaxVideoBytes = 64 << 20
 
-// MaxThumbnailBytes bounds a preview image given with a video.
-const MaxThumbnailBytes = 4 << 20
+// MaxThumbnailBytes bounds the preview frame carried with a video: a JPEG of
+// at most 320 pixels on each side, as ffmpeg is asked for, is far smaller.
+const MaxThumbnailBytes = 64 << 10
 
 const (
 	videoMIME       = "video/mp4"
-	thumbnailMaxDim = 320 // the preview's longest side, in pixels
-	thumbnailMaxIn  = 4096
+	thumbnailMaxDim = 320  // the preview's longest side, in pixels
 	maxMP4Boxes     = 4096 // boxes examined in one file, against crafted input
 )
 
@@ -422,28 +420,25 @@ func descriptor(d []byte) (byte, []byte, bool) {
 	return tag, d[i : i+n], true
 }
 
-// VideoThumbnail turns a preview image (JPEG or PNG) into the small JPEG a
-// video message carries. With no image it draws a plain frame of the video's
-// shape, so the message always has a preview.
-func VideoThumbnail(img []byte, info VideoInfo) ([]byte, error) {
-	if len(img) == 0 {
+// VideoThumbnail returns the JPEG preview a video message carries: the frame
+// the sending command took with ffmpeg, checked to be a small JPEG and passed
+// on unchanged, never decoded or re-encoded. With no frame it draws a plain
+// one of the video's shape, so the message always has a preview.
+func VideoThumbnail(frame []byte, info VideoInfo) ([]byte, error) {
+	if len(frame) == 0 {
 		return placeholderThumbnail(info)
 	}
-	if len(img) > MaxThumbnailBytes {
-		return nil, fmt.Errorf("thumbnail exceeds %d MiB", MaxThumbnailBytes>>20)
+	if len(frame) > MaxThumbnailBytes {
+		return nil, fmt.Errorf("preview frame exceeds %d KiB", MaxThumbnailBytes>>10)
 	}
-	cfg, format, err := image.DecodeConfig(bytes.NewReader(img))
-	if err != nil || (format != "jpeg" && format != "png") {
-		return nil, fmt.Errorf("thumbnail must be a JPEG or PNG image")
-	}
-	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > thumbnailMaxIn || cfg.Height > thumbnailMaxIn {
-		return nil, fmt.Errorf("thumbnail must be at most %d pixels on each side", thumbnailMaxIn)
-	}
-	src, _, err := image.Decode(bytes.NewReader(img))
+	cfg, err := jpeg.DecodeConfig(bytes.NewReader(frame))
 	if err != nil {
-		return nil, fmt.Errorf("thumbnail must be a JPEG or PNG image")
+		return nil, fmt.Errorf("preview frame must be a JPEG")
 	}
-	return encodeThumbnail(shrink(src, thumbnailMaxDim))
+	if cfg.Width < 1 || cfg.Height < 1 || cfg.Width > thumbnailMaxDim || cfg.Height > thumbnailMaxDim {
+		return nil, fmt.Errorf("preview frame must be at most %d pixels on each side", thumbnailMaxDim)
+	}
+	return frame, nil
 }
 
 func placeholderThumbnail(info VideoInfo) ([]byte, error) {
@@ -478,29 +473,4 @@ func fitBox(w, h, limit int) (int, int) {
 		return limit, max(1, h*limit/w)
 	}
 	return max(1, w*limit/h), limit
-}
-
-// shrink averages src down to fit the box; it never enlarges.
-func shrink(src image.Image, limit int) image.Image {
-	b := src.Bounds()
-	w, h := fitBox(b.Dx(), b.Dy(), limit)
-	if w == b.Dx() && h == b.Dy() {
-		return src
-	}
-	dst := image.NewRGBA(image.Rect(0, 0, w, h))
-	for y := range h {
-		y0, y1 := b.Min.Y+y*b.Dy()/h, b.Min.Y+(y+1)*b.Dy()/h
-		for x := range w {
-			x0, x1 := b.Min.X+x*b.Dx()/w, b.Min.X+(x+1)*b.Dx()/w
-			var r, g, bl, n uint64
-			for sy := y0; sy < max(y1, y0+1); sy++ {
-				for sx := x0; sx < max(x1, x0+1); sx++ {
-					cr, cg, cb, _ := src.At(sx, sy).RGBA()
-					r, g, bl, n = r+uint64(cr), g+uint64(cg), bl+uint64(cb), n+1
-				}
-			}
-			dst.Set(x, y, color.RGBA64{R: uint16(r / n), G: uint16(g / n), B: uint16(bl / n), A: 0xffff})
-		}
-	}
-	return dst
 }

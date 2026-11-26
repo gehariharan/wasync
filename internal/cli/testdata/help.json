@@ -134,9 +134,9 @@
     },
     {
       "description": "Explicitly send a text message or local attachment.",
-      "details": "At least --text or --file is required. With a file, --text is the caption and --type defaults to document; image supports JPEG/PNG; video sends a playable clip and supports MP4 with H.264 video and AAC audio up to 64 MiB. A video's preview is --thumbnail (JPEG or PNG) when given, otherwise a frame taken with ffmpeg when it is installed, otherwise a plain frame. Reuses a running owner or connects with the saved session. A server acknowledgement is not proof of recipient delivery; do not automatically retry uncertain sends.",
+      "details": "At least --text or --file is required. With a file, --text is the caption and --type defaults to document; image supports JPEG/PNG; video sends a playable clip and supports MP4 with H.264 video and AAC audio up to 64 MiB. A video's preview is a frame taken with ffmpeg when it is installed, otherwise a plain frame. Reuses a running owner or connects with the saved session. A server acknowledgement is not proof of recipient delivery; do not automatically retry uncertain sends.",
       "path": "send",
-      "usage": "send --to CHAT_ID [--text TEXT] [--file PATH] [--type image|video|document] [--thumbnail PATH]"
+      "usage": "send --to CHAT_ID [--text TEXT] [--file PATH] [--type image|video|document]"
     },
     {
       "description": "Quote an archived message in a reply.",

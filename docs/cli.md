@@ -219,10 +219,9 @@ WhatsApp's linked devices send as a playable video; anything else is refused bef
 is sent, with a message saying what to change (for example
 `ffmpeg -i IN -c:v libx264 -c:a aac -movflags +faststart OUT.mp4`). Send a larger or
 different file with `--type document`, where it arrives as a file. wasync reads the clip's
-length and shape from the file itself. Its preview picture is `--thumbnail IMAGE` (JPEG or
-PNG) when given, otherwise a frame taken with `ffmpeg` when it is installed (it is optional,
-looked up on `PATH` and in the usual Homebrew and system folders), otherwise a plain dark
-frame; the video plays the same either way.
+length and shape from the file itself. Its preview picture is a frame taken with `ffmpeg`
+when it is installed (it is optional, looked up on `PATH` and in the usual Homebrew and system
+folders), otherwise a plain dark frame; the video plays the same either way.
 Output is JSON with `result.status` and `result.message_id`. A server acknowledgement
 is not proof of delivery or reading. An unknown outcome must be checked in WhatsApp
 before retrying. wasync does not add an application retry loop; whatsmeow may retry

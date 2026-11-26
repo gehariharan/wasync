@@ -102,7 +102,7 @@ a plaintext bearer token is rejected there.
 
 | Route | Body | Used by |
 | --- | --- | --- |
-| `POST /api/send` | `{ "to": "CHAT_ID", "text": "Hello" }`; optional `file` (an absolute local path), `type` (`image`, `video` or `document`) and, for a video, `thumbnail` (a small JPEG or PNG preview, base64) | `wasync send` |
+| `POST /api/send` | `{ "to": "CHAT_ID", "text": "Hello" }`; optional `file` (an absolute local path), `type` (`image`, `video` or `document`) and, for a video, `thumbnail` (the preview frame `wasync send` took with ffmpeg: a JPEG of at most 64 KiB and 320 pixels on each side, base64; not a user option) | `wasync send` |
 | `POST /api/reply` | `{ "chat", "message_id", "text", "mentions" }` | `wasync reply` |
 | `POST /api/react` | `{ "chat", "message_id", "emoji" }` or `"remove": true` | `wasync react` |
 | `POST /api/edit` | `{ "chat", "message_id", "text" }` | `wasync edit` |

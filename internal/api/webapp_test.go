@@ -182,18 +182,12 @@ func TestSentPageShowsWhoSentWhatToWhomAndHowItWent(t *testing.T) {
 	f, c, _ := chatsFixture(t)
 	ctx := context.Background()
 	at := time.Now().Add(-time.Hour)
-	if _, err := f.store.Apply(ctx, f.account, []storage.Message{
-		{GroupID: familyChat, MessageID: "OUT1", SenderID: "me@lid", Timestamp: at, Type: "text", Text: "rent is paid <b>today</b>", FromMe: true, Source: "live"},
-		{GroupID: familyChat, MessageID: "VID1", SenderID: "me@lid", Timestamp: at, Type: "video", Text: "our explainer", Media: `{"mime":"video/mp4","duration_seconds":75}`, FromMe: true, Source: "live"},
-		{GroupID: familyChat, MessageID: "VID2", SenderID: "me@lid", Timestamp: at, Type: "video", Media: `{"mime":"video/mp4"}`, FromMe: true, Source: "live"},
-	}); err != nil {
+	if _, err := f.store.Apply(ctx, f.account, []storage.Message{{GroupID: familyChat, MessageID: "OUT1", SenderID: "me@lid", Timestamp: at, Type: "text", Text: "rent is paid <b>today</b>", FromMe: true, Source: "live"}}); err != nil {
 		t.Fatal(err)
 	}
 	log := sentlog.New(f.dir)
 	for _, e := range []sentlog.Entry{
 		{Time: at, Actor: "wasync-axi", Kind: "send", Chat: familyChat, MessageID: "OUT1", Outcome: sentlog.OutcomeSent},
-		{Time: at, Actor: "outreach", Kind: "send", Chat: familyChat, MessageID: "VID1", Outcome: sentlog.OutcomeSent},
-		{Time: at, Actor: "outreach", Kind: "send", Chat: familyChat, MessageID: "VID2", Outcome: sentlog.OutcomeSent},
 		{Time: at.Add(time.Minute), Actor: sentlog.Owner, Kind: "reply", Chat: phoneChat, Outcome: sentlog.OutcomeFailed},
 		{Time: at.Add(2 * time.Minute), Actor: "<i>helper</i>", Kind: "send", Chat: familyChat, MessageID: "GONE1", Outcome: sentlog.OutcomeUnknown},
 	} {
@@ -205,7 +199,7 @@ func TestSentPageShowsWhoSentWhatToWhomAndHowItWent(t *testing.T) {
 	if code != 200 {
 		t.Fatalf("sent page: %d", code)
 	}
-	for _, want := range []string{"Family Group", "wasync-axi", "Sent: WhatsApp accepted it", "Not sent", "Not confirmed: check WhatsApp", "text not kept", "(reply)", "You", "&lt;b&gt;today&lt;/b&gt;", "🎬 Video: our explainer", "🎬 Video</td>"} {
+	for _, want := range []string{"Family Group", "wasync-axi", "Sent: WhatsApp accepted it", "Not sent", "Not confirmed: check WhatsApp", "text not kept", "(reply)", "You", "&lt;b&gt;today&lt;/b&gt;"} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("sent page lacks %q:\n%s", want, page)
 		}

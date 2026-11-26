@@ -20,10 +20,14 @@ import (
 // installed, in this process rather than in the running wasync. wasync checks
 // the video and decides whether it may be sent; the size check here only
 // avoids posting a file wasync would refuse.
+//
+// wasync has its own copy of the ffmpeg helper (internal/whatsapp/video_frame.go):
+// wasync-axi is a separate Go module and may not import wasync's internal
+// packages (ADR-001), so the two cannot share one.
 
 const (
 	maxVideoBytes     = 64 << 20 // wasync's limit for a playable video
-	maxThumbnailBytes = 4 << 20
+	maxThumbnailBytes = 64 << 10 // wasync's limit for the preview frame
 )
 
 // readAttachment reads a regular file of at most limit bytes.

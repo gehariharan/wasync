@@ -89,35 +89,26 @@ func TestProbeMP4StopsOnEndlessBoxes(t *testing.T) {
 	}
 }
 
-func TestVideoThumbnailIsASmallJPEG(t *testing.T) {
-	big := image.NewRGBA(image.Rect(0, 0, 1280, 720))
-	for i := range big.Pix {
-		big.Pix[i] = 0xc0
+func TestVideoThumbnailPassesASmallJPEGFrameUnchanged(t *testing.T) {
+	frame := jpegOf(t, 320, 180)
+	thumb, err := VideoThumbnail(frame, VideoInfo{Width: 1280, Height: 720})
+	if err != nil || !bytes.Equal(thumb, frame) {
+		t.Fatalf("the frame was not passed on as is: %v", err)
 	}
-	var src bytes.Buffer
-	if err := png.Encode(&src, big); err != nil {
-		t.Fatal(err)
-	}
-	thumb, err := VideoThumbnail(src.Bytes(), VideoInfo{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cfg, err := jpeg.DecodeConfig(bytes.NewReader(thumb))
-	if err != nil || cfg.Width != 320 || cfg.Height != 180 {
-		t.Fatalf("%+v %v", cfg, err)
-	}
-	// Without an image the message still gets a preview of the video's shape.
+	// Without a frame the message still gets a preview of the video's shape.
 	thumb, err = VideoThumbnail(nil, VideoInfo{Width: 54, Height: 96})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg, err = jpeg.DecodeConfig(bytes.NewReader(thumb)); err != nil || cfg.Width != 54 || cfg.Height != 96 {
+	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(thumb)); err != nil || cfg.Width != 54 || cfg.Height != 96 {
 		t.Fatalf("%+v %v", cfg, err)
 	}
 	for name, img := range map[string][]byte{
 		"not an image": []byte("hello"),
-		"too large":    make([]byte, MaxThumbnailBytes+1),
-		"too wide":     pngOf(t, thumbnailMaxIn+1, 1),
+		"a png":        pngOf(t, 32, 18),
+		"over 64 KiB":  append(jpegOf(t, 32, 18), make([]byte, 64<<10)...),
+		"too wide":     jpegOf(t, 321, 1),
+		"too tall":     jpegOf(t, 1, 321),
 	} {
 		if _, err := VideoThumbnail(img, VideoInfo{}); err == nil {
 			t.Errorf("%s accepted", name)
@@ -127,10 +118,19 @@ func TestVideoThumbnailIsASmallJPEG(t *testing.T) {
 
 func pngOf(t *testing.T, w, h int) []byte {
 	t.Helper()
+	var out bytes.Buffer
+	if err := png.Encode(&out, image.NewGray(image.Rect(0, 0, w, h))); err != nil {
+		t.Fatal(err)
+	}
+	return out.Bytes()
+}
+
+func jpegOf(t *testing.T, w, h int) []byte {
+	t.Helper()
 	img := image.NewGray(image.Rect(0, 0, w, h))
 	img.Set(0, 0, color.White)
 	var out bytes.Buffer
-	if err := png.Encode(&out, img); err != nil {
+	if err := jpeg.Encode(&out, img, nil); err != nil {
 		t.Fatal(err)
 	}
 	return out.Bytes()
@@ -147,6 +147,9 @@ func TestVideoFrameUsesFFmpegWhenInstalled(t *testing.T) {
 	}
 	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(frame)); err != nil || cfg.Width != 96 {
 		t.Fatalf("%+v %v", cfg, err)
+	}
+	if thumb, err := VideoThumbnail(frame, VideoInfo{}); err != nil || !bytes.Equal(thumb, frame) {
+		t.Fatalf("wasync refuses the frame ffmpeg takes: %v", err)
 	}
 	old := findFFmpeg
 	t.Cleanup(func() { findFFmpeg = old })
@@ -173,8 +176,8 @@ func TestSendInputValidatesVideo(t *testing.T) {
 		"bytes as a document":  {To: "one@g.us", Video: []byte{1}, Type: "document"},
 		"bytes with no type":   {To: "one@g.us", Video: []byte{1}},
 		"type without file":    {To: "one@g.us", Text: "hi", Type: "video"},
-		"thumbnail on image":   {To: "one@g.us", File: "/tmp/a.png", Type: "image", Thumbnail: []byte{1}},
-		"thumbnail too large":  {To: "one@g.us", File: "/tmp/a.mp4", Type: "video", Thumbnail: make([]byte, MaxThumbnailBytes+1)},
+		"frame on image":       {To: "one@g.us", File: "/tmp/a.png", Type: "image", Thumbnail: []byte{1}},
+		"frame too large":      {To: "one@g.us", File: "/tmp/a.mp4", Type: "video", Thumbnail: make([]byte, MaxThumbnailBytes+1)},
 		"video bytes too long": {To: "one@g.us", Video: make([]byte, MaxVideoBytes+1), Type: "video"},
 	}
 	for name, in := range bad {
@@ -221,7 +224,7 @@ func TestSendVideoArrivesAsAPlayableVideoAndIsArchived(t *testing.T) {
 	if err := os.WriteFile(path, data, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	thumb := pngOf(t, 640, 360)
+	thumb := jpegOf(t, 96, 54)
 	for name, in := range map[string]SendInput{
 		"file":  {To: "123@g.us", File: path, Type: "video", Text: "Watch this", Thumbnail: thumb},
 		"bytes": {To: "123@g.us", Video: data, Type: "video", Text: "Watch this"},
@@ -242,7 +245,7 @@ func TestSendVideoArrivesAsAPlayableVideoAndIsArchived(t *testing.T) {
 			t.Fatalf("%s: %v", name, v)
 		}
 		cfg, err := jpeg.DecodeConfig(bytes.NewReader(v.GetJPEGThumbnail()))
-		if err != nil || cfg.Width == 0 {
+		if err != nil || cfg.Width == 0 || (in.Thumbnail != nil && !bytes.Equal(v.GetJPEGThumbnail(), thumb)) {
 			t.Fatalf("%s: thumbnail %+v %v", name, cfg, err)
 		}
 		m, err := s.MessageByWhatsAppID(ctx, account, "123@g.us", "VIDEO1")
@@ -265,8 +268,9 @@ func TestSendVideoRefusalsSendNothing(t *testing.T) {
 	ctx := context.Background()
 	hevc := videoFixture(t, "hevc.mp4")
 	for name, in := range map[string]SendInput{
-		"hevc":          {To: "123@g.us", Video: hevc, Type: "video"},
-		"bad thumbnail": {To: "123@g.us", Video: videoFixture(t, "h264-aac.mp4"), Type: "video", Thumbnail: []byte("not an image")},
+		"hevc":      {To: "123@g.us", Video: hevc, Type: "video"},
+		"bad frame": {To: "123@g.us", Video: videoFixture(t, "h264-aac.mp4"), Type: "video", Thumbnail: []byte("not an image")},
+		"png frame": {To: "123@g.us", Video: videoFixture(t, "h264-aac.mp4"), Type: "video", Thumbnail: pngOf(t, 32, 18)},
 	} {
 		wa := &fakeWhatsApp{}
 		res, err := c.send(ctx, wa, ownJID, in)
