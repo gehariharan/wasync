@@ -222,7 +222,7 @@ func TestApprovalPageLinksAreSingleUseAndSignedOnly(t *testing.T) {
 		t.Fatalf("agent credential got a page link: %d", code)
 	}
 	c := newPageClient(t, f)
-	if code, _, _ := c.get("/ui/"); code != 401 {
+	if code, _, _ := c.get("/ui/approvals"); code != 401 {
 		t.Fatalf("page without sign-in: %d", code)
 	}
 	if code, _, _ := c.get("/ui/enter?t=guess"); code != 401 {
@@ -236,7 +236,7 @@ func TestApprovalPageLinksAreSingleUseAndSignedOnly(t *testing.T) {
 	if code, _, _ := newPageClient(t, f).get(link); code != 401 {
 		t.Fatalf("a used link worked again: %d", code)
 	}
-	code, page, hd := c.get("/ui/")
+	code, page, hd := c.get("/ui/approvals")
 	if code != 200 || !strings.Contains(hd.Get("Content-Security-Policy"), "default-src 'none'") || !strings.Contains(page, "Nothing is waiting") {
 		t.Fatalf("page %d %v\n%s", code, hd, page)
 	}
@@ -252,7 +252,7 @@ func TestApprovalPageNeedsTheSystemPromptAndEscapesAgentText(t *testing.T) {
 	}
 	c := newPageClient(t, f)
 	c.get(linkPath(t, f))
-	_, page, _ := c.get("/ui/")
+	_, page, _ := c.get("/ui/approvals")
 	if strings.Contains(page, "<script>alert") {
 		t.Fatal("agent text was not escaped")
 	}
@@ -284,7 +284,7 @@ func TestApprovalPageFormsPassTheOriginCheckOnlyFromThePage(t *testing.T) {
 	f := setupAccessWith(t, humancheck.NewGate(&promptStub{confirm: true}))
 	c := newPageClient(t, f)
 	c.get(linkPath(t, f))
-	_, page, _ := c.get("/ui/")
+	_, page, _ := c.get("/ui/approvals")
 	if c.origin() != c.base {
 		t.Fatalf("a browser would post this page's forms with Origin %q", c.origin())
 	}
@@ -358,7 +358,7 @@ func TestApprovalPageRejectsWithoutAPromptAndIsReadOnlyWithoutOne(t *testing.T) 
 	}
 	c := newPageClient(t, f)
 	c.get(linkPath(t, f))
-	_, page, _ := c.get("/ui/")
+	_, page, _ := c.get("/ui/approvals")
 	if strings.Contains(page, `value="approve"`) || !strings.Contains(page, "cannot show a system confirmation") {
 		t.Fatalf("page offers approval without a system prompt:\n%s", page)
 	}
@@ -382,7 +382,7 @@ func TestApprovalPageSyncAllAsksThePerson(t *testing.T) {
 	f := setupAccessWith(t, humancheck.NewGate(stub))
 	c := newPageClient(t, f)
 	c.get(linkPath(t, f))
-	_, page, _ := c.get("/ui/")
+	_, page, _ := c.get("/ui/approvals")
 	csrf := csrfOf(t, page)
 	code, _, hd := c.post("/ui/mode", url.Values{"csrf": {csrf}, "mode": {"all"}, "history": {"now"}})
 	if code != 303 || !strings.Contains(hd.Get("Location"), "n=declined") {

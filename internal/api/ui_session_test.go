@@ -135,7 +135,7 @@ func TestEveryPageWarnsWhileWasyncIsNotInTheBackground(t *testing.T) {
 		})
 		c := newPageClient(t, f)
 		c.get(linkPath(t, f))
-		for _, path := range []string{"/ui/", "/ui/chats", "/ui/sent", "/ui/agents", "/ui/setup"} {
+		for _, path := range []string{"/ui/approvals", "/ui/chats", "/ui/sent", "/ui/agents", "/ui/setup"} {
 			_, page, _ := c.get(path)
 			if tc.want != "" && !strings.Contains(page, tc.want) || tc.deny != "" && strings.Contains(page, tc.deny) {
 				t.Fatalf("%+v %s:\n%s", tc, path, page)

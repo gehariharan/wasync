@@ -29,8 +29,10 @@ import (
 
 const (
 	uiLinkPath = "/api/ui/link"
-	uiCookie   = "wasync_ui"
-	uiLinkTTL  = 2 * time.Minute
+	// uiApprovalsPath is the approval page; the app itself opens on Chats.
+	uiApprovalsPath = "/ui/approvals"
+	uiCookie        = "wasync_ui"
+	uiLinkTTL       = 2 * time.Minute
 	// uiSessionTTL is how long a session lasts without a request; each request
 	// starts it again, up to uiSessionMax after signing in.
 	uiSessionTTL = 30 * time.Minute
@@ -246,11 +248,15 @@ var notices = map[string]struct {
 
 func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	hd := w.Header()
-	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; media-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; media-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	hd.Set("X-Frame-Options", "DENY")
 	hd.Set("Referrer-Policy", "same-origin")
 	login := remoteLogin(r)
 	switch {
+	case r.Method == http.MethodGet && (r.URL.Path == "/ui/" || r.URL.Path == "/ui"):
+		// The app opens on Chats; approvals have their own page.
+		http.Redirect(w, r, "/ui/chats", http.StatusSeeOther)
+		return
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/enter" && login != "":
 		http.Redirect(w, r, "/ui/", http.StatusSeeOther)
 		return
@@ -276,7 +282,7 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	}
 	setSessionCookie(w, cookie, sess)
 	switch {
-	case r.Method == http.MethodGet && (r.URL.Path == "/ui/" || r.URL.Path == "/ui"):
+	case r.Method == http.MethodGet && r.URL.Path == uiApprovalsPath:
 		h.uiHome(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/decide":
 		h.uiDecide(w, r, sess)
@@ -316,7 +322,7 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 }
 
 // signInPages are the pages a sign-in may return to.
-var signInPages = map[string]bool{"/ui/": true, "/ui/chats": true, "/ui/sent": true, "/ui/agents": true, "/ui/setup": true}
+var signInPages = map[string]bool{"/ui/": true, uiApprovalsPath: true, "/ui/chats": true, "/ui/sent": true, "/ui/agents": true, "/ui/setup": true}
 
 // signedOut answers a request with no session: the page says how to sign in
 // again, and on this computer offers to do it with the system confirmation.
@@ -370,7 +376,7 @@ func (h *handler) uiEnter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setSessionCookie(w, cookie, sess)
-	to := "/ui/"
+	to := uiApprovalsPath // wasync approvals asks for no page
 	switch r.URL.Query().Get("next") {
 	case "setup":
 		to = "/ui/setup"
@@ -396,7 +402,7 @@ func (h *handler) uiFormLimit(w http.ResponseWriter, r *http.Request, sess uiSes
 }
 
 func (h *handler) uiBack(w http.ResponseWriter, r *http.Request, notice string) {
-	to := "/ui/"
+	to := uiApprovalsPath
 	if strings.HasPrefix(r.URL.Path, "/ui/setup") {
 		to = "/ui/setup"
 	}
@@ -610,6 +616,9 @@ const uiHeadBase = `{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 {{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
 <title>{{.Title}}</title>
+<link rel="manifest" href="/ui/manifest.webmanifest"><link rel="icon" href="/ui/favicon.ico" sizes="48x48"><link rel="icon" href="/ui/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/ui/apple-touch-icon.png">
+<meta name="application-name" content="wasync"><meta name="apple-mobile-web-app-title" content="wasync">
+<meta name="theme-color" content="#fafaf7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#141716" media="(prefers-color-scheme: dark)">
 <style>
 :root{color-scheme:light dark;--bg:#fafaf7;--fg:#1c1f1d;--mut:#5d6660;--card:#fff;--line:#d9ddd8;--acc:#0f7a4a;--bad:#a4262c}
 @media (prefers-color-scheme:dark){:root{--bg:#141716;--fg:#e7ebe8;--mut:#9aa59e;--card:#1c201e;--line:#2c3330;--acc:#4cc38a;--bad:#ff8a8f}}
@@ -624,7 +633,7 @@ button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
 </style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
-<nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/">Approvals</a> · <a href="/ui/setup">Set up</a></nav>
+<nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/approvals">Approvals</a> · <a href="/ui/setup">Set up</a></nav>
 {{if .Warn}}<p class="bad" role="status"><strong>{{.Warn}}</strong>{{if .WarnSetup}} <a href="/ui/setup#login">Start at login</a>{{end}}</p>{{end}}{{end}}`
 
 var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}
@@ -658,7 +667,7 @@ var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "he
 <button name="action" value="reject">Reject</button>
 </form></section>
 {{else}}<p class="mut">Nothing is waiting.</p>{{end}}
-<p><a href="/ui/">Refresh</a></p>
+<p><a href="/ui/approvals">Refresh</a></p>
 <h2>How agents get chats</h2>
 <section class="card">
 <p><strong>Now:</strong> {{.Mode}}{{if .ModeAll}} (history: {{.ModeHistory}}){{end}}</p>

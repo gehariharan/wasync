@@ -207,7 +207,7 @@ func TestRemotePagesNeverRaiseTheSystemPrompt(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := newTailnetClient(t, f, tailnetLogin)
-	code, page, _ := c.get("/ui/")
+	code, page, _ := c.get("/ui/approvals")
 	if code != 200 || !strings.Contains(page, "Approve on the computer running wasync.") || strings.Contains(page, `value="approve"`) {
 		t.Fatalf("remote approvals page: %d\n%s", code, page)
 	}
@@ -224,7 +224,7 @@ func TestRemotePagesNeverRaiseTheSystemPrompt(t *testing.T) {
 	if !strings.Contains(hd.Get("Location"), "n=remote") {
 		t.Fatalf("remote open sending: %q", hd.Get("Location"))
 	}
-	if _, notice, _ := c.get("/ui/?n=remote"); !strings.Contains(notice, "Do this on the computer running wasync.") {
+	if _, notice, _ := c.get("/ui/approvals?n=remote"); !strings.Contains(notice, "Do this on the computer running wasync.") {
 		t.Fatalf("notice:\n%s", notice)
 	}
 	if len(stub.seen()) != 0 {
