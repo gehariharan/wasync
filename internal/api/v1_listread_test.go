@@ -292,12 +292,13 @@ func TestReadsOverEveryChatAuditTheListChatsTheyReturn(t *testing.T) {
 		status      int
 	}{
 		{lister, "/api/v1/health/deep", 200},
+		{lister, "/api/v1/diagnostics", 200},
 		{lister, "/api/v1/messages/not-a-ref", 400},
 		{lister, "/api/v1/messages/not-a-ref/thread", 400},
 		{agent, "/api/v1/messages/search?q=nothing-matches-this", 200},
 		{f.grantOnDemand(t, "plain", agentauth.ScopeReadMessages), "/api/v1/messages/search?q=please", 200},
 	} {
-		if status, body := f.send(t, "GET", read.path, read.token, ""); status != read.status {
+		if status, body := f.send(t, "GET", read.path, read.token, ""); status != read.status || strings.Contains(string(body), listed) || strings.Contains(string(body), hiddenChat) {
 			t.Fatalf("%s: %d %s", read.path, status, body)
 		}
 	}

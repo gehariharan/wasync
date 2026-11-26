@@ -18,12 +18,12 @@ import (
 // W-03b/W-03c: chats, messages, search with context, message refs and threads.
 func init() {
 	for _, route := range []v1Route{
-		{Pattern: "/api/v1/chats", Scope: agentauth.ScopeReadChats, Chat: nil, Handle: (*handler).v1Chats},
-		{Pattern: "/api/v1/chats/{chat}", Scope: agentauth.ScopeReadChats, Chat: pathChat("chat"), Handle: (*handler).v1Chat},
-		{Pattern: "/api/v1/chats/{chat}/messages", Scope: agentauth.ScopeReadMessages, Chat: pathChat("chat"), Handle: (*handler).v1ChatMessages},
-		{Pattern: "/api/v1/messages/search", Scope: agentauth.ScopeReadMessages, Chat: queryChat("chat"), Handle: (*handler).v1Search},
-		{Pattern: "/api/v1/messages/{ref}", Scope: agentauth.ScopeReadMessages, Chat: refChat("ref"), Handle: (*handler).v1Message},
-		{Pattern: "/api/v1/messages/{ref}/thread", Scope: agentauth.ScopeReadMessages, Chat: refChat("ref"), Handle: (*handler).v1Thread},
+		{Pattern: "/api/v1/chats", Scope: agentauth.ScopeReadChats, Chat: nil, ListRead: true, Handle: (*handler).v1Chats},
+		{Pattern: "/api/v1/chats/{chat}", Scope: agentauth.ScopeReadChats, Chat: pathChat("chat"), ListRead: true, Handle: (*handler).v1Chat},
+		{Pattern: "/api/v1/chats/{chat}/messages", Scope: agentauth.ScopeReadMessages, Chat: pathChat("chat"), ListRead: true, Handle: (*handler).v1ChatMessages},
+		{Pattern: "/api/v1/messages/search", Scope: agentauth.ScopeReadMessages, Chat: queryChat("chat"), ListRead: true, Handle: (*handler).v1Search},
+		{Pattern: "/api/v1/messages/{ref}", Scope: agentauth.ScopeReadMessages, Chat: refChat("ref"), ListRead: true, Handle: (*handler).v1Message},
+		{Pattern: "/api/v1/messages/{ref}/thread", Scope: agentauth.ScopeReadMessages, Chat: refChat("ref"), ListRead: true, Handle: (*handler).v1Thread},
 	} {
 		handle := route.Handle
 		route.Handle = func(h *handler, w http.ResponseWriter, r *http.Request, id string) {

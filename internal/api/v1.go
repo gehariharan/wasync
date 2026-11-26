@@ -46,7 +46,10 @@ type v1Route struct {
 	Pattern, Scope string
 	Chat           func(*http.Request) string
 	Mutation       bool
-	Handle         func(h *handler, w http.ResponseWriter, r *http.Request, id string)
+	// ListRead marks a route that reads chats, which an agent may also do
+	// on the chats its approved recipient list allows (see v1Authorize).
+	ListRead bool
+	Handle   func(h *handler, w http.ResponseWriter, r *http.Request, id string)
 	// Authorize, when set, makes the whole credential decision for the route
 	// in place of the scope-and-chat check, and writes the refusal itself. It
 	// is for the one route that can also be authorized by open sending.
@@ -90,7 +93,7 @@ func (h *handler) buildV1() {
 			if route.Chat != nil {
 				chat = route.Chat(r)
 			}
-			if !h.v1Authorize(w, r, id, route.Scope, chat, route.Mutation) {
+			if !h.v1Authorize(w, r, id, route.Scope, chat, route.Mutation, route.ListRead) {
 				return
 			}
 			route.Handle(h, w, r, id)
@@ -98,7 +101,7 @@ func (h *handler) buildV1() {
 	}
 	h.v1Mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		id, _ := r.Context().Value(v1IDKey{}).(string)
-		if !h.v1Authorize(w, r, id, "", "", false) {
+		if !h.v1Authorize(w, r, id, "", "", false, false) {
 			return
 		}
 		v1Fail(w, id, 404, query.CodeNotFound, "unknown v1 endpoint", "see GET /api/v1/version for supported features")
@@ -118,17 +121,17 @@ func v1Client(r *http.Request) *agentauth.Client {
 // Reads are audited on denial, mutations always; the authenticated client is
 // stored on r.
 //
-// A restricted agent with an approved recipient list may also read, with the
-// read scopes it holds, the chats of the numbers its list messaged (see
-// listReads): those chats are added to the client for this request, and a read
+// On a ListRead route, a restricted agent with an approved recipient list may
+// also read, with the read scopes it holds, the chats of the numbers its list
+// messaged (see listReads): those chats are added to the client for this request, and a read
 // naming one only the list allows is authorized and audited as a list read.
 // A chat list or a search over every chat audits the list chats it returns
 // itself (see auditListReads).
-func (h *handler) v1Authorize(w http.ResponseWriter, r *http.Request, id, scope, chat string, mutation bool) bool {
+func (h *handler) v1Authorize(w http.ResponseWriter, r *http.Request, id, scope, chat string, mutation, listRead bool) bool {
 	var check func(*agentauth.Client) error
 	if scope != "" {
 		check = func(c *agentauth.Client) error {
-			if agentauth.ListReadable(scope) && c.Restricted() && c.HasScope(scope) {
+			if listRead && agentauth.ListReadable(scope) && c.Restricted() && c.HasScope(scope) {
 				c.ListChats = h.listReads(r.Context(), c.ID)
 				if chat != "" && c.OnlyListAllows(scope, chat) {
 					return h.agents.AuthorizeListRead(c, scope, chat, r.PathValue("ref"), id)
