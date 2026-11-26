@@ -261,19 +261,23 @@ func TestReadsOverEveryChatAuditTheListChatsTheyReturn(t *testing.T) {
 	f.approveList(t, "lister", nil, "15551230000")
 	reads := []struct {
 		token, path string
+		status      int
 		want        []string
 	}{
 		// Only the messaged number's chat holds "please"; its hidden-ID chat
 		// is readable but not in the result.
-		{agent, "/api/v1/messages/search?q=please", []string{listed}},
-		{lister, "/api/v1/chats", []string{listed, hiddenChat}},
+		{agent, "/api/v1/messages/search?q=please", 200, []string{listed}},
+		{lister, "/api/v1/chats", 200, []string{listed, hiddenChat}},
+		// Both chats it sees are named after their address and contain a
+		// "0" inside, so the match is ambiguous and the refusal names both.
+		{lister, "/api/v1/chats?match=0", 409, []string{listed, hiddenChat}},
 	}
 	for _, read := range reads {
 		status, body := f.send(t, "GET", read.path, read.token, "")
 		var got struct {
 			RequestID string `json:"request_id"`
 		}
-		if status != 200 || json.Unmarshal(body, &got) != nil || got.RequestID == "" {
+		if status != read.status || json.Unmarshal(body, &got) != nil || got.RequestID == "" {
 			t.Fatalf("%s: %d %s", read.path, status, body)
 		}
 		chats := f.listReadAudit(t)[got.RequestID]

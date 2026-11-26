@@ -95,15 +95,20 @@ func (h *handler) v1Chats(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	list, ambiguous := query.V1Chats(a.ID, groups, enabled, match, v1Client(r).AllowsChat)
-	if ambiguous != nil {
-		writeJSON(w, 409, query.V1Error{RequestID: id, ErrorCode: query.CodeChatAmbiguous, Error: ambiguous.Error(), Help: query.ChatAmbiguousHelp, Details: ambiguous})
-		return
-	}
-	chats := make([]string, 0, len(list.Items))
+	var chats []string
 	for _, g := range list.Items {
 		chats = append(chats, g.ID)
 	}
+	if ambiguous != nil {
+		for _, c := range ambiguous.Candidates {
+			chats = append(chats, c.ID)
+		}
+	}
 	if !h.auditListReads(w, r, id, agentauth.ScopeReadChats, chats) {
+		return
+	}
+	if ambiguous != nil {
+		writeJSON(w, 409, query.V1Error{RequestID: id, ErrorCode: query.CodeChatAmbiguous, Error: ambiguous.Error(), Help: query.ChatAmbiguousHelp, Details: ambiguous})
 		return
 	}
 	v1OK(w, id, list, nil)
