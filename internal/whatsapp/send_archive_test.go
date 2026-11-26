@@ -93,23 +93,21 @@ func archivedText(t *testing.T, s *storage.Store, account int64, chat, id string
 	return m
 }
 
-// A message sent to a number wasync has never seen (a list or open send, or a
-// new message from the web app) is archived in that number's chat, which is
-// switched on, so it shows at the top of Chats with its time and count.
-func TestSendToANewNumberArchivesItInItsChat(t *testing.T) {
+// A message sent to a chat the owner never chose to archive is not kept, and
+// the send does not switch archiving on for that chat.
+func TestSendToANeverChosenChatKeepsNothing(t *testing.T) {
 	c, fake, s, account := sendingClient(t)
+	ctx := context.Background()
 	number := "15551230000@s.whatsapp.net"
-	out, err := c.Send(context.Background(), SendInput{To: number, Text: "Hello from the shop list"})
+	out, err := c.Send(ctx, SendInput{To: number, Text: "Hello there", SentBy: "outreach"})
 	if err != nil || out.Status != "server_acknowledged" || out.ArchiveWarning != "" || len(fake.sent) != 1 {
 		t.Fatalf("%+v %v", out, err)
 	}
-	m := archivedText(t, s, account, number, out.MessageID)
-	if !m.FromMe || m.Text != "Hello from the shop list" || m.SenderID != ownJID.String() || !m.Timestamp.Equal(fake.at) {
-		t.Fatalf("archived as %+v", m)
+	if on, err := s.IsEnabled(ctx, account, number); err != nil || on {
+		t.Fatalf("archiving switched on by a send: %v %v", on, err)
 	}
-	g := summary(t, s, account, number)
-	if !g.Enabled || g.MessageCount != 1 || g.LastMessage == nil || !g.LastMessage.Equal(fake.at) {
-		t.Fatalf("chat after the send: %+v", g)
+	if _, err := s.MessageByWhatsAppID(ctx, account, number, out.MessageID); err == nil {
+		t.Fatal("a send to a never-chosen chat was archived")
 	}
 }
 
@@ -129,11 +127,18 @@ func TestSendToACapturedChatArchivesIt(t *testing.T) {
 	if err != nil || out.ArchiveWarning != "" {
 		t.Fatalf("%+v %v", out, err)
 	}
-	if m := archivedText(t, s, account, chat, out.MessageID); m.Text != "dinner at 8" || !m.FromMe {
-		t.Fatalf("%+v", m)
+	if m := archivedText(t, s, account, chat, out.MessageID); m.Text != "dinner at 8" || !m.FromMe || m.SenderID != ownJID.String() || m.SentBy != "" {
+		t.Fatalf("the owner's message: %+v", m)
 	}
 	if g := summary(t, s, account, chat); g.MessageCount != 1 || g.LastMessage == nil || !g.LastMessage.Equal(fake.at) || g.Name != "Family" {
 		t.Fatalf("%+v", g)
+	}
+	out, err = c.Send(ctx, SendInput{To: chat, Text: "Hello from the shop list", SentBy: "outreach"})
+	if err != nil || out.ArchiveWarning != "" {
+		t.Fatalf("%+v %v", out, err)
+	}
+	if m := archivedText(t, s, account, chat, out.MessageID); m.Text != "Hello from the shop list" || !m.FromMe || m.SentBy != "outreach" {
+		t.Fatalf("the agent's message: %+v", m)
 	}
 }
 
@@ -175,7 +180,8 @@ func TestUnacknowledgedSendKeepsNothing(t *testing.T) {
 	}
 }
 
-// A reply goes through the same path, so it is archived the same way.
+// A reply goes through the same path, so it is archived the same way, with
+// the agent that sent it.
 func TestReplyIsArchivedInItsChat(t *testing.T) {
 	c, _, s, account := sendingClient(t)
 	ctx := context.Background()
@@ -190,11 +196,12 @@ func TestReplyIsArchivedInItsChat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	in.SentBy = "outreach"
 	out, err := c.Reply(ctx, in)
 	if err != nil || out.ArchiveWarning != "" {
 		t.Fatalf("%+v %v", out, err)
 	}
-	if m := archivedText(t, s, account, chat, out.MessageID); m.Text != "yes" || m.ReplyTo != "m1" {
+	if m := archivedText(t, s, account, chat, out.MessageID); m.Text != "yes" || m.ReplyTo != "m1" || m.SentBy != "outreach" {
 		t.Fatalf("%+v", m)
 	}
 }

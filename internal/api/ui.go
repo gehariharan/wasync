@@ -215,7 +215,7 @@ var notices = map[string]struct {
 	"nogate":     {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
 	"remote":     {"Do this on the computer running wasync.", false},
 	"saved":      {"Saved.", true},
-	"sentok":     {"Sent: WhatsApp accepted it.", true},
+	"sentok":     {"Sent: WhatsApp accepted it. It shows in the chat once WhatsApp passes it back.", true},
 	"sendfail":   {"That was not sent, or WhatsApp did not confirm it. Check WhatsApp before sending it again.", false},
 	"offline":    {"wasync is not connected to WhatsApp, so nothing was sent.", false},
 	"notext":     {"Write a message first.", false},

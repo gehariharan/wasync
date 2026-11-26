@@ -8,9 +8,7 @@ it runs, and asks for older ones on a best-effort basis.
 
 Only explicitly enabled chats are archived. You choose them on the web app's chat picker
 (`wasync web`, then the ☑ icon), on the setup page, with `wasync chats enable`, or when you
-approve an agent's request for a chat. Sending from wasync to a chat you never chose about,
-including an agent's message to a number on its approved list, also turns it on, so the sent
-message is kept in that chat. Disabling a chat takes effect at
+approve an agent's request for a chat. Disabling a chat takes effect at
 the database transaction boundary and retains existing records. Purge disables
 capture and removes the chat's stored records and search entries.
 

@@ -74,13 +74,9 @@ func (h *handler) composeSend(w http.ResponseWriter, r *http.Request, sess uiSes
 	if err != nil {
 		notice = "sendfail"
 	}
-	switch {
-	case err == nil:
-		// The message is in its chat, which is now at the top of Chats.
-		back("/ui/chats", url.Values{"c": {target}}, notice)
-	case viaNumber:
+	if viaNumber {
 		back("/ui/sent", url.Values{}, notice)
-	default:
-		back("/ui/chats", url.Values{"c": {chat}}, notice)
+		return
 	}
+	back("/ui/chats", url.Values{"c": {chat}}, notice)
 }

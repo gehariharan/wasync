@@ -202,13 +202,14 @@ chat, when, the WhatsApp message ID and the outcome, never the text) and listed 
 **Sent** page, which reads the text back from your archive. "Sent" means WhatsApp accepted the
 message, not that it was delivered or read.
 
-Whatever wasync sends is also kept in its chat as your outgoing message, so the chat moves to the
-top of **Chats**; a message an agent sent is marked there with the agent's name, as on the Sent
-page. Sending to a chat you never chose to sync turns syncing on for it; a chat you turned off
-stays off and keeps nothing. Releases before this kept a message only when its chat was already
-syncing, so the first start of this one adds those earlier messages to chats that sync now,
-once, from the sent log: they show at the time they were sent, without their text, which was
-never stored.
+A message wasync sends is kept in its chat as your outgoing message only when that chat is
+archived; a message an agent sent is marked there with the agent's name, as on the Sent page. A
+send to an approved-list number switches that number's chat on before the message goes, even if
+you turned it off, so the message is kept in that chat and the chat moves to the top of **Chats**.
+Other sends never switch a chat on. Releases before this switched a listed number's chat on only
+after the first message went, so the first start of this one adds those earlier list messages to
+their chats, once, from the sent log: they show at the time they were sent, without their text,
+which was never stored. If WhatsApp later delivers the real copy, it replaces the one added.
 
 ## What agents can do
 

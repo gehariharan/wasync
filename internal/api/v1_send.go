@@ -174,7 +174,7 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 	}
-	in := whatsapp.SendInput{To: target, Text: body.Text, Video: body.Video, Thumbnail: body.Thumbnail}
+	in := whatsapp.SendInput{To: target, Text: body.Text, Video: body.Video, Thumbnail: body.Thumbnail, SentBy: agentName(r)}
 	if len(in.Video) > 0 {
 		in.Type = "video"
 	}

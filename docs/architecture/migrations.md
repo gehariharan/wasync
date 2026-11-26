@@ -101,7 +101,10 @@ INSERT INTO schema_compat(id,min_reader,min_writer) VALUES(1,5,6)
 
 Migration 006 (the change journal) is the first to create `schema_compat`, with
 `min_reader=5` and `min_writer=6`: schema-5 queries remain correct, but a
-schema-5 owner would write without appending to the journal.
+schema-5 owner would write without appending to the journal. Migration 007
+adds `messages.sent_by` (the agent that sent an outgoing message, empty
+otherwise) and keeps both values: older readers ignore the column, and a
+schema-6 owner only leaves it empty.
 
 Binaries before this check (schema 5 releases without it) ignore
 `schema_compat` and always refuse newer archives, so the release containing it

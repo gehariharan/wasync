@@ -92,6 +92,7 @@ func (h *handler) v1Reply(w http.ResponseWriter, r *http.Request, id string) {
 		v1WriteInvalid(w, id, err)
 		return
 	}
+	in.SentBy = agentName(r)
 	result, err := h.ops.Reply(r.Context(), in)
 	h.recordSent(agentName(r), "reply", m.GroupID, result, err)
 	v1WriteResult(w, id, result, err)

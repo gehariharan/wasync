@@ -88,9 +88,10 @@ func (c *Client) out() outbound {
 	return c.wa()
 }
 
-// sendWrite sends one built message and archives the sender's own copy. A
+// sendWrite sends one built message and archives the sender's own copy when
+// its chat is archived, marked with the agent that sent it, if any. A
 // transport error leaves the outcome unknown and is never retried.
-func (c *Client) sendWrite(ctx context.Context, jid types.JID, message *waE2E.Message, out SendResult) (SendResult, error) {
+func (c *Client) sendWrite(ctx context.Context, jid types.JID, message *waE2E.Message, out SendResult, sentBy string) (SendResult, error) {
 	out.MessageID = c.out().GenerateMessageID()
 	out.Status = "unknown"
 	response, err := c.out().SendMessage(ctx, jid, message, whatsmeow.SendRequestExtra{ID: out.MessageID, Timeout: 45 * time.Second, CheckPermissions: true})
@@ -101,46 +102,10 @@ func (c *Client) sendWrite(ctx context.Context, jid types.JID, message *waE2E.Me
 	out.Timestamp = response.Timestamp
 	if c.capture != nil {
 		event := &events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, Sender: c.wa().Store.ID.ToNonAD(), IsFromMe: true, IsGroup: jid.Server == types.GroupServer}, ID: out.MessageID, Timestamp: response.Timestamp}, Message: message, RawMessage: message}
-		if err = c.archiveSent(event); err != nil {
+		if err = c.captureSent(event, sentBy); err != nil {
 			out.ArchiveWarning = "Message acknowledged, but local archive failed; do not resend"
 			c.StopCapture(err)
 		}
 	}
 	return out, nil
-}
-
-// archiveSent stores this device's own copy of a message it just sent. That
-// copy is archived here or never: WhatsApp does not hand a sent message back
-// to the device that sent it. A chat the owner never chose to capture or not
-// is switched on first, so whatever wasync sends is in its chat on the Chats
-// page; a chat the owner turned off stays off and keeps nothing.
-func (c *Client) archiveSent(event *events.Message) error {
-	if err := c.captureSentChat(event.Info.Chat); err != nil {
-		return err
-	}
-	return c.captureEvent(event)
-}
-
-func (c *Client) captureSentChat(chat types.JID) error {
-	p := c.capture
-	if p.metadataOnly || !SupportedChat(chat) {
-		return nil
-	}
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.failed.Load() {
-		return fmt.Errorf("capture already stopped")
-	}
-	account := p.account.Load()
-	if account == 0 {
-		return nil
-	}
-	if err := c.discoverDirect(p.ctx, account, chat, ""); err != nil {
-		return err
-	}
-	never, err := p.store.NeverCaptured(p.ctx, account, chat.String())
-	if err != nil || !never {
-		return err
-	}
-	return p.store.EnableCapture(p.ctx, account, chat.String(), false)
 }

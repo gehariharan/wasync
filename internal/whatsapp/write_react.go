@@ -122,5 +122,5 @@ func (c *Client) React(ctx context.Context, in ReactInput) (SendResult, error) {
 		return out, err
 	}
 	jid, _ := ParseChat(in.To)
-	return c.sendWrite(ctx, jid, message, out)
+	return c.sendWrite(ctx, jid, message, out, "")
 }

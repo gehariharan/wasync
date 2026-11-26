@@ -394,7 +394,7 @@ func TestUpgradeFromSchema5CreatesJournal(t *testing.T) {
 	if got := backupFiles(t, path); len(got) != 1 || !strings.Contains(got[0], ".pre-v5-") {
 		t.Fatalf("backups %v", got)
 	}
-	if v := userVersion(t, s.db); v != 6 {
+	if v := userVersion(t, s.db); v != SchemaVersion {
 		t.Fatalf("schema %d", v)
 	}
 	compat, err := readSchemaCompat(ctx, s.db)

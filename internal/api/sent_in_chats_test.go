@@ -16,7 +16,8 @@ import (
 
 // archivingSender is a fake WhatsApp connection that keeps the sent copy the
 // way the real client does: in the chat, when that chat is captured at the
-// moment the message goes. It never reaches WhatsApp.
+// moment the message goes, marked with the agent that sent it. It never
+// reaches WhatsApp.
 type archivingSender struct {
 	mu      sync.Mutex
 	store   *storage.Store
@@ -30,7 +31,7 @@ func (s *archivingSender) send(ctx context.Context, in whatsapp.SendInput) (what
 	defer s.mu.Unlock()
 	s.n++
 	id := "OUT" + string(rune('0'+s.n))
-	m := storage.Message{GroupID: in.To, MessageID: id, SenderID: "synthetic@lid", Timestamp: s.at, Type: "text", Text: in.Text, FromMe: true, Source: "live"}
+	m := storage.Message{GroupID: in.To, MessageID: id, SenderID: "synthetic@lid", Timestamp: s.at, Type: "text", Text: in.Text, FromMe: true, Source: "live", SentBy: in.SentBy}
 	if _, err := s.store.Apply(ctx, s.account, []storage.Message{m}); err != nil {
 		return whatsapp.SendResult{}, err
 	}
@@ -137,7 +138,7 @@ func TestBackfillPutsEarlierSentMessagesInTheirChatsOnce(t *testing.T) {
 		t.Fatalf("backfill: %d %v", n, err)
 	}
 	m, err := a.store.MessageByWhatsAppID(ctx, a.account, listed, "OLD1")
-	if err != nil || !m.FromMe || m.Text != "" || m.Source != sentlog.Source || !m.Timestamp.Equal(at) {
+	if err != nil || !m.FromMe || m.Text != "" || m.Source != storage.SourceSentLog || !m.Timestamp.Equal(at) {
 		t.Fatalf("backfilled message: %+v %v", m, err)
 	}
 	if fam, err := a.store.MessageByWhatsAppID(ctx, a.account, familyChat, "m1"); err != nil || fam.Text != "synthetic family text" {
@@ -148,9 +149,25 @@ func TestBackfillPutsEarlierSentMessagesInTheirChatsOnce(t *testing.T) {
 			t.Fatalf("%s in %s should not have been added", id, chat)
 		}
 	}
+	if m.SentBy != "outreach" {
+		t.Fatalf("the backfilled message is not marked as the agent's: %+v", m)
+	}
 	_, page, _ := c.get("/ui/chats?c=" + url.QueryEscape(listed))
 	if !strings.Contains(page, "🤖 outreach") || !strings.Contains(page, "text not kept") {
 		t.Fatalf("the backfilled message is not shown as the agent's:\n%s", page)
+	}
+	// When WhatsApp later delivers the real copy, it replaces the one filled in,
+	// and the message is still the agent's.
+	real := storage.Message{GroupID: listed, MessageID: "OLD1", SenderID: "synthetic@lid", Timestamp: at, Type: "text", Text: "Hello Corner Shop", FromMe: true, Source: "history"}
+	if r, err := a.store.ApplyHistory(ctx, a.account, 0, []storage.Message{real}); err != nil || r.Stored != 1 {
+		t.Fatalf("the real copy was not stored: %+v %v", r, err)
+	}
+	if m, err = a.store.MessageByWhatsAppID(ctx, a.account, listed, "OLD1"); err != nil || m.Text != "Hello Corner Shop" || m.Source != "history" || m.SentBy != "outreach" {
+		t.Fatalf("the real copy did not replace the filled-in one: %+v %v", m, err)
+	}
+	_, page, _ = c.get("/ui/chats?c=" + url.QueryEscape(listed))
+	if !strings.Contains(page, "Hello Corner Shop") || strings.Contains(page, "text not kept") || !strings.Contains(page, "🤖 outreach") {
+		t.Fatalf("the chat does not show the real copy:\n%s", page)
 	}
 	// Once only: a chat purged afterwards does not get it back.
 	if err = a.store.PurgeGroup(ctx, a.account, listed); err != nil {
