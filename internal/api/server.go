@@ -303,6 +303,8 @@ func (h *handler) routes() http.Handler {
 				fail(w, 403, "only the web app is served on this address")
 			case !sameHTTPSOrigin(r):
 				fail(w, 403, "foreign origin")
+			case isWebAsset(r.URL.Path):
+				serveWebAsset(w, r)
 			default:
 				h.serveUI(w, r.WithContext(context.WithValue(r.Context(), remoteKey{}, login)))
 			}
@@ -317,6 +319,10 @@ func (h *handler) routes() http.Handler {
 		}
 		if isV1(r.URL.Path) {
 			h.serveV1(w, r)
+			return
+		}
+		if isWebAsset(r.URL.Path) {
+			serveWebAsset(w, r)
 			return
 		}
 		if isUI(r.URL.Path) {
