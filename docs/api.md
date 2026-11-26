@@ -109,6 +109,7 @@ a plaintext bearer token is rejected there.
 | `POST /api/media/policy`, `POST /api/media/download` | | `wasync media` |
 | `POST /api/sync` | | `wasync sync` |
 | `POST /api/actions`, `GET /api/actions/{id}` | | `wasync clean`, `wasync delete`, `wasync actions status` |
+| `GET /api/agent-requests`, `POST /api/agent-requests/{id}/approve`, `POST /api/agent-requests/{id}/decline`, `POST /api/agent-requests/decline-all` | | The messages agents ask to send ([send requests](agents.md#sending-to-other-chats-and-new-numbers)), oldest first with `expires_at`, for a desktop app. Approving needs the approval credential and the system confirmation, one request at a time; listing and declining need `send.token` |
 
 The wasync app's settings (its First open flag and its start-at-login item) are read
 and changed on signed-in pages, under `/ui/desktop`; see

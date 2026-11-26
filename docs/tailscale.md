@@ -56,7 +56,7 @@ anything that narrows access (stopping an agent's sending, pausing or removing a
 open sending off, rejecting a request) work as they do locally.
 
 Anything that asks for the operating system's confirmation on the computer running wasync needs
-a passkey on the device you are using instead: approving an agent's request, sync all chats,
+a passkey on the device you are using instead: approving a message an agent asks to send,
 letting an agent send, open sending, approving or resuming a list, connecting an agent and start
 at login. Until you set the device up (below), the remote pages show these as read-only and say
 how to set it up; you can still do them on the computer running wasync.

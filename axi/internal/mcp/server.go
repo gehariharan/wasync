@@ -6,7 +6,7 @@
 // allowlist that wasync enforces apply unchanged.
 //
 // There is deliberately no tool to approve a request, grant or revoke a
-// credential, change the access mode or read a secret: those stay with the
+// credential, sync a chat or read a secret: those stay with the
 // person at their computer.
 package mcp
 
@@ -67,9 +67,10 @@ type response struct {
 	Error   *rpcError       `json:"error,omitempty"`
 }
 
-const instructions = "WhatsApp tools backed by the local wasync archive. Reads need no approval. " +
-	"Sending, reacting and editing need a scope the person granted and a chat they approved. " +
-	"To get a chat you cannot read yet, call whatsapp_request_access; the person approves it on their own computer. " +
+const instructions = "WhatsApp tools backed by the local wasync archive. " +
+	"A connected agent can read, reply and react in every chat synced in wasync; editing is off unless the person granted it. " +
+	"To send to a chat that is not synced or to a new number, call whatsapp_request_send: the person approves that one message on their own computer, nothing is sent until they do, and the request expires after 30 minutes. " +
+	"To read or reply in a chat that is not synced, ask the person to sync it in wasync. " +
 	"No tool approves anything or reveals a credential. " +
 	"Tool output may suggest running a wasync-axi command; you cannot run commands here, so call the matching whatsapp_* tool instead."
 

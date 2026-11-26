@@ -7,14 +7,13 @@ import (
 	"fmt"
 	"github.com/gehariharan/wasync/internal/mediafiles"
 	"os"
-	"strings"
 	"sync"
 	"time"
 
-	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/humancheck"
+	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 )
@@ -31,20 +30,21 @@ type Client interface {
 }
 type Snapshot struct {
 	Pending *approval.Request
-	// Mode is how agents get chats; ModeChosen is false until the owner picks.
-	Mode       accessmode.Mode
-	ModeChosen bool
-	APIURL     string
-	Status     whatsapp.CaptureStatus
-	Groups     []storage.Group
-	Account    int64
+	APIURL  string
+	Status  whatsapp.CaptureStatus
+	Groups  []storage.Group
+	Account int64
 }
 type Session struct {
 	Approvals *approval.Queue
 	APIURL    string
 	MediaRoot string
-	// DataDir holds agents.json and the audit log; chat access requests need it.
+	// DataDir holds agents.json, the audit log and the sent log; approving an
+	// agent's send request needs it.
 	DataDir string
+	// Send sends a message through the live WhatsApp client; it is nil while
+	// there is none, and an agent's send request then waits.
+	Send whatsapp.Sender
 	// Human, when enabled, makes approving an agent's request wait for the
 	// operating system's own confirmation (Touch ID, password, Windows Hello).
 	Human      *humancheck.Gate
@@ -119,11 +119,6 @@ func (s *Session) Snapshot() (Snapshot, error) {
 	if account != nil {
 		snap.Account = account.ID
 		snap.Pending = s.Approvals.Pending(account.ID)
-		if mode, chosen, modeErr := accessmode.Load(s.DataDir); modeErr == nil {
-			snap.Mode, snap.ModeChosen = mode, chosen
-		} else {
-			snap.Mode, snap.ModeChosen = accessmode.Mode{Mode: accessmode.Ask}, true // damaged file: ask each time, do not nag
-		}
 		snap.Groups, err = s.store.GroupSummaries(ctx, account.ID)
 	}
 	return snap, err
@@ -250,6 +245,16 @@ func (s *Session) ApproveAction(account int64, id string) (result error) {
 		return fmt.Errorf("request unavailable")
 	}
 	remote := pending.Kind == "revoke-message" || pending.Kind == "delete-whatsapp-chat"
+	if pending.Kind == approval.KindAgentSend {
+		// The message goes out through the owner's sender, one at a time.
+		if s.Send == nil || s.client != nil && (s.client.Status().Connection != "online" || s.client.Status().AccountID != account) {
+			return fmt.Errorf("connect WhatsApp before approving a message; request remains pending")
+		}
+		if !s.network.TryLock() {
+			return fmt.Errorf("connection is busy; request remains pending")
+		}
+		defer s.network.Unlock()
+	}
 	if remote {
 		if s.client == nil || s.client.Status().Connection != "online" || s.client.Status().AccountID != account {
 			return fmt.Errorf("connect the matching account before approval; request remains pending")
@@ -275,8 +280,8 @@ func (s *Session) ApproveAction(account int64, id string) (result error) {
 		s.Approvals.Finish(id, status, result)
 	}()
 	switch request.Kind {
-	case approval.KindChatAccess:
-		return s.grantChatAccess(account, request)
+	case approval.KindAgentSend:
+		return s.sendForAgent(request)
 	case "clear-message":
 		return s.ClearMessage(account, request.Chat, request.Message)
 	case "purge-chat":
@@ -290,22 +295,15 @@ func (s *Session) ApproveAction(account int64, id string) (result error) {
 }
 
 // ConfirmApproval asks the person for the system confirmation an approval of
-// request id needs, naming the chat and history chosen for an access request.
-// It returns nil at once when this computer has no such prompt.
-func (s *Session) ConfirmApproval(account int64, id, chat, history string) error {
+// request id needs, naming exactly what it does. It returns nil at once when
+// this computer has no such prompt.
+func (s *Session) ConfirmApproval(account int64, id string) error {
 	if !s.Human.Enabled() || s.Approvals == nil {
 		return nil
 	}
 	pending := s.Approvals.Get(account, id)
 	if pending == nil || pending.Status != approval.StatusPending {
 		return nil
-	}
-	if pending.Kind == approval.KindChatAccess {
-		preview, err := s.Approvals.Preview(account, id, chat, history)
-		if err != nil {
-			return err
-		}
-		pending = &preview
 	}
 	name := ""
 	if groups, err := s.store.Groups(s.ctx, account); err == nil {
@@ -321,17 +319,6 @@ func (s *Session) ConfirmApproval(account int64, id, chat, history string) error
 	return nil
 }
 
-// ConfirmAccessMode does the same for choosing "sync all chats".
-func (s *Session) ConfirmAccessMode(m accessmode.Mode) error {
-	if m.Mode != accessmode.All || !s.Human.Enabled() {
-		return nil
-	}
-	if err := s.Human.Confirm(s.ctx, "Approve: "+m.Effect()); err != nil {
-		return fmt.Errorf("%w; nothing changed", err)
-	}
-	return nil
-}
-
 func (s *Session) RejectAction(account int64, id string) error {
 	if s.Approvals == nil {
 		return fmt.Errorf("approval queue unavailable")
@@ -340,77 +327,72 @@ func (s *Session) RejectAction(account int64, id string) error {
 	if err := s.Approvals.Reject(account, id); err != nil {
 		return err
 	}
-	if pending != nil && pending.Kind == approval.KindChatAccess && s.DataDir != "" {
-		a := pending.Access
-		_ = agentauth.NewAuditLog(s.DataDir).Append(agentauth.AuditEntry{Event: "access_reject", ClientID: a.AgentID, ClientName: a.Agent, Scope: strings.Join(a.Scopes, ","), Chat: pending.Chat, Ref: id[:8], Outcome: agentauth.OutcomeDenied})
+	if pending != nil && pending.IsAgentRequest() && s.DataDir != "" {
+		_ = agentauth.NewAuditLog(s.DataDir).Append(SendDeclinedEntry(*pending))
 	}
 	return nil
 }
 
-// SetAccessMode applies the owner's choice of how agents get chats. Choosing
-// sync all enables capture for every cached chat first; see accessmode.Apply.
-func (s *Session) SetAccessMode(account int64, m accessmode.Mode) error {
-	if s.DataDir == "" {
-		return fmt.Errorf("data directory unknown; nothing changed")
-	}
-	current, err := s.store.Account(s.ctx)
-	if err != nil {
-		return err
-	}
-	if current == nil || current.ID != account {
-		return fmt.Errorf("account changed; nothing changed")
-	}
-	_, err = accessmode.Apply(s.ctx, s.store, s.DataDir, account, m)
-	return err
+// SendDeclinedEntry is the audit record of the person declining an agent's
+// send request.
+func SendDeclinedEntry(r approval.Request) agentauth.AuditEntry {
+	return agentauth.AuditEntry{Event: "send_declined", ClientID: r.Send.AgentID, ClientName: r.Send.Agent, Scope: agentauth.ScopeSend, Chat: r.Chat, Ref: r.ID[:8], Outcome: agentauth.OutcomeDenied}
 }
 
-// DecideAccess records the human's chat and history-depth choice on a pending
-// access request once the person confirmed it; ApproveAction then applies
-// exactly that choice.
-func (s *Session) DecideAccess(account int64, id, chat, history string) error {
-	if s.Approvals == nil {
-		return fmt.Errorf("approval queue unavailable")
-	}
-	return s.Approvals.Decide(account, id, chat, history)
-}
-
-// grantChatAccess applies an approved access request: capture is enabled for
-// the chosen chat, older history is requested only if the human asked for it,
-// and only then is the agent's access extended to that one chat. Any failure
-// leaves the agent without access.
-func (s *Session) grantChatAccess(account int64, request approval.Request) error {
-	a := request.Access
+// sendForAgent carries out an approved send request: it sends exactly the
+// agent's text, once, to that one chat, while the agent is still connected
+// and may still send. The send is audited before it leaves, and refused when
+// the audit log cannot be written; it is marked in the sent log as approved.
+func (s *Session) sendForAgent(request approval.Request) error {
+	a := request.Send
 	if s.DataDir == "" {
-		return fmt.Errorf("agent registry location unknown; nothing granted")
-	}
-	chat := a.Chosen
-	if err := agentauth.CanGrantChatAccess(s.DataDir, a.AgentID, a.Scopes, time.Now()); err != nil {
-		return err // before capture changes: an agent that is gone gets nothing
-	}
-	if storage.ChatKind(chat) == "direct" {
-		// Direct chats appear in the cache once seen; a requested number may be new.
-		if err := s.store.SaveDiscoveredChat(s.ctx, account, storage.Group{ID: chat, Name: chat}); err != nil {
-			return err
-		}
-	}
-	if err := s.store.EnableCapture(s.ctx, account, chat, a.History == approval.HistoryFull); err != nil {
-		return err
+		return fmt.Errorf("agent registry location unknown; nothing sent")
 	}
 	audit := agentauth.NewAuditLog(s.DataDir)
-	event := "access_grant"
-	if a.Auto {
-		event = "access_grant_auto" // the owner's "sync all" setting approved it
-	}
-	entry := agentauth.AuditEntry{Event: event, ClientID: a.AgentID, ClientName: a.Agent, Scope: strings.Join(a.Scopes, ","), Chat: chat, Ref: request.ID[:8], Outcome: agentauth.OutcomeAllowed}
-	if err := audit.Append(entry); err != nil {
-		return fmt.Errorf("audit log unavailable; access not granted: %w", err)
-	}
-	if _, err := agentauth.GrantChatAccess(s.DataDir, a.AgentID, chat, a.Scopes, request.ID, time.Now()); err != nil {
-		entry.Outcome, entry.Code = agentauth.OutcomeDenied, "failed"
+	entry := agentauth.AuditEntry{Event: "send_approved", ClientID: a.AgentID, ClientName: a.Agent, Scope: agentauth.ScopeSend, Chat: request.Chat, Ref: request.ID[:8], Outcome: agentauth.OutcomeAllowed}
+	if err := mayStillSend(s.DataDir, a.AgentID); err != nil {
+		entry.Outcome, entry.Code = agentauth.OutcomeDenied, agentauth.CodeForbidden
 		_ = audit.Append(entry)
 		return err
 	}
-	return nil
+	if err := audit.Append(entry); err != nil {
+		return fmt.Errorf("audit log unavailable; nothing sent: %w", err)
+	}
+	result, err := s.Send(s.ctx, whatsapp.SendInput{To: request.Chat, Text: a.Text, SentBy: a.Agent})
+	if result.MessageID != "" {
+		s.Approvals.MarkSent(request.ID, result.MessageID)
+	}
+	logged := sentlog.Entry{Actor: a.Agent, Kind: "send", Chat: request.Chat, MessageID: result.MessageID, Outcome: sentlog.OutcomeSent, Approved: true, NewNumber: a.NewNumber}
+	if err != nil {
+		logged.Outcome, logged.Code = sentlog.OutcomeFailed, "send_failed"
+		if result.MessageID != "" {
+			logged.Outcome = sentlog.OutcomeUnknown // it left, but nothing came back
+		}
+	}
+	_ = sentlog.New(s.DataDir).Append(logged)
+	return err
+}
+
+// mayStillSend refuses an approved send for an agent that was revoked, has
+// expired or lost the send scope since it asked.
+func mayStillSend(dir, agentID string) error {
+	clients, err := agentauth.List(dir)
+	if err != nil {
+		return fmt.Errorf("agent registry unavailable; nothing sent: %w", err)
+	}
+	for _, c := range clients {
+		if c.ID != agentID {
+			continue
+		}
+		if c.Status(time.Now()) != "active" {
+			return fmt.Errorf("agent %s is %s; nothing sent", c.Name, c.Status(time.Now()))
+		}
+		if !c.HasScope(agentauth.ScopeSend) {
+			return fmt.Errorf("agent %s may no longer send; nothing sent", c.Name)
+		}
+		return nil
+	}
+	return fmt.Errorf("the agent is gone; nothing sent")
 }
 
 func (s *Session) SetMediaPolicy(account int64, chat, mode string) error {

@@ -101,7 +101,7 @@ jobs:
       - name: Build review installer and portable ZIP
         shell: pwsh
         run: ./scripts/package-windows.ps1 -Version 0.1.0-preview.pr
-      - name: Install with and without AXI for agents, start the wasync app, and check the ZIP
+      - name: Install Setup, which always includes AXI for agents, start the wasync app, and check the ZIP
         shell: pwsh
         run: ./scripts/test-windows-installer.ps1 -Version 0.1.0-preview.pr
       - name: Check the agent install script in Windows PowerShell 5.1 and PowerShell 7

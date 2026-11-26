@@ -12,14 +12,14 @@ wasync checks every request against what you allowed. This page explains how tha
 in an interactive terminal and type the agent's name; there is no `--yes`, and none of these
 commands is available over the API. On a computer with a system confirmation (Touch ID or
 password on macOS, Windows Hello or the account password on Windows), wasync also asks you to
-confirm there. The web app's **Set up** page can create a read-only agent without a terminal
+confirm there. The web app's **Set up** page can connect an agent without a terminal
 (see below).
 
 Scopes are `read.chats`, `read.messages`, `read.media`, `observe`, `send`, `react`, `edit.own`,
 `chat.state`, `group.admin`, `capture.manage` and `export`; without `--scope` an agent gets
 `read.chats,read.messages`. Which chats an agent sees depends on how you create it: with
-`--on-demand` it starts with none and asks for each one; with `--chat` it gets the chats you
-list; with neither, a read-only agent can read every archived chat (the Agents page marks it
+`--synced-chats` it uses every chat you sync in wasync (below); with `--chat` it gets the chats
+you list; with neither, a read-only agent can read every archived chat (the Agents page marks it
 "reads every chat"). An agent with [approved numbers](#approved-numbers) can also read the
 chats of the numbers its list has messaged. The write scopes `send`, `react`, `edit.own`, `chat.state`, `group.admin`
 and `capture.manage` always need a chat list. There is no destructive scope: cleaning, deleting, revoking and
@@ -33,85 +33,57 @@ your agent's own secret store. wasync stores only its hash, never replaces a dif
 credential without asking, and never accepts its own `api.token`, `send.token` or
 `approve.token` as an agent credential. Revoke an agent any time with `wasync agents revoke NAME`.
 
-## Letting an agent ask for chats (just-in-time access)
+## Which chats an agent uses
 
-You do not have to pick an agent's chats up front. Create the credential with
-`--on-demand`; it then starts with no chats at all:
-
-```sh
-wasync agents grant helper --scope read.chats,read.messages,send --on-demand
-```
-
-When the agent needs a chat it cannot use, its refusal points at
-`wasync-axi access request --chat JID` for that exact chat; an agent can also ask
-by name with `--match NAME` (a contact or group name, or a phone number). `--send`
-also asks to send, reply and react; `--edit` also asks to edit its own messages.
-wasync resolves the request to concrete candidate chats that only you see and
-queues a pending request with the same rules as other approvals:
-30-minute expiry, no replay, a person's confirmation, no `--yes`. Pending requests are
-kept in a private file (`pending-approvals.json`), so restarting wasync does not lose
-one that is still waiting.
-The agent is always told "pending", whether or not anything matched, so it
-cannot use a request to find out which chats you have. A request that matched
-nothing shows as "no chat matched" on the Approvals page, in the terminal UI and in
-`wasync actions list`; you can reject it, it cannot be approved, and it expires. Direct
-chats are named after the saved contact when WhatsApp provides one; a phone number always works.
-
-You decide on the web app's **Approvals** page (`wasync approvals`), in the
-[terminal UI](tui.md), or with `wasync actions approve REQUEST_ID` in a terminal. A headless
-`wasync serve` prints (and logs) one line per new request naming only the agent and the request
-ID, never a chat or number; `wasync actions list` shows what each pending request asks for.
-Before confirming you choose:
-
-- the chat, when several match;
-- the history depth: **from now on only** (new messages, nothing older is
-  requested) or a **full history sync** (also asks your phone for the chat's
-  older messages, best effort; see [History](history.md));
-- you see whether the agent asked to read only, to also send/reply/react, or
-  also to edit its own messages.
-
-On approval wasync turns on capture for that chat, applies the history choice,
-and extends that agent to that one chat with only the access you saw: read
-never implies send, and the agent can never gain a scope its credential does
-not already hold. Rejecting or letting the request expire changes nothing.
-Approved chats show in `wasync agents list`; to take them away, revoke and
-re-grant the agent.
-
-If you would rather decide up front, `--chat "Family"` pre-approves a chat by the name in
-your archive instead of a raw ID: wasync shows the matching chat with its ID and
-asks you to confirm, and refuses ambiguous or unknown names. A raw chat ID also works.
-`--chat` and `--on-demand` combine.
-
-## Ask each time, or sync all chats
-
-One setting decides how requests are answered. Change it on the Approvals page, with
-`wasync access mode`, or with `M` in the terminal UI (which also asks once after pairing):
-
-- **Ask me each time** (default): every request waits for you, as above.
-- **Sync all chats**: turns on capture for every chat now, with the history
-  depth you pick (from now on only, or a full history sync), and from then on an
-  agent's request for the one chat it matched is approved at once, without asking
-  you. **In this mode agents can read, send, reply and react in any chat without
-  asking, and can discover any chat by name or number: a matching request is granted
-  at once, so a name probe both reveals and grants that chat (ask-each-time reveals
-  nothing).** Editing their own messages (`--edit`) and deleting are never
-  automatic. Each automatic approval is still recorded as an approval request
-  and in the audit log (`access_grant_auto`), the agent's own rate limits still
-  apply, and a request that matched nothing or several chats still waits for you.
-  Chats WhatsApp shows you later are enabled when you run `wasync access mode
-  all` again, or when an agent first asks for them.
+A connected agent uses every chat you sync in wasync, now and later. Press **Connect** on the
+web app's **Set up** page, or run:
 
 ```sh
-wasync access mode                          # show the current mode
-wasync access mode all --history now        # sync all; typed SYNC ALL, interactive terminal
-wasync access mode ask                      # back to ask each time
+wasync agents grant helper --scope read.chats,read.messages,send,react --synced-chats
 ```
 
-Changing the mode needs wasync running (`wasync serve`, `wasync setup` or the terminal UI) and
-either an interactive terminal with a typed confirmation or the Approvals page; choosing sync
-all also asks your computer to confirm where it can. No agent credential can reach it.
-Switching back to ask-each-time stops future automatic approvals but does not
-revoke access already given; revoke the agent to remove that.
+The agent can then read, reply and react in each synced chat without asking you. Connect gives
+exactly those four scopes and no expiry. Editing its own messages (`edit.own`) is off unless you
+add that scope in a terminal; other scopes and an expiry also need `wasync agents grant`.
+
+wasync keeps the agent's chat list equal to your synced chats by itself: before each request from
+the agent, when wasync starts, and when the Agents page opens. Each change is recorded in the
+audit log as `synced_chats`. To widen or narrow what the agent can use, sync or unsync a chat:
+in the chat picker on the Set up page, with `wasync chats enable` or `wasync chats disable`, or in
+the [terminal UI](tui.md). The agent cannot sync a chat itself.
+
+If you would rather fix the list, `--chat "Family"` pre-approves a chat by the name in your
+archive instead of a raw ID: wasync shows the matching chat with its ID and asks you to confirm,
+and refuses ambiguous or unknown names. A raw chat ID also works. `--chat` and `--synced-chats`
+cannot be combined.
+
+Credentials created with `--on-demand` in earlier releases keep exactly the chats you approved for
+them and are never widened; requests they had waiting were dropped. The Agents page marks them
+"chat(s) approved earlier". To move one to synced chats, revoke it and connect it again.
+`--on-demand` itself is now refused, with a pointer to `--synced-chats`.
+
+## Sending to other chats and new numbers
+
+An agent asks you before it sends to a chat that is not synced, or to a phone number it may not
+message. It runs `wasync-axi send-request --chat JID --text TEXT` (or `--to PHONE`), which uses
+`POST /api/v1/send-requests`; through MCP the tool is `whatsapp_request_send`. Nothing is sent
+yet: the agent gets a request ID and checks the answer with `wasync-axi send-request status ID`.
+A request carries text only, up to 4096 bytes. One agent can have at most 5 waiting, asking
+again with the same chat and text returns the same request, and each request lapses after 30
+minutes and then changes nothing. Waiting requests are kept in a private file
+(`pending-approvals.json`), so restarting wasync does not lose one.
+
+You answer each message on its own, on the web app's **Approvals** page (`wasync approvals`), in
+the [terminal UI](tui.md), or with `wasync actions approve REQUEST_ID`, where you type `SEND`
+followed by the last six characters of the ID. You see the agent, the chat or number, and the
+whole message. Approving sends exactly that message once, from wasync, and gives the agent no
+other access. There is no way to approve several at once. **Not now** declines one; **Not now to
+all** declines every waiting agent request. A headless `wasync serve` prints (and logs) one line
+per new request naming only the agent and the request ID, never the chat, number or text;
+`wasync actions list` shows what each one asks to send.
+
+To let an agent message many numbers without approving each message, use an
+[approved number list](#approved-numbers) or [open sending](#open-sending).
 
 ## Approving without a terminal
 
@@ -120,11 +92,12 @@ wasync approvals          # opens the Approvals page in your browser
 wasync web                # opens the web app (its Approvals link is the same page)
 ```
 
-With wasync running, the Approvals page lists the requests agents are waiting on, including
-[cleanup and deletion requests](cleanup-and-deletion.md). For each one you see the agent, the
-candidate chats and the history depth, and you press **Approve**. wasync then asks **your
-computer** to confirm: Touch ID or your account password on macOS, Windows Hello or your
-password on Windows. The operating-system prompt names exactly what you are approving, in words
+With wasync running, the Approvals page lists the messages agents are asking to send and,
+separately, your own [cleanup and deletion requests](cleanup-and-deletion.md). For a send
+request you see the agent, the chat or number and the whole message, and you press
+**Approve**. wasync then asks **your computer** to confirm: Touch ID or your account password on macOS, Windows Hello or your
+password on Windows. From another device on your tailnet, that device's passkey asks instead
+(see [Tailscale](tailscale.md)). The operating-system prompt names exactly what you are approving, in words
 wasync wrote from its own records, never the agent's. Nothing on the page, in a notification,
 or in a signed request can approve on its own. The link `wasync approvals` opens works once and
 only for two minutes, and is never printed.
@@ -152,12 +125,13 @@ On macOS the approval credential (`approve.token`) is kept in your login Keychai
 
 ## The Agents page
 
-`wasync web`, then **Agents**, shows every agent with its scopes and how many chats it has so
-far. From there you can:
+`wasync web`, then **Agents**, shows every agent with its scopes and its chats: for a connected
+agent, every synced chat and how many there are now. From there you can:
 
-- **Allow sending** for an agent that asks for chats one at a time (adds the `send` scope after
+- **Allow sending** for an agent that has a chat list but no `send` scope (adds the scope after
   your system confirmation), or **Stop sending** (no confirmation needed). It still sends only
-  in chats you approved for sending, on its approved numbers, or while open sending is on.
+  in its own chats, on its approved numbers, or while open sending is on, and asks you for
+  anything else.
 - Approve a list of **approved numbers** for one agent (below).
 - Switch **open sending** on for an hour (below).
 
@@ -166,7 +140,7 @@ more power; stopping things still works.
 
 ### Approved numbers
 
-To let one agent message a set of phone numbers without approving each chat, approve a list for
+To let one agent message a set of phone numbers without approving each message, approve a list for
 it under **Approved numbers**: paste the numbers or choose a .txt or .csv file, one number with
 its country code per line (up to 1,000), and pick how many new numbers an hour (5 to 20) and
 when the list ends (in 1, 7 or 30 days, or never). wasync asks you to confirm, showing the count
@@ -190,7 +164,7 @@ list sends it another message until it replies to that one, even when two agents
 same number, after a list is removed, or when the same numbers are approved for another agent.
 
 The agent may also read those chats, so it can see the replies and any STOP without you
-approving each chat: with the `read.messages` and `read.chats` scopes it already holds, it may
+syncing each chat: with the `read.messages` and `read.chats` scopes it already holds, it may
 read the chat of every number on its list that a list has messaged and the hidden-ID chat wasync
 links to that number. It cannot read a number on its list that no list has messaged yet, a
 number its list dropped after a STOP, another agent's numbers, or any other chat, and a list
@@ -231,17 +205,18 @@ which was never stored. If WhatsApp later delivers the real copy, it replaces th
 
 ## What agents can do
 
-Agents read through `wasync-axi` (or `/api/v1`) and write only with the matching scope and an
-approved chat. Each write is attempted once and never retried automatically; an unknown outcome
+Agents read through `wasync-axi` (or `/api/v1`) and write only with the matching scope and a
+chat they may use (for a connected agent, a synced chat). Each write is attempted once and never retried automatically; an unknown outcome
 must be checked in WhatsApp first.
 
 | Agent command | API route | Needs |
 | --- | --- | --- |
-| `wasync-axi send --chat CHAT_JID --text TEXT` or `--to PHONE_NUMBER` | `POST /api/v1/messages` with `{ "chat", "text" }` or `{ "to", "text" }` | `send`, and a chat approved for sending, a number on the agent's approved list, or open sending |
+| `wasync-axi send --chat CHAT_JID --text TEXT` or `--to PHONE_NUMBER` | `POST /api/v1/messages` with `{ "chat", "text" }` or `{ "to", "text" }` | `send`, and a chat the agent may use, a number on the agent's approved list, or open sending |
 | `wasync-axi send (--chat CHAT_JID \| --to PHONE_NUMBER) --video FILE.mp4 [--text CAPTION]` | the same route with `"video"` (the MP4's bytes, base64) and, when one was taken, `"thumbnail"` (the preview frame, base64) | exactly as for text: one message under the same scope, approvals, list pacing, open-sending caps and rate limit |
-| `wasync-axi reply REF --text TEXT [--mentions JID,JID]` | `POST /api/v1/messages/{ref}/reply` with `{ "text", "mentions" }` | `send` and the chat approved |
-| `wasync-axi react REF EMOJI` / `--remove` | `PUT` / `DELETE /api/v1/messages/{ref}/reaction` | `react` and the chat approved |
-| `wasync-axi edit REF --text TEXT` | `POST /api/v1/messages/{ref}/edit` with `{ "text" }` | `edit.own` and the chat approved |
+| `wasync-axi reply REF --text TEXT [--mentions JID,JID]` | `POST /api/v1/messages/{ref}/reply` with `{ "text", "mentions" }` | `send` and a chat the agent may use |
+| `wasync-axi react REF EMOJI` / `--remove` | `PUT` / `DELETE /api/v1/messages/{ref}/reaction` | `react` and a chat the agent may use |
+| `wasync-axi edit REF --text TEXT` | `POST /api/v1/messages/{ref}/edit` with `{ "text" }` | `edit.own` and a chat the agent may use |
+| `wasync-axi send-request (--chat CHAT_JID \| --to PHONE_NUMBER) --text TEXT`, `send-request status ID` | `POST /api/v1/send-requests`, `GET /api/v1/send-requests/{id}` | `send`; nothing is sent until you approve that one message ([above](#sending-to-other-chats-and-new-numbers)) |
 
 wasync records each attempt with its scope, chat and ref, never the text, in the audit log
 (`agent-audit.log`). Errors use the v1 envelope: `target_unavailable` (deleted or a reaction),

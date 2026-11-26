@@ -74,11 +74,14 @@ func loadPending(dir string, now time.Time) ([]Request, error) {
 		if r.Status != StatusPending || !now.Before(r.Expires) || len(r.ID) != 32 || len(out) >= 32 {
 			continue
 		}
-		if r.Kind == KindChatAccess {
-			if r.Access == nil || r.Access.validate() != nil {
+		// A per-chat access request from before agents used every synced
+		// chat has no kind that is valid now, so it is dropped: it had
+		// granted nothing yet.
+		if r.Kind == KindAgentSend {
+			if r.Send == nil || r.Message != "" || validateSend(r.Chat, *r.Send) != nil {
 				continue
 			}
-		} else if r.Access != nil || r.Input.Validate() != nil {
+		} else if r.Send != nil || r.Input.Validate() != nil {
 			continue
 		}
 		out = append(out, r.clone())

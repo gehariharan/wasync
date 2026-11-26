@@ -125,8 +125,8 @@ func (a *App) runActionStatus(ctx context.Context, cfg config.Config, args []str
 		if request.ID != args[1] || request.Status != "pending_human_confirmation" {
 			return fmt.Errorf("request is no longer pending")
 		}
-		if request.Kind == approval.KindChatAccess {
-			return a.approveChatAccess(ctx, cfg, request)
+		if request.IsAgentRequest() {
+			return a.approveAgentSend(ctx, cfg, request)
 		}
 		scope := map[string]string{"clear-message": "Remove one message from this local archive only", "purge-chat": "Permanently purge this local chat archive and its downloaded files", "revoke-message": "Ask WhatsApp to revoke YOUR message for everyone; server limits apply", "delete-whatsapp-chat": "Delete YOUR WhatsApp chat state through the last known message; local archive remains"}[request.Kind]
 		if scope == "" {
@@ -183,22 +183,9 @@ func (a *App) runActionsList(ctx context.Context, cfg config.Config) error {
 	fmt.Fprintln(w, "REQUEST_ID\tASKS\tEXPIRES\tDETAIL")
 	for _, r := range list.Items {
 		asks, detail := printable(r.Kind), printable(r.Chat)
-		if r.Kind == approval.KindChatAccess && r.Access != nil {
-			asks = "agent " + printable(r.Access.Agent) + ": read"
-			if r.Access.Send {
-				asks += "+send"
-			}
-			if r.Access.Edit {
-				asks += "+edit"
-			}
-			chats := make([]string, 0, len(r.Access.Candidates))
-			for _, c := range r.Access.Candidates {
-				chats = append(chats, printable(c.Name)+" ("+printable(c.Chat)+")")
-			}
-			detail = "asked for " + strconv.Quote(printable(r.Access.Query)) + " -> " + strings.Join(chats, "; ")
-			if r.NoMatch() {
-				detail = "no chat matched " + strconv.Quote(printable(r.Access.Query)) + " (nothing to approve; reject it in the TUI or let it expire)"
-			}
+		if r.IsAgentRequest() {
+			asks = "agent " + printable(r.Send.Agent) + ": send"
+			detail = sendTarget(r) + ": " + strconv.Quote(printable(r.Send.Text))
 		} else if r.Message != "" {
 			detail += " message " + printable(r.Message)
 		}
@@ -211,74 +198,30 @@ func (a *App) runActionsList(ctx context.Context, cfg config.Config) error {
 	return err
 }
 
-// approveChatAccess walks the human through an agent's chat access request:
-// which chat, which history depth, then the exact effect and a typed phrase.
-// Nothing is sent to wasync until the phrase matches.
-func (a *App) approveChatAccess(ctx context.Context, cfg config.Config, request approval.Request) error {
-	acc := request.Access
-	if acc == nil || len(acc.Candidates) == 0 {
-		return fmt.Errorf("no chat matched this request, so there is nothing to approve; reject it in the TUI or let it expire; no data changed")
+// sendTarget says where an agent's send request goes.
+func sendTarget(r approval.Request) string {
+	if r.Send.NewNumber {
+		return "new number " + approval.PhoneNumber(r.Chat)
 	}
-	level, effect := "READ", "read access to"
-	switch {
-	case acc.Send && acc.Edit:
-		level, effect = "READ, SEND/REPLY/REACT and EDIT-OWN", "read, send, reply, react and edit-own access to"
-	case acc.Send:
-		level, effect = "READ and SEND/REPLY/REACT", "read, send, reply and react access to"
-	case acc.Edit:
-		level, effect = "READ and EDIT-OWN", "read and edit-own access to"
-	}
-	fmt.Fprintf(a.Err, "Agent %s asks for %s access to one WhatsApp chat.\nIt asked for: %s\n", printable(acc.Agent), level, printable(acc.Query))
-	pick := 0
-	if len(acc.Candidates) > 1 {
-		fmt.Fprintln(a.Err, "Chats it may mean:")
-		for i, c := range acc.Candidates {
-			fmt.Fprintf(a.Err, "  %d) %s  %s\n", i+1, printable(c.Name), printable(c.Chat))
-		}
-		if acc.Truncated {
-			fmt.Fprintln(a.Err, "  (more chats matched; the agent can ask again with a more specific name)")
-		}
-		fmt.Fprintf(a.Err, "Choose the chat [1-%d]: ", len(acc.Candidates))
-		line, err := readLine(ctx, a.In)
-		if err != nil {
-			return err
-		}
-		n, convErr := strconv.Atoi(strings.TrimSpace(line))
-		if convErr != nil || n < 1 || n > len(acc.Candidates) {
-			return fmt.Errorf("no chat chosen; no data changed")
-		}
-		pick = n - 1
-	}
-	chosen := acc.Candidates[pick]
-	fmt.Fprint(a.Err, "History depth:\n  1) From now on only (new messages; no older messages requested)\n  2) Full history sync (also asks your phone for this chat's older messages, best effort)\nChoose [1-2]: ")
+	return printable(r.Chat) + " (not synced)"
+}
+
+// approveAgentSend shows the person exactly what an agent asks to send, and
+// where, then needs a typed phrase. Nothing is sent until the phrase matches
+// (and, on a computer that has one, the system confirmation).
+func (a *App) approveAgentSend(ctx context.Context, cfg config.Config, request approval.Request) error {
+	fmt.Fprintf(a.Err, "Agent %s asks to send ONE message to %s.\nMessage:\n%s\n", printable(request.Send.Agent), sendTarget(request), printable(request.Send.Text))
+	code := "SEND " + request.ID[len(request.ID)-6:]
+	fmt.Fprintf(a.Err, "\nApproving sends exactly this message once, from your WhatsApp. The agent gets no other access.\nType %s then Enter to approve: ", code)
 	line, err := readLine(ctx, a.In)
 	if err != nil {
 		return err
 	}
-	history, historyText := "", ""
-	switch strings.TrimSpace(line) {
-	case "1":
-		history, historyText = approval.HistoryNow, "from now on only"
-	case "2":
-		history, historyText = approval.HistoryFull, "full history sync"
-	default:
-		return fmt.Errorf("no history depth chosen; no data changed")
-	}
-	code := "ALLOW " + request.ID[len(request.ID)-6:]
-	fmt.Fprintf(a.Err, "\nApproving will turn on capture for %s (%s), history: %s,\nand give agent %s %s only this chat. Nothing else changes.\nType %s then Enter to approve: ", printable(chosen.Name), printable(chosen.Chat), historyText, printable(acc.Agent), effect, code)
-	line, err = readLine(ctx, a.In)
-	if err != nil {
-		return err
-	}
 	if strings.TrimSpace(line) != code {
-		return fmt.Errorf("confirmation did not match; no data changed")
-	}
-	body, err := json.Marshal(map[string]string{"chat": chosen.Chat, "history": history})
-	if err != nil {
-		return err
+		return fmt.Errorf("confirmation did not match; nothing was sent")
 	}
 	a.humanHint()
-	return a.ownerCommand(ctx, cfg, "POST", "/api/actions/"+request.ID+"/approve", body, "approve.token")
+	return a.ownerCommand(ctx, cfg, "POST", "/api/actions/"+request.ID+"/approve", nil, "approve.token")
 }
 
 // printable drops control characters so a chat name from WhatsApp cannot

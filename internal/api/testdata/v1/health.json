@@ -81,7 +81,8 @@
           "scopes": [
             "read.chats",
             "read.messages"
-          ]
+          ],
+          "synced_chats": false
         },
         "agents_registry_private": true,
         "arch": "<arch>",
@@ -177,7 +178,8 @@
           "on_demand": false,
           "scopes": [
             "observe"
-          ]
+          ],
+          "synced_chats": false
         },
         "agents_registry_private": true,
         "arch": "<arch>",

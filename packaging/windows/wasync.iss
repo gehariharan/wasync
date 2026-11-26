@@ -41,8 +41,9 @@ FinishedLabel=wasync opens in its own window and keeps running in the notificati
 Name: addtopath; Description: "Add wasync and wasync-axi, the tool AI agents use with wasync, to your user PATH (open a new terminal after installation)"; Flags: checkedonce
 
 [Files]
-; Everything, including wasync-axi (AXI for agents), which does nothing until an agent is
-; connected, and whatsapp-axi.exe, its old name, kept so existing agent settings keep working.
+; Everything, including wasync-axi (AXI for agents), which is always installed. Setup never configures
+; an agent; wasync's "Connect an agent" step does that later. whatsapp-axi.exe is the old command name,
+; kept so existing agent settings keep working.
 Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -52,13 +53,9 @@ Name: "{group}\wasync"; Filename: "{app}\wasync-desktop.exe"; WorkingDir: "{app}
 ; The wasync app's "Start when I log in" item points into {app}; remove it with the app.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: "wasync-app"; ValueType: none; Flags: uninsdeletevalue dontcreatekey
 
-; The first entry is Setup's own "run the program" tick box, ticked. The others are offered
-; on the last page, unticked, and never run by a silent install. They change your agents'
-; configuration, so only a tick here runs them (as you, without administrator access).
+; Setup's own "run the program" tick box, ticked, and never run by a silent install.
 [Run]
 Filename: "{app}\wasync-desktop.exe"; Description: "Open wasync now"; Flags: postinstall nowait skipifsilent
-Filename: "{app}\wasync-axi.exe"; Parameters: "setup skill"; Description: "Add the wasync-axi skill to my AI agents (runs wasync-axi setup skill)"; Flags: postinstall skipifsilent unchecked runhidden
-Filename: "{app}\wasync-axi.exe"; Parameters: "setup hooks"; Description: "Add wasync-axi's session hooks to my AI agents (runs wasync-axi setup hooks)"; Flags: postinstall skipifsilent unchecked runhidden
 
 [Code]
 function HasPath(Value, Item: String): Boolean;

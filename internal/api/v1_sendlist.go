@@ -49,7 +49,7 @@ type sendListView struct {
 
 func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) {
 	c := v1Client(r)
-	if err := h.agents.AllowAccessRequest(c); err != nil {
+	if err := h.agents.AllowRequest(c); err != nil {
 		var denied *agentauth.Error
 		if errors.As(err, &denied) {
 			if denied.RetryAfter > 0 {

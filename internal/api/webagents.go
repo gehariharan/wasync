@@ -32,6 +32,7 @@ type agentRow struct {
 	Name, Scopes string
 	CanSend      bool
 	ReadsAll     bool
+	Synced       bool // uses every synced chat, now and later
 	Chats        int
 	Expires      string
 }
@@ -77,6 +78,7 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 		d.Notice, d.NoticeOK = n.text, n.ok
 	}
 	now := time.Now()
+	_ = h.syncAgentChats(r.Context()) // best effort: show the chats as they are synced now
 	clients, err := agentauth.List(h.dataDir)
 	if err != nil {
 		http.Error(w, "agent registry unavailable", http.StatusInternalServerError)
@@ -87,7 +89,7 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 		if c.Status(now) != "active" {
 			continue
 		}
-		row := agentRow{Name: humancheck.Clean(c.Name, 40), CanSend: c.HasScope(agentauth.ScopeSend), ReadsAll: !c.Restricted(), Chats: len(c.AllowedChats())}
+		row := agentRow{Name: humancheck.Clean(c.Name, 40), CanSend: c.HasScope(agentauth.ScopeSend), ReadsAll: !c.Restricted(), Synced: c.SyncedChats, Chats: len(c.AllowedChats())}
 		for j, s := range c.Scopes {
 			if j > 0 {
 				row.Scopes += ", "
@@ -253,9 +255,9 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 			back("agentall")
 			return
 		}
-		where := "the chats you approve for it"
-		if len(target.Chats) > 0 {
-			where = fmt.Sprintf("the %d chat(s) it can already reach, and any you approve later", len(target.Chats))
+		where := fmt.Sprintf("the %d chat(s) it can already reach", len(target.AllowedChats()))
+		if target.SyncedChats {
+			where = fmt.Sprintf("every chat you sync in wasync (%d now) and any you sync later", len(target.Chats))
 		}
 		if err := h.confirmError(r.Context(), "Approve: let the agent "+agentauth.QuotedName(name)+" send messages in "+where); err != nil {
 			h.uiRefused(w, r, err, back)
@@ -457,7 +459,7 @@ var agentsTemplate = template.Must(template.New("agents").Funcs(uiFuncs).Parse(u
 <p class="ok"><strong>On until {{.Open.Until}}</strong> ({{.Open.Minutes}} min left). Agents that can send may message any chat or number, up to {{.Open.MaxMessages}} messages and {{.Open.MaxNew}} new numbers an hour. Used this hour: {{.Open.Used}} of {{.Open.MaxMessages}} messages, {{.Open.NewUsed}} of {{.Open.MaxNew}} new numbers.</p>
 <form method="post" action="/ui/agents"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="openoff"><button>Turn off now</button></form>
 {{else}}
-<p>Off. Agents can send only in the chats you approved for them. Turn it on to let them message anyone, including a new number, for one hour, up to {{.Open.MaxMessages}} messages and {{.Open.MaxNew}} new numbers an hour. Each message shows in <a href="/ui/sent">Sent</a>.</p>
+<p>Off. Agents can send only in the chats they may use; for any other chat they ask you to approve each message. Turn it on to let them message anyone, including a new number, for one hour, up to {{.Open.MaxMessages}} messages and {{.Open.MaxNew}} new numbers an hour. Each message shows in <a href="/ui/sent">Sent</a>.</p>
 {{if .Open.Gate}}<form method="post" action="/ui/agents"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="openon"><button>Turn on for 1 hour…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}.</span></form>{{end}}
 {{end}}
 {{if .Open.Recent}}<h3>Recent open sends</h3>
@@ -482,7 +484,7 @@ var agentsTemplate = template.Must(template.New("agents").Funcs(uiFuncs).Parse(u
 
 <h2>Agents</h2>
 {{if .Agents}}<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Allowed to</th><th>Sending</th></tr></thead><tbody>
-{{range .Agents}}<tr><td>🤖 {{.Name}}{{if .Expires}} <span class="mut">expires {{.Expires}}</span>{{end}}</td><td>{{.Scopes}}{{if .ReadsAll}} <span class="mut">(reads every chat)</span>{{else}} <span class="mut">({{.Chats}} chat(s) so far)</span>{{end}}</td>
+{{range .Agents}}<tr><td>🤖 {{.Name}}{{if .Expires}} <span class="mut">expires {{.Expires}}</span>{{end}}</td><td>{{.Scopes}}{{if .ReadsAll}} <span class="mut">(reads every chat)</span>{{else if .Synced}} <span class="mut">(every synced chat: {{.Chats}} now)</span>{{else}} <span class="mut">({{.Chats}} chat(s) approved earlier; connect it again to use every synced chat)</span>{{end}}</td>
 <td>{{if .CanSend}}On <form method="post" action="/ui/agents" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="stopsend"><input type="hidden" name="agent" value="{{.Name}}"><button>Stop sending</button></form>
 {{else}}Off{{if $.Open.Gate}}{{if not .ReadsAll}} <form method="post" action="/ui/agents" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="allowsend"><input type="hidden" name="agent" value="{{.Name}}"><button>Allow sending…</button></form>{{else}} <span class="mut">reads every chat, so set it up again in a terminal to allow sending</span>{{end}}{{end}}{{end}}</td></tr>
 {{end}}</tbody></table></div>

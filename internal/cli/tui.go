@@ -32,8 +32,8 @@ func (a *App) tuiAction(offline bool) action {
 		}
 		a.MediaDownload = nil
 		a.ownerClient = nil
-		a.Approvals = &approval.Queue{OnAccess: func(r approval.Request) {
-			a.announce("Agent " + printable(r.Access.Agent) + " is asking for a WhatsApp chat.")
+		a.Approvals = &approval.Queue{OnSend: func(r approval.Request) {
+			a.announce("Agent " + printable(r.Send.Agent) + " asks to send a WhatsApp message.")
 		}, OnRequest: func(approval.Request) {
 			a.announce("A request to delete data is waiting for you.")
 		}}
@@ -97,6 +97,7 @@ func (a *App) tuiAction(offline bool) action {
 		session.Approvals = a.Approvals
 		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
 		session.Human = a.Human
+		session.Send = send
 		a.Approve = session.ApproveAction
 		a.Reject = session.RejectAction
 		a.Sync = session.Sync

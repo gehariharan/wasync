@@ -4,13 +4,12 @@
 #   scripts/test-macos-pkg.sh PKG VERSION ARCHITECTURE [SIGNED_AXI_BINARY]
 #
 # Always (no administrator access, installs nothing): the installer holds wasync
-# and wasync-axi as separate components; wasync is selected and locked, and AXI
-# for agents is offered but not selected. With SIGNED_AXI_BINARY, the installer's
-# wasync-axi must be byte-identical to it.
+# and wasync-axi as separate components, and both are selected and locked. With
+# SIGNED_AXI_BINARY, the installer's wasync-axi must be byte-identical to it.
 #
-# On a disposable GitHub-hosted runner only, it also installs the package twice
-# with `installer`: once with the default choices (wasync only) and once with AXI
-# for agents ticked (both at VERSION), and removes everything it installed.
+# On a disposable GitHub-hosted runner only, it also installs the package with
+# `installer` and its default choices (both at VERSION), and removes everything
+# it installed.
 set -euo pipefail
 package="${1:?Usage: scripts/test-macos-pkg.sh PKG VERSION ARCHITECTURE [SIGNED_AXI_BINARY]}"
 version="${2:?}"
@@ -59,10 +58,10 @@ with open(sys.argv[1], "rb") as handle:
     choices = {c["choiceIdentifier"]: c for c in walk(plistlib.load(handle))}
 wasync, axi = choices["wasync"], choices["axi"]
 assert wasync["choiceIsSelected"] == 1 and not wasync["choiceIsEnabled"], "wasync must be selected and not removable"
-assert axi["choiceIsSelected"] == 0 and axi["choiceIsEnabled"], "AXI for agents must be offered but not selected"
+assert axi["choiceIsSelected"] == 1 and not axi["choiceIsEnabled"], "AXI for agents must be selected and not removable"
 assert "AXI for agents" in axi["choiceTitle"], axi["choiceTitle"]
 PY
-pass "Installer preselects wasync (locked) and leaves AXI for agents unticked"
+pass "Installer preselects wasync and AXI for agents, both locked"
 
 if [[ -n "$signed_axi" ]]; then
   cmp "$signed_axi" "$work/expanded/wasync-axi.pkg/Payload/usr/local/bin/wasync-axi" || fail "installer wasync-axi differs from the standalone signed one"
@@ -73,24 +72,11 @@ if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hoste
   if [[ -e /usr/local/bin/wasync || -e /usr/local/bin/wasync-axi || -e /usr/local/bin/whatsapp-axi ]]; then fail "refusing to install over an existing wasync"; fi
   installed=1
   run_installer
-  [[ -x /usr/local/bin/wasync ]] || fail "default install did not provide wasync"
-  [[ ! -e /usr/local/bin/wasync-axi ]] || fail "default install added wasync-axi"
-  pass "default install provides wasync only"
-  cat > "$work/choose-axi.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><array><dict>
-<key>attributeSetting</key><integer>1</integer>
-<key>choiceAttribute</key><string>selected</string>
-<key>choiceIdentifier</key><string>axi</string>
-</dict></array></plist>
-PLIST
-  run_installer -applyChoiceChangesXML "$work/choose-axi.plist"
   [[ "$(/usr/local/bin/wasync-axi --version)" == "$version" ]] || fail "installed wasync-axi is not version $version"
   [[ "$(readlink /usr/local/bin/whatsapp-axi)" == wasync-axi ]] || fail "the old name whatsapp-axi is not a link to wasync-axi"
   /usr/local/bin/wasync version | grep -qF "wasync $version " || fail "installed wasync is not version $version"
   python3 "$project_dir/scripts/smoke-installed.py" /usr/local/bin/wasync "$version" "$architecture" /usr/local/bin/wasync-axi
-  pass "choosing AXI for agents installs both at $version, and they work together"
+  pass "default install provides both tools at $version, and they work together"
 else
   echo "test-macos-pkg: skipped the real install (only run on disposable GitHub-hosted runners)"
 fi

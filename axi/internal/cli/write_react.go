@@ -12,7 +12,7 @@ const reactUsage = "wasync-axi react REF (EMOJI | --remove) [--json]"
 var reactCommand = &command{
 	name:        "react",
 	usage:       reactUsage,
-	description: "React to the message REF with an emoji, or clear your reaction (running wasync, scope react and an allowlisted chat); sends once, never retries",
+	description: "React to the message REF with an emoji, or clear your reaction (running wasync, scope react, in a chat synced in wasync); sends once, never retries",
 	flags: []flagSpec{
 		{name: "--remove", description: "clear your reaction instead of setting one"},
 		jsonFlag,
@@ -62,7 +62,7 @@ func (a *App) runReact(ctx context.Context, inv invocation) error {
 		resp, err = ack(t, &res, func(r *contract.Response) error { return p.Put(ctx, path, map[string]string{"emoji": inv.args[1]}, r) })
 	}
 	if err != nil {
-		return writeExplain(err, "react")
+		return refusalHint(writeExplain(err, "react"), "sync", syncHelp)
 	}
 	return a.writeResult(inv, t, ref, "reaction", resp, res)
 }

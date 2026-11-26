@@ -108,18 +108,19 @@ with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
         return text in captured
 
     try:
-        # A fresh data directory has no access mode yet, so the first screen asks
-        # how agents get chats and covers the chat list until it is dismissed.
-        # Only the Homebrew e2e job sets this opt-in, because it tests the last
-        # published release, which may predate that screen. Remove the opt-in
-        # once a release containing the first-run screen is published.
-        allow_missing = os.environ.get("WASYNC_SMOKE_ALLOW_MISSING_FIRST_RUN") == "1"
-        if wait_for(b"HOW SHOULD AGENTS GET CHATS"):
+        # The offline TUI opens straight on the chat list; the first-run screen
+        # that asked how agents get chats is gone. Only the Homebrew e2e job sets
+        # this opt-in, because it tests the last published release, which may
+        # still show that screen over the chat list; there it is dismissed with
+        # Esc, which saves nothing. Remove the opt-in once a release without the
+        # screen is published.
+        old_screen = b"HOW SHOULD AGENTS GET CHATS"
+        allow_old_screen = os.environ.get("WASYNC_SMOKE_ALLOW_OLD_FIRST_RUN") == "1"
+        if allow_old_screen and wait_for(old_screen):
             captured = b""
-            os.write(master, b"\x1b")  # Esc: decide later, which saves nothing
-        else:
-            assert allow_missing, "offline TUI did not show the first-run access mode screen"
+            os.write(master, b"\x1b")
         assert wait_for(b"Synthetic Group"), "offline TUI did not render the synthetic group"
+        assert allow_old_screen or old_screen not in captured, "offline TUI still shows the removed first-run access mode screen"
         os.write(master, b"q")
         # Drain the terminal while the renderer restores terminal state; a full
         # PTY output buffer otherwise blocks shutdown even after q is handled.

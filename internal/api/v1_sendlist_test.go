@@ -86,7 +86,7 @@ func TestAnApprovedListLetsItsAgentMessageThoseNumbersOnly(t *testing.T) {
 	// A number not on the list, or another agent using this list, is refused.
 	status, body := f.send(t, "POST", "/api/v1/messages", agent, `{"to":"15551239999","text":"hello"}`)
 	wantV1Error(t, status, body, 403, query.CodeForbidden)
-	if !strings.Contains(string(body), "approve it in a list") {
+	if !strings.Contains(string(body), "send-request --to +15551239999") || !strings.Contains(string(body), "approve a list for you") {
 		t.Fatalf("the refusal should say how to get access: %s", body)
 	}
 	status, body = f.send(t, "POST", "/api/v1/messages", other, `{"to":"15551230001","text":"hello"}`)
@@ -467,12 +467,8 @@ func (c *pageClient) postList(t *testing.T, fields map[string]string, file strin
 func TestApprovingAListNeedsTheSystemConfirmationAndRemovingItDoesNot(t *testing.T) {
 	stub := &promptStub{}
 	f, c, csrf := agentsFixture(t, stub)
-	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "quiet", Scopes: []string{agentauth.ScopeReadChats}, OnDemand: true}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	grantLegacyOnDemand(t, f.dir, "helper", agentauth.ScopeReadChats, agentauth.ScopeSend)
+	grantLegacyOnDemand(t, f.dir, "quiet", agentauth.ScopeReadChats)
 	_, page, _ := c.get("/ui/agents")
 	if !strings.Contains(page, "Approved numbers") || !strings.Contains(page, "Approve list") || !strings.Contains(page, `<option>helper</option>`) || strings.Contains(page, `<option>quiet</option>`) {
 		t.Fatalf("the list form should offer agents that can send:\n%s", page)
@@ -536,9 +532,7 @@ func TestApprovingAListNeedsTheSystemConfirmationAndRemovingItDoesNot(t *testing
 
 func TestAListCannotBeApprovedWithoutASystemConfirmation(t *testing.T) {
 	f, c, csrf := agentsFixture(t, nil)
-	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	grantLegacyOnDemand(t, f.dir, "helper", agentauth.ScopeReadChats, agentauth.ScopeSend)
 	_, page, _ := c.get("/ui/agents")
 	if strings.Contains(page, "Approve list") {
 		t.Fatalf("a computer with no confirmation was offered the list form:\n%s", page)
@@ -738,9 +732,7 @@ func TestAnUnansweredListMessageOutlivesTheSendHistory(t *testing.T) {
 func TestPausingAListNeedsNoConfirmationAndResumingDoes(t *testing.T) {
 	stub := &promptStub{}
 	f, c, csrf := agentsFixture(t, stub)
-	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	grantLegacyOnDemand(t, f.dir, "helper", agentauth.ScopeReadChats, agentauth.ScopeSend)
 	fixture{dir: f.dir}.approveList(t, "helper", nil, "15551230000", "15551230001")
 	_, page, _ := c.get("/ui/agents")
 	if !strings.Contains(page, `value="listpause">Pause</button>`) || strings.Contains(page, "Resume") {
@@ -777,9 +769,7 @@ func TestPausingAListNeedsNoConfirmationAndResumingDoes(t *testing.T) {
 
 func TestAPausedListCannotBeResumedWithoutASystemConfirmation(t *testing.T) {
 	f, c, csrf := agentsFixture(t, nil)
-	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeSend}, OnDemand: true}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	grantLegacyOnDemand(t, f.dir, "helper", agentauth.ScopeReadChats, agentauth.ScopeSend)
 	fixture{dir: f.dir}.approveList(t, "helper", nil, "15551230000")
 	if _, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"listpause"}, "agent": {"helper"}}); notice(hd) != "listpause" {
 		t.Fatalf("pausing on a computer with no confirmation: %q", notice(hd))

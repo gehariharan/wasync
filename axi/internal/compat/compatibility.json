@@ -20,6 +20,6 @@
     "reply": {"features": ["message.ref", "write.reply"]},
     "react": {"features": ["message.ref", "write.react"]},
     "edit": {"features": ["message.ref", "write.edit"]},
-    "access": {"features": ["access.request"]}
+    "send-request": {"features": ["write.send.request"]}
   }
 }

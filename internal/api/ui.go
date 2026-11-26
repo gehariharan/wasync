@@ -13,10 +13,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"github.com/gehariharan/wasync/internal/accessmode"
-	"github.com/gehariharan/wasync/internal/approval"
-	"github.com/gehariharan/wasync/internal/humancheck"
 )
 
 // The approval page is a plain server-rendered page on the same loopback
@@ -204,9 +200,9 @@ var notices = map[string]struct {
 	text string
 	ok   bool
 }{
-	"approved":   {"Approved. The agent has the access you confirmed.", true},
+	"approved":   {"Approved. wasync carried out exactly what you confirmed.", true},
 	"done":       {"Done.", true},
-	"rejected":   {"Rejected. Nothing was given.", true},
+	"rejected":   {"Not now. Nothing was sent or changed.", true},
 	"declined":   {"Not confirmed on this computer, so nothing changed.", false},
 	"busy":       {"A confirmation prompt is already open on this computer. Answer it first.", false},
 	"locked":     {"Too many prompts went unconfirmed. Try again in a few minutes.", false},
@@ -232,7 +228,7 @@ var notices = map[string]struct {
 	"dlqueued":   {"Downloading. Refresh in a moment to see it.", true},
 	"dlfail":     {"That could not be downloaded. WhatsApp may be disconnected or no longer have the file.", false},
 	"dlpolicy":   {"Saved. New attachments in this chat follow it.", true},
-	"sendon":     {"That agent may now send in the chats you approve for it.", true},
+	"sendon":     {"That agent may now send in the chats it can use.", true},
 	"sendoff":    {"That agent can no longer send.", true},
 	"openon":     {"Open sending is on for the next hour.", true},
 	"openoff":    {"Open sending is off.", true},
@@ -321,8 +317,6 @@ func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.uiHome(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/decide":
 		h.uiDecide(w, r, sess)
-	case r.Method == http.MethodPost && r.URL.Path == "/ui/mode":
-		h.uiMode(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/chats":
 		h.chatsPage(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/agents":
@@ -501,16 +495,15 @@ func (h *handler) uiDecide(w http.ResponseWriter, r *http.Request, sess uiSessio
 			return
 		}
 		h.uiBack(w, r, "rejected")
+	case "decline-all":
+		h.declineAgentRequests(account.ID)
+		h.uiBack(w, r, "rejected")
 	case "approve":
 		if !h.canConfirm(r) || h.approve == nil {
 			h.uiBack(w, r, noGate(r))
 			return
 		}
-		var choice *accessChoice
-		if request := h.approvals.Get(account.ID, id); request != nil && request.Kind == approval.KindChatAccess {
-			choice = &accessChoice{Chat: r.PostForm.Get("chat"), History: r.PostForm.Get("history")}
-		}
-		if err := h.approveRequest(r.Context(), account.ID, id, choice); err != nil {
+		if err := h.approveRequest(r.Context(), account.ID, id); err != nil {
 			h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
 			return
 		}
@@ -520,62 +513,28 @@ func (h *handler) uiDecide(w http.ResponseWriter, r *http.Request, sess uiSessio
 	}
 }
 
-func (h *handler) uiMode(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	if !h.uiForm(w, r, sess) {
-		return
-	}
-	account, err := h.store.Account(r.Context())
-	if err != nil || account == nil {
-		h.uiBack(w, r, "failed")
-		return
-	}
-	mode := accessmode.Mode{Mode: r.PostForm.Get("mode")}
-	if mode.Mode == accessmode.All {
-		mode.History = r.PostForm.Get("history")
-	}
-	if mode.Validate() != nil {
-		h.uiBack(w, r, "invalid")
-		return
-	}
-	if mode.Mode == accessmode.All {
-		if !h.canConfirm(r) {
-			h.uiBack(w, r, noGate(r))
-			return
-		}
-		if err := h.confirmError(r.Context(), "Approve: "+mode.Effect()); err != nil {
-			h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
-			return
-		}
-	}
-	if _, err := accessmode.Apply(r.Context(), h.store, h.dataDir, account.ID, mode); err != nil {
-		h.uiBack(w, r, "failed")
-		return
-	}
-	h.uiBack(w, r, "done")
+// uiRequest is one of the owner's own delete confirmations.
+type uiRequest struct {
+	ID, Short string
+	Effect    string
+	Minutes   int
 }
 
-type uiCandidate struct{ Chat, Name string }
-
-type uiRequest struct {
-	ID, Short  string
-	Agent      string
-	Asked      string
-	Effect     string
-	Access     bool
-	NoMatch    bool
-	Candidates []uiCandidate
-	Truncated  bool
-	Minutes    int
+// uiAgentRequest is one agent send request, with the whole message.
+type uiAgentRequest struct {
+	ID, Short string
+	Agent     string
+	Where     string
+	Text      string
+	Minutes   int
 }
 
 type uiData struct {
 	CSRF, Notice string
 	NoticeOK     bool
 	Gate         string
-	Pending      []uiRequest
-	Mode         string
-	ModeAll      bool
-	ModeHistory  string
+	AgentPending []uiAgentRequest // agents asking to send, oldest first
+	Pending      []uiRequest      // the owner's own delete confirmations
 	Signedout    bool
 	Next         string // where signing in again returns to
 	Remote       bool   // opened from another computer through the tailnet
@@ -658,36 +617,24 @@ func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession)
 		return
 	}
 	if account != nil && h.approvals != nil {
-		for _, p := range h.approvals.PendingList(account.ID) {
-			v := uiRequest{ID: p.ID, Short: p.ID[len(p.ID)-6:], Minutes: int(time.Until(p.Expires).Round(time.Minute) / time.Minute)}
-			if p.Kind == approval.KindChatAccess && p.Access != nil {
-				v.Access, v.NoMatch, v.Truncated = true, p.NoMatch(), p.Access.Truncated
-				v.Agent, v.Asked = humancheck.Clean(p.Access.Agent, 60), humancheck.Clean(p.Access.Query, 120)
-				v.Effect = "Wants to read"
-				switch {
-				case p.Access.Send && p.Access.Edit:
-					v.Effect = "Wants to read, send, reply, react and edit its own messages in"
-				case p.Access.Send:
-					v.Effect = "Wants to read, send, reply and react in"
-				case p.Access.Edit:
-					v.Effect = "Wants to read and edit its own messages in"
-				}
-				for _, c := range p.Access.Candidates {
-					v.Candidates = append(v.Candidates, uiCandidate{c.Chat, humancheck.Clean(c.Name, 80)})
-				}
-			} else {
-				v.Effect = "Destructive request: " + p.Effect(h.chatName(r.Context(), account.ID, p.Chat))
+		for _, p := range h.agentRequests(r.Context(), account.ID) {
+			v := uiAgentRequest{ID: p.ID, Short: p.ID[len(p.ID)-6:], Agent: p.Agent, Text: p.Text, Minutes: int(time.Until(p.ExpiresAt).Round(time.Minute) / time.Minute)}
+			switch {
+			case p.NewNumber:
+				v.Where = "the new number " + p.Phone
+			case p.ChatName != "":
+				v.Where = "“" + p.ChatName + "”, a chat that was not synced when it asked"
+			default:
+				v.Where = p.Chat + ", a chat that was not synced when it asked"
 			}
-			data.Pending = append(data.Pending, v)
+			data.AgentPending = append(data.AgentPending, v)
 		}
-	}
-	m, set, err := accessmode.Load(h.dataDir)
-	data.Mode = "Ask me each time (default)"
-	if err == nil && m.Mode == accessmode.All {
-		data.ModeAll, data.ModeHistory = true, m.History
-		data.Mode = "Sync all chats: agents get any chat they ask for without asking you"
-	} else if set {
-		data.Mode = "Ask me each time"
+		for _, p := range h.approvals.PendingList(account.ID) {
+			if p.IsAgentRequest() {
+				continue
+			}
+			data.Pending = append(data.Pending, uiRequest{ID: p.ID, Short: p.ID[len(p.ID)-6:], Minutes: int(time.Until(p.Expires).Round(time.Minute) / time.Minute), Effect: "Destructive request: " + p.Effect(h.chatName(r.Context(), account.ID, p.Chat))})
+		}
 	}
 	h.uiRender(w, r, http.StatusOK, data)
 }
@@ -751,38 +698,28 @@ var uiTemplate = template.Must(template.New("ui").Funcs(uiFuncs).Parse(uiHead + 
 {{if .Gate}}<p class="mut">Every approval here asks you for {{.Gate}} on this {{if .Remote}}device{{else}}computer{{end}}, showing exactly what you are approving. This page cannot approve anything by itself.</p>
 {{else if .Remote}}<p class="notice bad">To approve from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Or approve on the computer running wasync.</p>
 {{else}}<p class="notice bad">This computer cannot show a system confirmation, so this page only shows requests. Approve in a terminal with <code>wasync actions approve REQUEST_ID</code>.</p>{{end}}
-<h2>Waiting for you</h2>
+<h2>Agents asking to send</h2>
+{{range .AgentPending}}<section class="card">
+<form method="post" action="/ui/decide">
+<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}">
+<p><strong>{{.Agent}}</strong> wants to send a message to {{.Where}}. <span class="mut">Request {{.Short}}, about {{.Minutes}} min left.</span></p>
+<blockquote>{{.Text}}</blockquote>
+<p class="mut">Approving sends exactly this message once. The agent gets no other access.</p>
+<div class="btn-row">{{if $.Gate}}<button class="go" name="action" value="approve">Approve…</button>{{end}}
+<button name="action" value="reject">Not now</button></div>
+</form></section>
+{{else}}<p class="card mut">No agent is asking to send anything.</p>{{end}}
+{{if gt (len .AgentPending) 1}}<form method="post" action="/ui/decide" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="action" value="decline-all">Not now to all</button></form>{{end}}
+<h2>Your delete confirmations</h2>
 {{range .Pending}}<section class="card">
 <form method="post" action="/ui/decide">
 <input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}">
-{{if .Access}}
-<p><strong>Agent {{.Agent}}</strong> asked for “{{.Asked}}”. <span class="mut">Request {{.Short}}, about {{.Minutes}} min left.</span></p>
-{{if .NoMatch}}<p class="mut">No chat matched, so there is nothing to approve. You can reject it or let it expire.</p>
-{{else}}<fieldset><legend>{{.Effect}} which chat?</legend>
-{{range $i, $c := .Candidates}}<label><input type="radio" name="chat" value="{{$c.Chat}}"{{if eq $i 0}} checked{{end}}> {{$c.Name}} <span class="mut">{{$c.Chat}}</span></label>{{end}}
-{{if .Truncated}}<p class="mut">More chats matched. The agent can ask again with a more specific name.</p>{{end}}</fieldset>
-<fieldset><legend>History</legend>
-<label><input type="radio" name="history" value="now" checked> From now on only (no older messages requested)</label>
-<label><input type="radio" name="history" value="full"> Full history (also asks your phone for older messages, best effort)</label></fieldset>{{end}}
-{{else}}<p><strong>{{.Effect}}</strong> <span class="mut">Request {{.Short}}, about {{.Minutes}} min left.</span></p>{{end}}
-<div class="btn-row">{{if or (not .Access) (not .NoMatch)}}{{if $.Gate}}<button class="go" name="action" value="approve">Approve…</button>{{end}}{{end}}
+<p><strong>{{.Effect}}</strong> <span class="mut">Request {{.Short}}, about {{.Minutes}} min left.</span></p>
+<div class="btn-row">{{if $.Gate}}<button class="go" name="action" value="approve">Approve…</button>{{end}}
 <button name="action" value="reject">Reject</button></div>
 </form></section>
 {{else}}<p class="card mut">Nothing is waiting.</p>{{end}}
 <p><a href="/ui/approvals">Refresh</a></p>
-<h2>How agents get chats</h2>
-<section class="card">
-<p><strong>Now:</strong> {{.Mode}}{{if .ModeAll}} (history: {{.ModeHistory}}){{end}}</p>
-<form method="post" action="/ui/mode"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<fieldset>
-<label><input type="radio" name="mode" value="ask" checked> Ask me each time</label>
-<label><input type="radio" name="mode" value="all"> Sync all chats. Any agent that asks gets any chat, with read, send, reply and react, without asking you.</label>
-</fieldset>
-<fieldset><legend>If syncing all chats</legend>
-<label><input type="radio" name="history" value="now" checked> From now on only</label>
-<label><input type="radio" name="history" value="full"> Full history</label></fieldset>
-<div class="btn-row"><button>Save…</button> <span class="mut">Choosing sync all asks you to confirm{{if .Gate}} with {{.Gate}}{{else if .Remote}} on the computer running wasync{{else}} on this computer{{end}}.</span></div>
-</form></section>
 {{end}}
 </main></body></html>
 `))

@@ -174,6 +174,15 @@ func (h *handler) v1Decide(w http.ResponseWriter, r *http.Request, id, scope, ch
 		return false
 	}
 	c, err := h.agents.Authenticate(r.Header.Get("Authorization"))
+	if err == nil && c.SyncedChats {
+		// Bring its chats in step with the synced chats first (see
+		// agent_chats.go), then read the credential again with them.
+		if syncErr := h.syncAgentChats(r.Context()); syncErr != nil {
+			v1Fail(w, id, 503, query.CodeArchiveUnavailable, "the synced chats cannot be read, so this agent's chats are unknown", "check the wasync owner log")
+			return false
+		}
+		c, err = h.agents.Authenticate(r.Header.Get("Authorization"))
+	}
 	if err == nil && check != nil {
 		err = check(c)
 	} else if err != nil {

@@ -91,9 +91,7 @@ func TestTheRailMarksTheCurrentPageAndCountsWaitingRequests(t *testing.T) {
 	if _, page, _ := c.get("/ui/chats"); strings.Contains(page, `class="rail-badge"`) {
 		t.Fatal("a badge shows with nothing waiting")
 	}
-	if code, out := f.do(t, "POST", "/api/v1/access-requests", f.jit, map[string]any{"chat": familyChat}); code >= 300 {
-		t.Fatalf("access request: %d %s", code, out)
-	}
+	f.askSend(t, familyChat, "synthetic message waiting for approval")
 	_, page, _ := c.get("/ui/chats")
 	if !strings.Contains(page, `<span class="rail-badge" aria-hidden="true">1</span>`) || !strings.Contains(page, `aria-label="Approvals, 1 waiting"`) {
 		t.Fatalf("the rail does not count the waiting request:\n%s", page)

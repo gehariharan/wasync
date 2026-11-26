@@ -147,16 +147,16 @@ func TestToolMenuHasNoWayToApproveOrGrant(t *testing.T) {
 		}
 	}
 	sort.Strings(names)
-	want := []string{"whatsapp_access_status", "whatsapp_changes", "whatsapp_doctor", "whatsapp_edit", "whatsapp_list_chats", "whatsapp_message", "whatsapp_react", "whatsapp_read_messages", "whatsapp_reply", "whatsapp_request_access", "whatsapp_search", "whatsapp_send", "whatsapp_start_setup", "whatsapp_status", "whatsapp_thread"}
+	want := []string{"whatsapp_changes", "whatsapp_doctor", "whatsapp_edit", "whatsapp_list_chats", "whatsapp_message", "whatsapp_react", "whatsapp_read_messages", "whatsapp_reply", "whatsapp_request_send", "whatsapp_search", "whatsapp_send", "whatsapp_send_request_status", "whatsapp_start_setup", "whatsapp_status", "whatsapp_thread"}
 	if !reflect.DeepEqual(names, want) {
 		t.Fatalf("tool menu changed:\n got %v\nwant %v", names, want)
 	}
-	for _, name := range []string{"whatsapp_status", "whatsapp_doctor", "whatsapp_list_chats", "whatsapp_read_messages", "whatsapp_search", "whatsapp_thread", "whatsapp_message", "whatsapp_changes", "whatsapp_access_status"} {
+	for _, name := range []string{"whatsapp_status", "whatsapp_doctor", "whatsapp_list_chats", "whatsapp_read_messages", "whatsapp_search", "whatsapp_thread", "whatsapp_message", "whatsapp_changes", "whatsapp_send_request_status"} {
 		if !readOnly[name] {
 			t.Errorf("%s should be marked read-only", name)
 		}
 	}
-	for _, name := range []string{"whatsapp_send", "whatsapp_reply", "whatsapp_react", "whatsapp_edit", "whatsapp_request_access", "whatsapp_start_setup"} {
+	for _, name := range []string{"whatsapp_send", "whatsapp_reply", "whatsapp_react", "whatsapp_edit", "whatsapp_request_send", "whatsapp_start_setup"} {
 		if readOnly[name] {
 			t.Errorf("%s changes something and must not be marked read-only", name)
 		}
@@ -184,9 +184,9 @@ func TestToolsRunTheMatchingCommandLine(t *testing.T) {
 		{"whatsapp_react", map[string]any{"ref": "m1_x", "emoji": "👍"}, []string{"react", "--", "m1_x", "👍"}},
 		{"whatsapp_react", map[string]any{"ref": "m1_x", "remove": true}, []string{"react", "--remove", "--", "m1_x"}},
 		{"whatsapp_edit", map[string]any{"ref": "m1_x", "text": "fixed"}, []string{"edit", "--text", "fixed", "--", "m1_x"}},
-		{"whatsapp_request_access", map[string]any{"match": "Mum", "send": true}, []string{"access", "request", "--match", "Mum", "--send"}},
-		{"whatsapp_request_access", map[string]any{"chat": "1@g.us"}, []string{"access", "request", "--chat", "1@g.us"}},
-		{"whatsapp_access_status", map[string]any{"request_id": strings.Repeat("a", 32)}, []string{"access", "status", strings.Repeat("a", 32)}},
+		{"whatsapp_request_send", map[string]any{"to": "+15551230000", "text": "--chat sneaky"}, []string{"send-request", "--to", "+15551230000", "--text", "--chat sneaky"}},
+		{"whatsapp_request_send", map[string]any{"chat": "1@g.us", "text": "hi"}, []string{"send-request", "--chat", "1@g.us", "--text", "hi"}},
+		{"whatsapp_send_request_status", map[string]any{"request_id": strings.Repeat("a", 32)}, []string{"send-request", "status", strings.Repeat("a", 32)}},
 	}
 	for _, c := range cases {
 		h := &harness{t: t}
@@ -226,9 +226,14 @@ func TestBadArgumentsNeverReachACommand(t *testing.T) {
 		{"whatsapp_send", map[string]any{"chat": "a", "text": "hi", "file": "/etc/passwd"}},
 		{"whatsapp_react", map[string]any{"ref": "m"}},
 		{"whatsapp_react", map[string]any{"ref": "m", "emoji": "👍", "remove": true}},
-		{"whatsapp_request_access", map[string]any{}},
-		{"whatsapp_request_access", map[string]any{"chat": "a", "match": "b"}},
-		{"whatsapp_request_access", map[string]any{"match": "a", "edit": true}},
+		{"whatsapp_request_send", map[string]any{}},
+		{"whatsapp_request_send", map[string]any{"chat": "a"}},
+		{"whatsapp_request_send", map[string]any{"text": "hi"}},
+		{"whatsapp_request_send", map[string]any{"chat": "a", "to": "+15551230000", "text": "hi"}},
+		{"whatsapp_request_send", map[string]any{"chat": "a", "text": strings.Repeat("x", 4097)}},
+		{"whatsapp_request_send", map[string]any{"chat": "a", "text": "hi", "video": "/v/a.mp4"}},
+		{"whatsapp_request_send", map[string]any{"match": "Mum", "text": "hi"}},
+		{"whatsapp_send_request_status", map[string]any{}},
 		{"whatsapp_search", map[string]any{"text": "a\x00b"}},
 	}
 	for _, c := range cases {
@@ -393,5 +398,25 @@ func TestVideoSendOutlastsTheUsualToolDeadline(t *testing.T) {
 	}
 	if len(left) != 2 || left[0] > 90*time.Second || left[1] < 10*time.Minute {
 		t.Fatalf("deadlines %v", left)
+	}
+}
+
+// The instructions describe the current model and name only real tools.
+func TestInstructionsNameTheSendRequestTool(t *testing.T) {
+	for _, want := range []string{"every chat synced in wasync", "whatsapp_request_send", "nothing is sent until they do", "30 minutes", "editing is off"} {
+		if !strings.Contains(instructions, want) {
+			t.Errorf("instructions lack %q", want)
+		}
+	}
+	if strings.Contains(instructions, "access") {
+		t.Errorf("instructions still mention access requests: %s", instructions)
+	}
+	for _, word := range strings.Fields(instructions) {
+		name := strings.Trim(word, ".,;:")
+		if strings.HasPrefix(name, "whatsapp_") && name != "whatsapp_*" {
+			if _, ok := findTool(name); !ok {
+				t.Errorf("instructions name unknown tool %s", name)
+			}
+		}
 	}
 }

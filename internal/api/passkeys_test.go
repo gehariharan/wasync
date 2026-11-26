@@ -153,23 +153,20 @@ func TestATailnetDeviceWithAPasskeyCanDoOwnerActions(t *testing.T) {
 		t.Fatal("open sending is still off")
 	}
 
-	// An agent's request for a chat.
-	r, err := f.queue.AddAccess(f.account, accessRequest(t, f, "family"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	// An agent's request to send a message.
+	r := f.askSend(t, familyChat, "see you at 6")
 	_, page, _ = c.get("/ui/approvals")
 	if !strings.Contains(page, `value="approve"`) || !strings.Contains(page, "asks you for your passkey on this device") {
 		t.Fatalf("approvals page with a passkey:\n%s", page)
 	}
-	_, ask, _ = c.post("/ui/decide", url.Values{"csrf": {csrf}, "id": {r.ID}, "action": {"approve"}, "chat": {familyChat}, "history": {"now"}})
-	if !strings.Contains(ask, "Family Group") || !strings.Contains(ask, "jit") {
+	_, ask, _ = c.post("/ui/decide", url.Values{"csrf": {csrf}, "id": {r.ID}, "action": {"approve"}})
+	if !strings.Contains(ask, "Family Group") || !strings.Contains(ask, "jit") || !strings.Contains(ask, "see you at 6") {
 		t.Fatalf("approval page:\n%s", ask)
 	}
 	if got := notice(answer(t, c, device, ask)); got != "approved" {
 		t.Fatalf("confirmed approval: %q", got)
 	}
-	if got := f.queue.Get(f.account, r.ID); got.Status == approval.StatusPending || !f.group(t, familyChat).Enabled {
+	if got := f.queue.Get(f.account, r.ID); got.Status == approval.StatusPending || len(*f.sent) != 1 {
 		t.Fatalf("approved request: %+v", got)
 	}
 
@@ -231,7 +228,7 @@ func TestATailnetDeviceWithoutAPasskeyCannotDoOwnerActions(t *testing.T) {
 			t.Fatalf("%v without a passkey: %q", form, hd.Get("Location"))
 		}
 	}
-	for path, form := range map[string]url.Values{"/ui/mode": {"mode": {"all"}, "history": {"now"}}, "/ui/setup/agent": {"name": {"newagent"}}} {
+	for path, form := range map[string]url.Values{"/ui/setup/agent": {"name": {"newagent"}}} {
 		form.Set("csrf", csrf)
 		if _, _, hd := c.post(path, form); notice(hd) != "remote" {
 			t.Fatalf("%s without a passkey: %q", path, hd.Get("Location"))
@@ -310,7 +307,7 @@ func TestPasskeyAnswersAreOneTimeAndBoundToTheirPage(t *testing.T) {
 	// If what was confirmed would now read differently, nothing happens: here
 	// the agent was replaced by one with a chat list while the page waited.
 	_, ask, _ = c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"allowsend"}, "agent": {"other"}})
-	if !strings.Contains(ask, "the chats you approve for it") {
+	if !strings.Contains(ask, "the 0 chat(s) it can already reach") {
 		t.Fatalf("allow sending page:\n%s", ask)
 	}
 	if _, err := agentauth.Revoke(f.dir, "other", time.Now()); err != nil {

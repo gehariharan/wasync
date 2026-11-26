@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 # Maintainer tool: build the native wasync and wasync-axi binaries, the archive,
 # and on macOS the installer and the wasync app's disk image. Every program
-# carries the same VERSION. The macOS installer lets the user choose whether to
-# add wasync-axi (off by default); the app always carries it, unused until an
-# agent is connected.
+# carries the same VERSION. The macOS installer always installs both tools, and
+# the app always carries wasync-axi, unused until an agent is connected.
 set -euo pipefail
 
 version="${1:-}"
@@ -62,14 +61,14 @@ if [[ "$platform" == darwin ]]; then
   # The signing step and the Homebrew cask expect wasync alone in the Mac archive.
   tar -czf "$out/$name.tar.gz" -C "$stage" wasync README.md LICENSE THIRD_PARTY_LICENSES
 else
-  # Linux: install.sh asks before installing wasync-axi; extracting installs nothing.
+  # Linux: install.sh installs both tools; extracting installs nothing.
   install -m 755 packaging/linux/install.sh "$stage/install.sh"
   tar -czf "$out/$name.tar.gz" -C "$stage" wasync wasync-axi install.sh README.md LICENSE THIRD_PARTY_LICENSES
 fi
 
 if [[ "$platform" == darwin ]]; then
-  # Two component packages joined by packaging/macos/distribution.xml: wasync is
-  # always installed; wasync-axi is a choice that starts unticked.
+  # Two component packages joined by packaging/macos/distribution.xml; both are
+  # always installed.
   mkdir -p "$stage/payload/usr/local/bin" "$stage/payload/usr/local/share/wasync" "$stage/hooks" \
     "$stage/axi-payload/usr/local/bin" "$stage/axi-hooks" "$stage/components"
   cp -R "$stage/THIRD_PARTY_LICENSES" "$stage/payload/usr/local/share/wasync/"

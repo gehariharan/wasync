@@ -319,6 +319,14 @@ func TestDoctorMissingScopes(t *testing.T) {
 		!strings.Contains(c.Detail, "observe") || !strings.Contains(c.Detail, "limited to 1 chat(s)") {
 		t.Fatalf("%+v", c)
 	}
+
+	diag.Agent = &testutil.DiagnosticsAgent{Name: "connected", Scopes: []string{"read.messages", "read.chats"}, Chats: []string{"1@g.us", "2@g.us"}, SyncedChats: true}
+	srv.Routes["/diagnostics"] = testutil.Envelope(diag)
+	r, _, _ = runDoctorJSON(t, h)
+	c = r.check(t, "scopes", sourceAXI)
+	if !strings.Contains(c.Detail, "uses every chat synced in wasync (2 now)") || strings.Contains(c.Detail, "limited to") || strings.Contains(c.Detail, "access request") {
+		t.Fatalf("%+v", c)
+	}
 }
 
 func TestDoctorMissingScopesWithOlderCoreRepair(t *testing.T) {

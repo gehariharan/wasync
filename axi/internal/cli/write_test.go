@@ -128,7 +128,7 @@ func TestReplyNeedsCredentialWithWriteScopeHelp(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,send --on-demand", "offers to save the credential")
+	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,send --synced-chats", "offers to save the credential")
 	if n, _ := posts(srv); n != 0 {
 		t.Fatalf("posted without a credential: %d", n)
 	}
@@ -250,8 +250,40 @@ func TestSendReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
 			t.Errorf("%s: exit %d\n%s", tc.name, code, out)
 		}
 		mustContain(t, out, tc.code, "refused: "+tc.name, tc.help)
+		if hint := strings.Contains(out, "wasync-axi send-request (--chat JID | --to PHONE) --text TEXT"); hint != (tc.code == "forbidden") {
+			t.Errorf("%s: send-request hint shown %v\n%s", tc.name, hint, out)
+		}
 		if n, _ := posts(srv); n != 1 {
 			t.Errorf("%s: %d posts; a refused or unknown write must not be retried", tc.name, n)
+		}
+	}
+
+	// wasync's own help already names the send request: it is not repeated.
+	h, srv := writerHarness(t)
+	own := "Chat a@g.us is not synced. Ask the person to approve this message with `wasync-axi send-request --chat a@g.us --text TEXT`."
+	srv.Routes["/messages"] = map[string]any{"request_id": "r-x", "error_code": "forbidden", "error": "refused", "help": own}
+	srv.Codes["/messages"] = 403
+	out, _ := h.run(t, "send", "--chat", "a@g.us", "--text", "hello")
+	if !strings.Contains(out, own) || strings.Count(out, "send-request") != 1 {
+		t.Fatalf("help changed or repeated:\n%s", out)
+	}
+}
+
+func TestReplyAndReactRefusalsSayToSyncTheChat(t *testing.T) {
+	h, srv := writerHarness(t)
+	reaction := "/messages/" + testRef + "/reaction"
+	for _, ep := range []string{replyEndpoint, reaction} {
+		srv.Routes[ep] = map[string]any{"request_id": "r-x", "error_code": "forbidden", "error": "refused", "help": "Chat one@g.us is not allowed for scope send."}
+		srv.Codes[ep] = 403
+	}
+	for _, args := range [][]string{{"reply", testRef, "--text", "hi"}, {"react", testRef, "👍"}} {
+		out, code := h.run(t, args...)
+		if code != ExitError {
+			t.Fatalf("%v: exit %d\n%s", args, code, out)
+		}
+		mustContain(t, out, "Chat one@g.us is not allowed for scope send. Reading, replying and reacting work in every chat synced in wasync", "ask the person to sync it in wasync")
+		if strings.Contains(out, "send-request") {
+			t.Fatalf("%v: a reply is never a send request:\n%s", args, out)
 		}
 	}
 }

@@ -70,7 +70,30 @@ func writeExplain(err error, scope string) error {
 		return err
 	}
 	e := *ce
-	e.Help = "ask a human to run `wasync agents grant <name> --scope read.chats,read.messages," + scope + " --on-demand`, then ask for each chat by name and they approve it" + config.SaveHelp
+	e.Help = "ask a human to connect this agent in wasync, or to run `wasync agents grant <name> --scope read.chats,read.messages," + scope + " --synced-chats`; the agent then uses every chat synced in wasync" + config.SaveHelp
+	return &e
+}
+
+// syncHelp says how a chat becomes usable for reading, replying and reacting.
+const syncHelp = "Reading, replying and reacting work in every chat synced in wasync; for a chat that is not synced, ask the person to sync it in wasync."
+
+// refusalHint adds the next step after wasync's own help for a write it
+// refused with forbidden, unless that help already names it (marker). It
+// never changes the refusal or wasync's words.
+func refusalHint(err error, marker, hint string) error {
+	var ce *contract.Error
+	if !errors.As(err, &ce) || ce.Code != contract.CodeForbidden || strings.Contains(ce.Help, marker) {
+		return err
+	}
+	e := *ce
+	switch own := strings.TrimSpace(e.Help); {
+	case own == "":
+		e.Help = hint
+	case strings.HasSuffix(own, "."):
+		e.Help = own + " " + hint
+	default:
+		e.Help = own + ". " + hint
+	}
 	return &e
 }
 
@@ -101,7 +124,7 @@ const replyUsage = "wasync-axi reply REF --text TEXT [--mentions JID,JID] [--jso
 var replyCommand = &command{
 	name:        "reply",
 	usage:       replyUsage,
-	description: "Quote the message REF in a reply (running wasync, scope send and an allowlisted chat); sends once, never retries",
+	description: "Quote the message REF in a reply (running wasync, scope send, in a chat synced in wasync); sends once, never retries",
 	flags: []flagSpec{
 		{name: "--text", value: "TEXT", description: "the reply text; WhatsApp text, at most 16000 bytes"},
 		{name: "--mentions", value: "JID,JID", description: "user JIDs to mention (up to 20); the text must contain @NUMBER for each so the mention is visible"},
@@ -138,7 +161,7 @@ func (a *App) runReply(ctx context.Context, inv invocation) error {
 	var res contract.WriteResult
 	resp, err := post(ctx, w, t, "/messages/"+url.PathEscape(ref)+"/reply", map[string]any{"text": text, "mentions": mentions}, &res)
 	if err != nil {
-		return writeExplain(err, "send")
+		return refusalHint(writeExplain(err, "send"), "sync", syncHelp)
 	}
 	return a.writeResult(inv, t, ref, "reply", resp, res)
 }
@@ -148,9 +171,9 @@ const sendUsage = "wasync-axi send (--chat CHAT_JID | --to PHONE_NUMBER) (--text
 var sendCommand = &command{
 	name:        "send",
 	usage:       sendUsage,
-	description: "Send a new message or a video to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number on the list they approved for you or while open sending is on); sends once, never retries",
+	description: "Send a new message or a video to a chat, or to a phone number (running wasync, scope send; a chat synced in wasync, or a number on the list the person approved for you or while open sending is on; for anything else use `send-request`); sends once, never retries",
 	flags: []flagSpec{
-		{name: "--chat", value: "CHAT_JID", description: "the chat to send to, as listed by `chats`; it must be one the person approved for sending, unless open sending is on"},
+		{name: "--chat", value: "CHAT_JID", description: "the chat to send to, as listed by `chats`; it must be synced in wasync, unless open sending is on"},
 		{name: "--to", value: "PHONE_NUMBER", description: "a phone number with its country code, such as +15551230000; wasync refuses it unless it is on the list the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message until it replies) or open sending is on"},
 		{name: "--text", value: "TEXT", description: "the message text, or the video's caption; WhatsApp text, at most 16000 bytes"},
 		{name: "--video", value: "FILE", description: "an MP4 video (H.264 video, AAC audio, up to 64 MiB) to send as a playable video; its preview is a frame taken with ffmpeg when it is installed, otherwise a plain one; the same approval and pacing as text apply"},
@@ -166,10 +189,11 @@ type transferWriter interface {
 }
 
 // runSend posts one new message. It is not a quoted reply: it needs no earlier
-// message to anchor on. The chat must be one the person approved, the number
-// on the list they approved for this agent, or open sending must be on; wasync
-// refuses anything else and says why. A video goes as its bytes, with the
-// text as its caption.
+// message to anchor on. The chat must be synced in wasync, the number on the
+// list the person approved for this agent, or open sending must be on; wasync
+// refuses anything else and says why, and `send-request` asks the person to
+// approve one message instead. A video goes as its bytes, with the text as
+// its caption.
 func (a *App) runSend(ctx context.Context, inv invocation) error {
 	chat, hasChat := inv.flag("--chat")
 	to, hasTo := inv.flag("--to")
@@ -227,7 +251,7 @@ func (a *App) runSend(ctx context.Context, inv invocation) error {
 		resp, err = post(ctx, w, t, "/messages", body, &res)
 	}
 	if err != nil {
-		return writeExplain(err, "send")
+		return refusalHint(writeExplain(err, "send"), "send-request", sendRequestHelp)
 	}
 	if note != "" && !inv.json {
 		fmt.Fprintln(a.Out, "note: "+note)

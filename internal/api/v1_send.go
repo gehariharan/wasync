@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/opensend"
 	"github.com/gehariharan/wasync/internal/query"
 	"github.com/gehariharan/wasync/internal/sendlist"
@@ -137,7 +138,7 @@ func (h *handler) authorizeSend(w http.ResponseWriter, r *http.Request, id strin
 		err := h.agents.AuthorizeAndAudit(c, agentauth.ScopeSend, target, "", id, true)
 		var denied *agentauth.Error
 		if numberGiven && errors.As(err, &denied) && denied.Code == agentauth.CodeForbidden {
-			denied.Help = "Sending to a number you were not given needs the person to approve it in a list for you, or to switch on Open sending, on the Agents page of the wasync web app (wasync web). Do not try another route."
+			denied.Help = "Sending to a number you were not given needs the person to approve it. For this one message, run `wasync-axi send-request --to " + approval.PhoneNumber(target) + " --text TEXT` (or POST /api/v1/send-requests) and wait until they approve it in wasync. For many numbers, the person can approve a list for you, or switch on Open sending, on the Agents page of the wasync web app (wasync web). Do not try another route."
 		}
 		return err
 	})

@@ -16,6 +16,7 @@ import (
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/tui"
+	"github.com/gehariharan/wasync/internal/whatsapp"
 )
 
 type humanStub struct {
@@ -48,12 +49,16 @@ func TestTypedPhraseAloneDoesNotApproveWhenThePersonDeclines(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer server.Close()
-	_, client, err := agentauth.Grant(dir, agentauth.GrantRequest{Name: "jit", Scopes: []string{"read.chats,read.messages"}, OnDemand: true}, time.Now())
+	var sent []whatsapp.SendInput
+	session.Send = func(_ context.Context, in whatsapp.SendInput) (whatsapp.SendResult, error) {
+		sent = append(sent, in)
+		return whatsapp.SendResult{MessageID: "3EB0AA"}, nil
+	}
+	_, client, err := agentauth.Grant(dir, agentauth.ConnectRequest("jit", nil), time.Now())
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, err := queue.AddAccess(account, approval.Access{Agent: "jit", AgentID: client.ID, Scopes: []string{"read.chats"}, Query: "second",
-		Candidates: []approval.Candidate{{Chat: "two@g.us", Name: "Second"}}})
+	r, _, err := queue.AddSend(account, "two@g.us", approval.AgentSend{Agent: "jit", AgentID: client.ID, Text: "see you"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +66,7 @@ func TestTypedPhraseAloneDoesNotApproveWhenThePersonDeclines(t *testing.T) {
 	flags := []string{"--data-dir", dir, "--api-addr", strings.TrimPrefix(server.URL, "http://")}
 	approve := func() (string, error) {
 		errs := &bytes.Buffer{}
-		app.Interactive, app.In, app.Err = true, &lineReader{[]string{"1", "ALLOW " + r.ID[len(r.ID)-6:]}}, errs
+		app.Interactive, app.In, app.Err = true, &lineReader{[]string{"SEND " + r.ID[len(r.ID)-6:]}}, errs
 		output.Reset()
 		err := app.Run(ctx, append(append([]string{}, flags...), "actions", "approve", r.ID))
 		return errs.String(), err
@@ -73,8 +78,8 @@ func TestTypedPhraseAloneDoesNotApproveWhenThePersonDeclines(t *testing.T) {
 	if !strings.Contains(said, "confirm on this computer") {
 		t.Fatalf("the terminal did not tell the person to look at the screen:\n%s", said)
 	}
-	if groupByID(t, store, account, "two@g.us").Enabled {
-		t.Fatal("a declined prompt turned on capture")
+	if len(sent) != 0 {
+		t.Fatal("a declined prompt sent the message")
 	}
 	if queue.Pending(account) == nil {
 		t.Fatalf("a declined prompt used up the request; terminal said:\n%s\nerr: %v", said, err)
@@ -86,8 +91,8 @@ func TestTypedPhraseAloneDoesNotApproveWhenThePersonDeclines(t *testing.T) {
 	if _, err = approve(); err != nil {
 		t.Fatalf("approval after the person confirmed: %v", err)
 	}
-	if !groupByID(t, store, account, "two@g.us").Enabled {
-		t.Fatal("confirmed approval did not apply")
+	if len(sent) != 1 || sent[0].To != "two@g.us" || sent[0].Text != "see you" {
+		t.Fatalf("confirmed approval sent %+v", sent)
 	}
 }
 
@@ -178,7 +183,7 @@ func TestAgentGrantAndRevokeWaitForThePerson(t *testing.T) {
 
 	app, out, errs := agentsApp(t, "axi\nn\n", true)
 	app.Human = humancheck.NewGate(stub)
-	err := run(app, "grant", "axi", "--on-demand", "--expires", "720h")
+	err := run(app, "grant", "axi", "--synced-chats", "--expires", "720h")
 	if err == nil || !strings.Contains(err.Error(), "no credential created") {
 		t.Fatalf("declined grant: %v", err)
 	}
@@ -188,14 +193,14 @@ func TestAgentGrantAndRevokeWaitForThePerson(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(dir, agentauth.FileName)); !os.IsNotExist(statErr) {
 		t.Fatal("registry written without the person")
 	}
-	if len(stub.asked) != 1 || !strings.Contains(stub.asked[0], `"axi"`) || !strings.Contains(stub.asked[0], "only the chats you approve") || !strings.Contains(stub.asked[0], "720h") {
+	if len(stub.asked) != 1 || !strings.Contains(stub.asked[0], `"axi"`) || !strings.Contains(stub.asked[0], "every chat you sync in wasync") || !strings.Contains(stub.asked[0], "720h") {
 		t.Fatalf("prompt: %q", stub.asked)
 	}
 
 	stub.confirm = true
 	app, out, _ = agentsApp(t, "axi\nn\n", true)
 	app.Human = humancheck.NewGate(stub)
-	if err = run(app, "grant", "axi", "--on-demand"); err != nil || strings.Count(out.String(), "wsa_") != 1 {
+	if err = run(app, "grant", "axi", "--synced-chats"); err != nil || strings.Count(out.String(), "wsa_") != 1 {
 		t.Fatalf("confirmed grant: %v %q", err, out.String())
 	}
 

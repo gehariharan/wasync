@@ -136,7 +136,7 @@ func init() {
 		replyCommand,
 		reactCommand,
 		editCommand,
-		accessCommand,
+		sendRequestCommand,
 		{
 			name:        "version",
 			usage:       "wasync-axi version [--json]",
@@ -196,6 +196,11 @@ func displayName(c *command) string {
 	return c.name
 }
 
+// accessRemovedHelp answers an old `access` invocation. Per-chat access
+// requests are gone from wasync; only sends outside the synced chats need the
+// person, one message at a time.
+const accessRemovedHelp = "to message a chat that is not synced in wasync or a new number, use `wasync-axi send-request (--chat JID | --to PHONE) --text TEXT`; to read or reply in a chat that is not synced, ask the person to sync it in wasync"
+
 func usageErr(help, format string, args ...any) *contract.Error {
 	return contract.Errorf(contract.CodeUsage, help, format, args...)
 }
@@ -246,6 +251,9 @@ func (a *App) resolve(args []string) (*command, []string, bool, error) {
 	}
 	if c := findCommand(args[0]); c != nil {
 		return c, args[1:], jsonMode, nil
+	}
+	if args[0] == "access" {
+		return nil, nil, jsonMode, usageErr(accessRemovedHelp, "`access` was removed: a connected agent already uses every chat synced in wasync, with no per-chat request")
 	}
 	return nil, nil, jsonMode, usageErr("valid commands: "+strings.Join(commandNames(), ", ")+"; run `wasync-axi help`", "unknown command %q", args[0])
 }

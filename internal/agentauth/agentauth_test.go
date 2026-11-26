@@ -504,7 +504,7 @@ func TestConcurrentGrantAndReload(t *testing.T) {
 func TestMalformedRegistryFailsClosed(t *testing.T) {
 	dir := privateDir(t)
 	path := filepath.Join(dir, FileName)
-	for _, body := range []string{"{", `{"version":2,"clients":[]}`, `{"version":1,"clients":[{"id":"zz","name":"x"}]}`, `{"version":1,"clients":[],"extra":1}`} {
+	for _, body := range []string{"{", `{"version":3,"clients":[]}`, `{"version":1,"clients":[{"id":"zz","name":"x"}]}`, `{"version":1,"clients":[],"extra":1}`} {
 		os.WriteFile(path, []byte(body), 0600)
 		if _, err := List(dir); err == nil {
 			t.Fatalf("accepted %s", body)
@@ -521,114 +521,246 @@ func privateDir(t *testing.T) string {
 	return dir
 }
 
-func TestOnDemandClientStartsWithNoChatsAndGainsOnlyApprovedAccess(t *testing.T) {
-	dir := privateDir(t)
-	cred, c := grant(t, dir, GrantRequest{Name: "jit", Scopes: []string{"read.chats,read.messages,send"}, OnDemand: true})
-	if !c.OnDemand || !c.Restricted() || c.AllowsChat(chatA) || len(c.AllowedChats()) != 0 {
-		t.Fatalf("fresh client %+v", c)
+// legacyOnDemand stores a credential the way wasync stored an on-demand agent
+// before agents used every synced chat: no chats of its own, plus the chat
+// grants a person approved one by one.
+func legacyOnDemand(t *testing.T, dir, name string, scopes []string, grants ...ChatGrant) (string, Client) {
+	t.Helper()
+	cred, c := grant(t, dir, GrantRequest{Name: name, Scopes: scopes, Chats: []string{chatA}})
+	if err := update(dir, func(reg *registry) error {
+		for i := range reg.Clients {
+			if reg.Clients[i].ID == c.ID {
+				reg.Clients[i].Chats, reg.Clients[i].OnDemand, reg.Clients[i].Grants = []string{}, true, grants
+				c = reg.Clients[i].Client
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
 	}
-	if _, _, err := Grant(dir, GrantRequest{Name: "plain", Scopes: []string{"send"}}, time.Now()); err == nil {
-		t.Fatal("write scope without a chat and without --on-demand")
+	return cred, c
+}
+
+func TestLegacyOnDemandClientKeepsOnlyTheChatsAPersonApproved(t *testing.T) {
+	dir := privateDir(t)
+	cred, c := legacyOnDemand(t, dir, "jit", []string{ScopeReadChats, ScopeReadMessages, ScopeSend}, ChatGrant{Chat: chatA, Scopes: []string{ScopeReadChats, ScopeReadMessages}, GrantedAt: time.Now().UTC().Truncate(time.Second)})
+	if !c.OnDemand || !c.Restricted() || !c.AllowsChat(chatA) || c.AllowsChat(chatB) {
+		t.Fatalf("client %+v", c)
 	}
 	a := NewAuthorizer(dir)
 	client, err := a.Authenticate("Bearer " + cred)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, scope := range []string{ScopeReadMessages, ScopeSend} {
-		err = a.Authorize(client, scope, chatA)
-		var e *Error
-		if !errors.As(err, &e) || e.Status != 403 || !strings.Contains(e.Help, "wasync-axi access request --chat "+chatA) {
-			t.Fatalf("%s: %v", scope, err)
-		}
-	}
-	if err = a.Authorize(client, ScopeReadChats, ""); err != nil {
-		t.Fatalf("listing chats without a chat: %v", err)
-	}
-	if _, err = GrantChatAccess(dir, c.ID, chatA, []string{ScopeReadChats, ScopeReadMessages}, "req1", time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	// The running authorizer sees the grant without restarting, for read only.
 	if err = a.Authorize(client, ScopeReadMessages, chatA); err != nil {
-		t.Fatalf("read after grant: %v", err)
+		t.Fatalf("read in an approved chat: %v", err)
 	}
-	if code(a.Authorize(client, ScopeSend, chatA)) != CodeForbidden || code(a.Authorize(client, ScopeReadMessages, chatB)) != CodeForbidden {
-		t.Fatal("grant reached send or another chat")
-	}
-	// Send is added separately and merges with the earlier read grant.
-	updated, err := GrantChatAccess(dir, c.ID, chatA, []string{ScopeSend}, "req2", time.Now())
-	if err != nil || len(updated.Grants) != 1 || strings.Join(updated.Grants[0].Scopes, ",") != "read.chats,read.messages,send" {
-		t.Fatalf("merged %+v %v", updated, err)
-	}
-	if err = a.Authorize(client, ScopeSend, chatA); err != nil {
-		t.Fatal(err)
-	}
-	if got := mustActive(t, dir, "jit").AllowedChats(); len(got) != 1 || got[0] != chatA {
-		t.Fatalf("allowed %v", got)
-	}
-}
-
-func TestGrantChatAccessRefusesWhatTheCredentialCannotDo(t *testing.T) {
-	dir := privateDir(t)
-	_, c := grant(t, dir, GrantRequest{Name: "reader", OnDemand: true})
-	for _, scopes := range [][]string{{ScopeSend}, {ScopeCaptureManage}, {ScopeExport}, {}} {
-		if _, err := GrantChatAccess(dir, c.ID, chatA, scopes, "r", time.Now()); err == nil {
-			t.Fatalf("granted %v", scopes)
+	for _, check := range []struct{ scope, chat string }{{ScopeSend, chatA}, {ScopeReadMessages, chatB}, {ScopeSend, chatB}} {
+		err = a.Authorize(client, check.scope, check.chat)
+		var e *Error
+		if !errors.As(err, &e) || e.Status != 403 || strings.Contains(e.Help, "access request") || strings.Contains(e.Help, "--on-demand") {
+			t.Fatalf("%s in %s: %v", check.scope, check.chat, err)
+		}
+		if check.scope == ScopeSend && !strings.Contains(e.Help, "wasync-axi send-request --chat "+check.chat) {
+			t.Fatalf("send help does not point at a send request: %q", e.Help)
 		}
 	}
-	if _, err := GrantChatAccess(dir, c.ID, "bad jid", []string{ScopeReadChats}, "r", time.Now()); err == nil {
-		t.Fatal("granted an invalid chat")
-	}
-	if _, err := GrantChatAccess(dir, "deadbeef", chatA, []string{ScopeReadChats}, "r", time.Now()); err == nil {
-		t.Fatal("granted to an unknown client")
-	}
-	if _, err := Revoke(dir, "reader", time.Now()); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := GrantChatAccess(dir, c.ID, chatA, []string{ScopeReadChats}, "r", time.Now()); err == nil {
-		t.Fatal("granted to a revoked client")
-	}
-	_, e := grant(t, dir, GrantRequest{Name: "short", OnDemand: true, Expires: time.Minute})
-	if _, err := GrantChatAccess(dir, e.ID, chatA, []string{ScopeReadChats}, "r", time.Now().Add(time.Hour)); err == nil {
-		t.Fatal("granted to an expired client")
+	// A replacement keeps exactly the chats it was approved for, never more.
+	if got := regrantCommand(&c, "", "", 0); !strings.Contains(got, "--chat "+chatA) || strings.Contains(got, "--synced-chats") || strings.Contains(got, "--on-demand") {
+		t.Fatalf("regrant %q", got)
 	}
 }
 
-func TestAccessScopesStayWithinTheCredential(t *testing.T) {
-	read := &Client{Scopes: []string{ScopeReadChats, ScopeReadMessages, ScopeSend, ScopeEditOwn, ScopeCaptureManage}}
-	got, err := read.AccessScopes(false, false)
-	if err != nil || strings.Join(got, ",") != "read.chats,read.messages" {
-		t.Fatalf("read %v %v", got, err)
+func TestConnectedAgentUsesExactlyTheSyncedChats(t *testing.T) {
+	dir := privateDir(t)
+	req := ConnectRequest("codex", []string{chatA, chatA, " " + chatA, "not a jid"})
+	cred, c := grant(t, dir, req)
+	if !c.SyncedChats || c.OnDemand || strings.Join(c.Scopes, ",") != "read.chats,read.messages,send,react" || strings.Join(c.Chats, ",") != chatA {
+		t.Fatalf("connected client %+v", c)
 	}
-	got, err = read.AccessScopes(true, false)
-	if err != nil || strings.Join(got, ",") != "read.chats,read.messages,send" {
-		t.Fatalf("send %v %v", got, err)
+	a := NewAuthorizer(dir)
+	agent, err := a.Authenticate("Bearer " + cred)
+	if err != nil {
+		t.Fatal(err)
 	}
-	got, err = read.AccessScopes(true, true)
-	if err != nil || strings.Join(got, ",") != "read.chats,read.messages,send,edit.own" {
-		t.Fatalf("send and edit %v %v", got, err)
+	for _, scope := range []string{ScopeReadMessages, ScopeSend, ScopeReact} {
+		if err = a.Authorize(agent, scope, chatA); err != nil {
+			t.Fatalf("%s in a synced chat: %v", scope, err)
+		}
 	}
-	if _, err = (&Client{Scopes: []string{ScopeReadChats}}).AccessScopes(true, false); err == nil {
-		t.Fatal("send requested without holding a send scope")
+	if code(a.Authorize(agent, ScopeEditOwn, chatA)) != CodeForbidden {
+		t.Fatal("editing is not off by default")
 	}
-	if _, err = (&Client{Scopes: []string{ScopeReadChats, ScopeSend}}).AccessScopes(false, true); err == nil {
-		t.Fatal("edit requested without holding edit.own")
+	var e *Error
+	if err = a.Authorize(agent, ScopeSend, chatB); !errors.As(err, &e) || e.Code != CodeForbidden || !strings.Contains(e.Help, "not synced") || !strings.Contains(e.Help, "send-request --chat "+chatB) || strings.Contains(e.Help, "agents grant") {
+		t.Fatalf("send outside the synced chats: %v", err)
 	}
-	if _, err = (&Client{Scopes: []string{ScopeSend}}).AccessScopes(false, false); err == nil {
-		t.Fatal("read requested without holding a read scope")
+	// Syncing a chat later lets the running agent use it at once.
+	changed, err := SetSyncedChats(dir, []string{chatB, chatA})
+	if err != nil || len(changed) != 1 || changed[0].Name != "codex" || strings.Join(changed[0].Chats, ",") != chatA+","+chatB {
+		t.Fatalf("sync %+v %v", changed, err)
+	}
+	if err = a.Authorize(agent, ScopeReact, chatB); err != nil {
+		t.Fatalf("react in a chat synced later: %v", err)
+	}
+	// Unsyncing a chat takes it away, reading included.
+	if _, err = SetSyncedChats(dir, []string{chatB}); err != nil {
+		t.Fatal(err)
+	}
+	if code(a.Authorize(agent, ScopeReadMessages, chatA)) != CodeForbidden || code(a.Authorize(agent, ScopeSend, chatA)) != CodeForbidden {
+		t.Fatal("an unsynced chat is still usable")
+	}
+	// With nothing synced the agent uses no chat at all, not every chat.
+	if _, err = SetSyncedChats(dir, nil); err != nil {
+		t.Fatal(err)
+	}
+	if code(a.Authorize(agent, ScopeReadMessages, chatB)) != CodeForbidden || !mustActive(t, dir, "codex").Restricted() {
+		t.Fatal("an agent with no synced chats can read")
+	}
+	if got := regrantCommand(mustActive(t, dir, "codex"), "", "", 0); !strings.Contains(got, "--synced-chats") || strings.Contains(got, "--chat") {
+		t.Fatalf("regrant %q", got)
+	}
+}
+
+func TestSetSyncedChatsChangesOnlySyncedCredentialsAndOnlyWhenNeeded(t *testing.T) {
+	dir := privateDir(t)
+	grant(t, dir, GrantRequest{Name: "fixed", Scopes: []string{ScopeSend}, Chats: []string{chatA}})
+	grant(t, dir, GrantRequest{Name: "reader", Scopes: []string{ScopeReadChats}})
+	grant(t, dir, ConnectRequest("gone", nil))
+	if _, err := Revoke(dir, "gone", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if has, err := HasSyncedChats(dir); err != nil || has {
+		t.Fatalf("only a revoked synced credential: %v %v", has, err)
+	}
+	grant(t, dir, ConnectRequest("codex", []string{chatA}))
+	if has, err := HasSyncedChats(dir); err != nil || !has {
+		t.Fatalf("has synced: %v %v", has, err)
+	}
+	before, err := os.Stat(filepath.Join(dir, FileName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if changed, err := SetSyncedChats(dir, []string{chatA}); err != nil || len(changed) != 0 {
+		t.Fatalf("no change expected: %+v %v", changed, err)
+	}
+	after, _ := os.Stat(filepath.Join(dir, FileName))
+	if !os.SameFile(before, after) || !before.ModTime().Equal(after.ModTime()) {
+		t.Fatal("an unchanged synced set rewrote agents.json")
+	}
+	if _, err = SetSyncedChats(dir, []string{chatB}); err != nil {
+		t.Fatal(err)
+	}
+	clients, _ := List(dir)
+	for _, c := range clients {
+		switch c.Name {
+		case "fixed":
+			if strings.Join(c.Chats, ",") != chatA {
+				t.Fatalf("a fixed allowlist followed the synced chats: %+v", c)
+			}
+		case "reader":
+			if len(c.Chats) != 0 || c.Restricted() {
+				t.Fatalf("an every-chat reader became restricted: %+v", c)
+			}
+		case "gone":
+			if len(c.Chats) != 0 {
+				t.Fatalf("a revoked credential was changed: %+v", c)
+			}
+		case "codex":
+			if strings.Join(c.Chats, ",") != chatB {
+				t.Fatalf("synced chats: %+v", c)
+			}
+		}
+	}
+}
+
+func TestRegistryVersionMarksSyncedCredentialsAndOldFilesStillLoad(t *testing.T) {
+	dir := privateDir(t)
+	path := filepath.Join(dir, FileName)
+	// agents.json as the previous release wrote it: an every-chat reader, an
+	// allowlisted sender and an on-demand agent with one approved chat.
+	old := `{"version":1,"clients":[
+ {"id":"0123abcd","name":"reader","scopes":["read.chats","read.messages"],"chats":[],"rate_per_minute":60,"created_at":"2026-11-01T00:00:00Z","secret_sha256":"` + strings.Repeat("a", 64) + `"},
+ {"id":"0123abce","name":"poster","scopes":["send"],"chats":["` + chatA + `"],"rate_per_minute":60,"created_at":"2026-11-01T00:00:00Z","secret_sha256":"` + strings.Repeat("b", 64) + `"},
+ {"id":"0123abcf","name":"wasync-axi","scopes":["read.chats","read.messages"],"chats":[],"on_demand":true,"grants":[{"chat":"` + chatB + `","scopes":["read.chats","read.messages"],"granted_at":"2026-11-02T00:00:00Z","request_id":"r1"}],"rate_per_minute":60,"created_at":"2026-11-01T00:00:00Z","secret_sha256":"` + strings.Repeat("c", 64) + `"}]}
+`
+	if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	clients, err := List(dir)
+	if err != nil || len(clients) != 3 {
+		t.Fatalf("old file: %v %v", clients, err)
+	}
+	for _, c := range clients {
+		if c.SyncedChats {
+			t.Fatalf("an old credential was turned into a synced-chats one: %+v", c)
+		}
+	}
+	jit := mustActive(t, dir, "wasync-axi")
+	if !jit.OnDemand || !jit.AllowsChat(chatB) || jit.AllowsChat(chatA) || !jit.AllowsChatScope(ScopeReadMessages, chatB) {
+		t.Fatalf("on-demand agent changed: %+v", jit)
+	}
+	// Following the synced chats never touches the old credentials.
+	if changed, err := SetSyncedChats(dir, []string{chatA, chatB}); err != nil || len(changed) != 0 {
+		t.Fatalf("old credentials changed: %+v %v", changed, err)
+	}
+	// Any other write keeps version 1, so the previous release can still read it.
+	if _, err = Revoke(dir, "reader", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if v := fileVersion(t, path); v != FileVersion {
+		t.Fatalf("version %d without a synced credential", v)
+	}
+	grant(t, dir, ConnectRequest("codex", nil))
+	if v := fileVersion(t, path); v != FileVersionSynced {
+		t.Fatalf("version %d with a synced credential", v)
+	}
+	if after := mustActive(t, dir, "wasync-axi"); !after.OnDemand || len(after.Grants) != 1 || after.SyncedChats {
+		t.Fatalf("on-demand agent changed by the upgrade: %+v", after)
+	}
+	for _, body := range []string{`{"version":3,"clients":[]}`, strings.Replace(old, `"on_demand":true`, `"on_demand":true,"synced_chats":true`, 1)} {
+		os.WriteFile(path, []byte(body), 0o600)
+		if _, err := List(dir); err == nil {
+			t.Fatalf("accepted %s", body)
+		}
+	}
+}
+
+func fileVersion(t *testing.T, path string) int {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var reg struct {
+		Version int `json:"version"`
+	}
+	if err = json.Unmarshal(data, &reg); err != nil {
+		t.Fatal(err)
+	}
+	return reg.Version
+}
+
+func TestConnectEffectNamesTheAgentTheAbilitiesAndTheChats(t *testing.T) {
+	got := GrantEffect("codex", ConnectScopes, []string{chatA, chatB}, true, 0)
+	if got != `Approve: let the agent "codex" read, reply and react in every chat you sync in wasync (2 now) and any you sync later` {
+		t.Fatalf("effect %q", got)
+	}
+	if got = GrantEffect("x", []string{ScopeReadChats}, nil, false, 0); !strings.Contains(got, "ALL chats") || !strings.Contains(got, "read.chats") {
+		t.Fatalf("effect %q", got)
 	}
 }
 
 func TestPreApprovedChatsKeepEveryScopeAndRateLimitCoversRequests(t *testing.T) {
 	dir := privateDir(t)
-	cred, _ := grant(t, dir, GrantRequest{Name: "mixed", Scopes: []string{"read.messages,send"}, Chats: []string{chatA}, OnDemand: true, RatePerMinute: 2})
+	cred, _ := grant(t, dir, GrantRequest{Name: "mixed", Scopes: []string{"read.messages,send"}, Chats: []string{chatA}, RatePerMinute: 2})
 	a := NewAuthorizer(dir)
 	client, _ := a.Authenticate("Bearer " + cred)
 	if a.Authorize(client, ScopeSend, chatA) != nil || a.Authorize(client, ScopeReadMessages, chatA) != nil {
 		t.Fatal("pre-approved chat lost a scope")
 	}
-	if code(a.AllowAccessRequest(client)) != CodeRateLimited {
-		t.Fatal("access requests are not rate limited")
+	if code(a.AllowRequest(client)) != CodeRateLimited {
+		t.Fatal("requests without a scope are not rate limited")
 	}
 }
 
@@ -643,7 +775,7 @@ func mustActive(t *testing.T, dir, name string) *Client {
 
 func TestListChatsAllowOnlyTheReadScopesTheCredentialHolds(t *testing.T) {
 	dir := privateDir(t)
-	cred, _ := grant(t, dir, GrantRequest{Name: "lister", Scopes: []string{"read.messages,read.media,send"}, OnDemand: true})
+	cred, _ := grant(t, dir, GrantRequest{Name: "lister", Scopes: []string{"read.messages,read.media,send"}, SyncedChats: true})
 	a := NewAuthorizer(dir)
 	c, err := a.Authenticate("Bearer " + cred)
 	if err != nil {

@@ -225,19 +225,20 @@ func TestSetupConnectsAnAgentOnlyWhenThePersonConfirms(t *testing.T) {
 	if _, err := os.Stat(sf.axiFile); !os.IsNotExist(err) {
 		t.Fatal("credential saved without the person")
 	}
-	if len(sf.stub.seen()) != 1 || !strings.Contains(sf.stub.seen()[0], `"codex-axi"`) || !strings.Contains(sf.stub.seen()[0], "only the chats you approve") {
+	if len(sf.stub.seen()) != 1 || !strings.Contains(sf.stub.seen()[0], `"codex-axi"`) || !strings.Contains(sf.stub.seen()[0], "read, reply and react in every chat you sync in wasync") {
 		t.Fatalf("prompt: %q", sf.stub.seen())
 	}
 
 	sf.stub.set(true)
-	// Asking for more in the form still connects a read-only agent with no expiry.
+	// Asking for more in the form still connects the agent with read, reply
+	// and react in the synced chats, and no expiry.
 	code, _, hd = c.post("/ui/setup/agent", form(url.Values{"access": {"read-send"}, "expires": {"90d"}}))
 	if code != 303 || !strings.Contains(hd.Get("Location"), "n=connected") {
 		t.Fatalf("confirmed: %d %v", code, hd)
 	}
 	client, _ := agentauth.ActiveByName(sf.dir, "codex-axi")
-	if client == nil || !client.OnDemand || len(client.Chats) != 0 || client.ExpiresAt != nil ||
-		!reflect.DeepEqual(client.Scopes, []string{agentauth.ScopeReadChats, agentauth.ScopeReadMessages}) {
+	if client == nil || !client.SyncedChats || client.OnDemand || client.ExpiresAt != nil ||
+		!reflect.DeepEqual(client.Scopes, agentauth.ConnectScopes) {
 		t.Fatalf("client %+v", client)
 	}
 	saved, err := axicred.Existing(sf.axiFile)

@@ -36,31 +36,21 @@ run() {
 }
 
 run default
-[[ -x "$bin/wasync" ]] || fail "wasync was not installed by default"
-[[ ! -e "$bin/wasync-axi" ]] || fail "wasync-axi was installed without being asked"
-[[ ! -s "$log" ]] || fail "agent setup ran without consent"
-pass "non-interactive run without flags installs wasync only (default no)"
+[[ -x "$bin/wasync" && -x "$bin/wasync-axi" ]] || fail "a run without flags did not install both tools"
+[[ ! -s "$log" ]] || fail "installing changed agent settings"
+grep -q 'Connect an agent' "$work/default.out" || fail "output does not say agents are connected later from wasync"
+pass "a run without flags installs wasync and wasync-axi and changes no agent settings"
 
-run without --without-axi
-[[ -x "$bin/wasync" && ! -e "$bin/wasync-axi" ]] || fail "--without-axi installed wasync-axi"
-pass "--without-axi installs wasync only"
-
-run with --with-axi
-[[ -x "$bin/wasync" && -x "$bin/wasync-axi" ]] || fail "--with-axi did not install both"
-[[ ! -s "$log" ]] || fail "--with-axi alone changed agent settings"
-grep -q 'setup skill' "$work/with.out" || fail "output does not tell how to set up the skill later"
-pass "--with-axi installs both and changes no agent settings"
-
-[[ -L "$bin/whatsapp-axi" && "$(readlink "$bin/whatsapp-axi")" == wasync-axi ]] || fail "--with-axi did not link the old name whatsapp-axi"
+[[ -L "$bin/whatsapp-axi" && "$(readlink "$bin/whatsapp-axi")" == wasync-axi ]] || fail "install.sh did not link the old name whatsapp-axi"
 pass "the old name whatsapp-axi links to wasync-axi"
 
 home="$work/oldname-home"; mkdir -p "$home/bin"
 printf 'old build of github.com/gehariharan/wasync/axi\n' > "$home/bin/whatsapp-axi"
-HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > /dev/null 2>&1
+HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" < /dev/null > /dev/null 2>&1
 [[ -L "$home/bin/whatsapp-axi" ]] || fail "an old wasync whatsapp-axi was not replaced by the link"
 home="$work/foreign-home"; mkdir -p "$home/bin"
 printf '#!/bin/sh\necho another tool\n' > "$home/bin/whatsapp-axi"
-HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > "$work/foreign.out" 2>&1
+HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" < /dev/null > "$work/foreign.out" 2>&1
 [[ ! -L "$home/bin/whatsapp-axi" ]] && grep -q 'another tool' "$home/bin/whatsapp-axi" || fail "another program named whatsapp-axi was replaced"
 grep -q 'Left .*whatsapp-axi alone' "$work/foreign.out" || fail "install.sh did not say it left another whatsapp-axi alone"
 pass "an old wasync whatsapp-axi becomes the link; another program of that name is kept"
@@ -68,48 +58,49 @@ pass "an old wasync whatsapp-axi becomes the link; another program of that name 
 home="$work/brewlink-home"; mkdir -p "$home/bin" "$home/Cellar"
 printf 'brew build of github.com/gehariharan/wasync/axi\n' > "$home/Cellar/whatsapp-axi"
 ln -s ../Cellar/whatsapp-axi "$home/bin/whatsapp-axi"
-HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > "$work/brewlink.out" 2>&1
+HOME="$home" "$stage/install.sh" --bin-dir "$home/bin" < /dev/null > "$work/brewlink.out" 2>&1
 [[ "$(readlink "$home/bin/whatsapp-axi")" == ../Cellar/whatsapp-axi ]] || fail "a package manager's whatsapp-axi link was replaced"
 grep -q 'Left .*whatsapp-axi alone' "$work/brewlink.out" || fail "install.sh did not say it left a foreign whatsapp-axi link alone"
-HOME="$work/with-home" "$stage/install.sh" --bin-dir "$work/with-home/bin" --with-axi < /dev/null > /dev/null 2>&1
-[[ "$(readlink "$work/with-home/bin/whatsapp-axi")" == wasync-axi ]] || fail "re-installing lost the whatsapp-axi link"
+HOME="$work/default-home" "$stage/install.sh" --bin-dir "$work/default-home/bin" < /dev/null > /dev/null 2>&1
+[[ "$(readlink "$work/default-home/bin/whatsapp-axi")" == wasync-axi ]] || fail "re-installing lost the whatsapp-axi link"
 pass "a whatsapp-axi link owned by another installer is kept; our own link survives a re-install"
 
-run consent --with-axi --axi-skill --axi-hooks
-[[ "$(sort "$log" | tr '\n' ';')" == 'setup hooks;setup skill;' ]] || fail "unexpected setup calls: $(cat "$log")"
-pass "--axi-skill and --axi-hooks run only those two setup commands"
-
-run skillonly --axi-skill
-[[ -x "$bin/wasync-axi" ]] || fail "--axi-skill should imply --with-axi"
-[[ "$(cat "$log")" == 'setup skill' ]] || fail "unexpected setup calls: $(cat "$log")"
-pass "--axi-skill implies --with-axi and runs nothing else"
+# An archive without wasync-axi still installs wasync.
+noaxi="$work/noaxi-archive"; mkdir -p "$noaxi"
+cp "$stage/install.sh" "$stage/wasync" "$noaxi/"
+home="$work/noaxi-home"; mkdir -p "$home"
+HOME="$home" "$noaxi/install.sh" --bin-dir "$home/bin" < /dev/null > /dev/null 2>&1 || fail "an archive without wasync-axi did not install"
+[[ -x "$home/bin/wasync" && ! -e "$home/bin/wasync-axi" && ! -e "$home/bin/whatsapp-axi" ]] || fail "an archive without wasync-axi installed the wrong files"
+pass "an archive without wasync-axi installs wasync alone"
 
 home="$work/defaultdir-home"; mkdir -p "$home"
-HOME="$home" "$stage/install.sh" --with-axi < /dev/null > /dev/null 2>&1
+HOME="$home" "$stage/install.sh" < /dev/null > /dev/null 2>&1
 [[ -x "$home/.local/bin/wasync" && -x "$home/.local/bin/wasync-axi" ]] || fail "default directory is not ~/.local/bin"
 pass "default install directory is ~/.local/bin"
 
-if run conflict --without-axi --axi-hooks 2> /dev/null; then fail "--without-axi with --axi-hooks should be refused"; fi
-if run unknown --nonsense 2> /dev/null; then fail "an unknown option should be refused"; fi
-pass "contradictory and unknown options are refused"
+# The removed AXI options are refused, so no old flag can wire wasync-axi into an agent.
+for option in --nonsense --with-axi --without-axi --axi-skill --axi-hooks; do
+  if run "refused$option" "$option" 2> /dev/null; then fail "option $option should be refused"; fi
+  [[ ! -s "$log" ]] || fail "option $option changed agent settings"
+done
+pass "unknown and removed options are refused"
 
-# Interactive prompts need a real terminal; drive them through a pseudo-terminal.
-# ANSWERS is a comma-separated list, one per question asked; "-" means just Enter.
-drive() {
-  python3 - "$stage/install.sh" "$1" "$2" "$3" <<'PY'
+# In a real terminal the script must not ask anything or change agent settings.
+python3 - "$stage/install.sh" "$work/tty-home" "$work/tty.log" <<'PY2' || fail "interactive run failed"
 import os, pty, select, subprocess, sys
-script, home, log, answers = sys.argv[1:]
+script, home, log = sys.argv[1:]
+os.makedirs(home, exist_ok=True)
+open(log, "w").close()
 master, slave = pty.openpty()
 proc = subprocess.Popen([script, "--bin-dir", home + "/bin"], stdin=slave, stdout=slave, stderr=slave,
                         env=dict(os.environ, HOME=home, STUB_LOG=log), close_fds=True)
 os.close(slave)
-pending = answers.split(",")
 seen = b""
 while True:
     ready, _, _ = select.select([master], [], [], 15)
     if not ready:
         proc.kill()
-        sys.exit("timed out waiting for the installer; saw: " + seen.decode(errors="replace"))
+        sys.exit("timed out; the installer may be waiting for an answer; saw: " + seen.decode(errors="replace"))
     try:
         chunk = os.read(master, 4096)
     except OSError:
@@ -117,33 +108,14 @@ while True:
     if not chunk:
         break
     seen += chunk
-    if seen.rstrip().endswith(b"[y/N]"):
-        if not pending:
-            proc.kill()
-            sys.exit("asked more questions than expected: " + seen.decode(errors="replace"))
-        answer = pending.pop(0)
-        os.write(master, (b"" if answer == "-" else answer.encode()) + b"\n")
-        seen = b""
 code = proc.wait()
-if pending:
-    sys.exit("expected more questions; unanswered: %r" % pending)
+if b"[y/N]" in seen:
+    sys.exit("the installer asked a question: " + seen.decode(errors="replace"))
 sys.exit(code)
-PY
-}
-for case in "enter:-" "no:n" "yes-skill-no-hooks:y,y,n"; do
-  name="${case%%:*}"; answers="${case#*:}"
-  home="$work/tty-$name-home"; mkdir -p "$home"; log="$work/tty-$name.log"; : > "$log"
-  drive "$home" "$log" "$answers" || fail "interactive run '$name' failed"
-  case "$name" in
-    enter|no)
-      [[ -x "$home/bin/wasync" && ! -e "$home/bin/wasync-axi" ]] || fail "$name: wasync-axi was installed after answering no"
-      [[ ! -s "$log" ]] || fail "$name: setup ran after answering no" ;;
-    yes-skill-no-hooks)
-      [[ -x "$home/bin/wasync-axi" ]] || fail "$name: wasync-axi missing after yes"
-      [[ "$(cat "$log")" == 'setup skill' ]] || fail "$name: unexpected setup calls: $(cat "$log")" ;;
-  esac
-done
-pass "interactive prompts: Enter and n mean no; each agent change is asked separately"
+PY2
+[[ -x "$work/tty-home/bin/wasync" && -x "$work/tty-home/bin/wasync-axi" ]] || fail "interactive run did not install both tools"
+[[ ! -s "$work/tty.log" ]] || fail "interactive run changed agent settings"
+pass "in a terminal it asks nothing, installs both tools and changes no agent settings"
 
 if [[ $# -ge 2 ]]; then
   archive="$1"; version="$2"
@@ -154,12 +126,10 @@ if [[ $# -ge 2 ]]; then
   done
   home="$work/real-home"; mkdir -p "$home"
   HOME="$home" "$real/install.sh" --bin-dir "$home/bin" < /dev/null > /dev/null
-  [[ ! -e "$home/bin/wasync-axi" ]] || fail "real archive installed wasync-axi without being asked"
-  HOME="$home" "$real/install.sh" --bin-dir "$home/bin" --with-axi < /dev/null > /dev/null
   [[ "$("$home/bin/wasync-axi" --version)" == "$version" ]] || fail "installed wasync-axi is not version $version"
   [[ "$("$home/bin/whatsapp-axi" --version 2>/dev/null)" == "$version" ]] || fail "the old name whatsapp-axi does not run wasync-axi $version"
   "$home/bin/wasync" version | grep -qF "wasync $version " || fail "installed wasync is not version $version"
   [[ -z "$(find "$home" -mindepth 1 -maxdepth 1 ! -name bin)" ]] || fail "installing wrote outside the bin directory"
-  pass "real archive $version: opt-in installs both tools at one version and writes nothing else"
+  pass "real archive $version: installs both tools at one version and writes nothing else"
 fi
 echo "test-install-linux: all checks passed"

@@ -2,11 +2,12 @@
 
 This repository is also a Codex plugin marketplace. The **whatsapp** plugin gives Codex
 `whatsapp_*` tools served by `whatsapp-axi mcp` (the old name of `wasync-axi mcp`): read,
-search, follow changes, and reply, react and edit only where you allow it, plus asking for
-access to a chat and starting setup. Ask Codex to "set up WhatsApp": it opens the setup page,
-you scan the QR code and choose chats, and later every chat Codex asks for is approved by you on
-your own computer (unless you set wasync to sync all chats, where asking grants it). No tool
-can approve, grant or reveal a credential. See
+search, follow changes, and reply, react and edit only where you allow it, plus asking to send
+one message to a chat you have not synced or a new number, and starting setup. Ask Codex to
+"set up WhatsApp": it opens the setup page, you scan the QR code, choose chats and connect it.
+Codex can then read, reply and react in the chats you sync, and any message it wants to send
+elsewhere is approved by you, one at a time, on your own computer. No tool can approve, grant
+or reveal a credential. See
 [ADR-003](architecture/ADR-003-mcp-tool-server.md) and the [threat model](architecture/threat-model.md).
 
 The plugin needs `wasync` and `wasync-axi` installed (see [Installing wasync](install.md)), with
@@ -46,9 +47,9 @@ project, so Codex asks your approval before the commands below. In order, they a
    asks your approval to run it outside the sandbox. The page opens in your browser.
 4. **Scan and choose.** These are the steps only you can do:
    1. scan the QR code with WhatsApp on your phone (*Linked devices → Link a device*);
-   2. choose which chats wasync may keep;
+   2. choose which chats wasync may keep (Codex may read, reply and react in each of them);
    3. press **Connect** for the agent and confirm with Touch ID, your password or Windows Hello;
-   4. later, approve each chat Codex asks for, the same way.
+   4. later, approve each message Codex asks to send to a chat you have not synced, the same way.
 5. **Restart Codex, last.** Fully quit and reopen the Codex app so it loads the plugin's
    WhatsApp tools and sees the new PATH.
 

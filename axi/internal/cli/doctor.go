@@ -132,11 +132,11 @@ type diagnostics struct {
 }
 
 type diagnosticsAgent struct {
-	Name      string     `json:"name"`
-	Scopes    []string   `json:"scopes"`
-	Chats     []string   `json:"chats"`
-	OnDemand  bool       `json:"on_demand"`
-	ExpiresAt *time.Time `json:"expires_at"`
+	Name        string     `json:"name"`
+	Scopes      []string   `json:"scopes"`
+	Chats       []string   `json:"chats"`
+	SyncedChats bool       `json:"synced_chats"`
+	ExpiresAt   *time.Time `json:"expires_at"`
 }
 
 type wasyncCheck struct {
@@ -500,8 +500,8 @@ func (a *App) permissionChecks(d detection, f facts) []doctorCheck {
 				scopes.Fix = upgradeWasyncFix
 			}
 		}
-		if agent.OnDemand {
-			scopes.Detail += "; chats are approved on demand (" + strconv.Itoa(len(agent.Chats)) + " so far; ask with `wasync-axi access request`)"
+		if agent.SyncedChats {
+			scopes.Detail += "; uses every chat synced in wasync (" + strconv.Itoa(len(agent.Chats)) + " now)"
 		} else if len(agent.Chats) > 0 {
 			scopes.Detail += "; limited to " + strconv.Itoa(len(agent.Chats)) + " chat(s)"
 		}

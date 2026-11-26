@@ -12,7 +12,7 @@ const editUsage = "wasync-axi edit REF --text TEXT [--json]"
 var editCommand = &command{
 	name:        "edit",
 	usage:       editUsage,
-	description: "Replace the text of one of your own recent messages REF (running wasync, scope edit.own and an allowlisted chat); wasync refuses other people's messages and edits past WhatsApp's window",
+	description: "Replace the text of one of your own recent messages REF (running wasync, scope edit.own, which is off unless the person granted it); wasync refuses other people's messages and edits past WhatsApp's window",
 	flags: []flagSpec{
 		{name: "--text", value: "TEXT", description: "the new text; at most 16000 bytes"},
 		jsonFlag,

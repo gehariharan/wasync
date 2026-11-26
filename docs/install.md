@@ -1,7 +1,7 @@
 # Installing wasync
 
 The [README](../README.md#install) has the short version. This page has the details for each
-platform, the optional agent command, Homebrew, checksums and upgrades. Windows Setup, the
+platform, the agent command, Homebrew, checksums and upgrades. Windows Setup, the
 portable ZIP and the Microsoft Store edition are covered in [Windows](windows.md). To build from
 source, see [Development](development.md).
 
@@ -35,43 +35,33 @@ The wasync app is wasync in its own window, with a menu-bar icon; it carries the
 wasync is the app and engine for people. **`wasync-axi`** ("AXI for agents") is a
 separate, small command that AI agents such as Claude Code, Codex and OpenCode use
 to work with your local wasync archive. The wasync app (the macOS disk image
-and Windows Setup) always carries it; it does nothing until you connect an agent. The
-other installers ask for it as a choice, off unless you say yes. Both programs always come
-from the same release and have the same version.
+and Windows Setup) always carries it, and the macOS package and the Linux archive's
+`install.sh` always install it next to wasync. It stays inactive until you connect an
+agent from wasync's **Connect an agent** step. Both programs always come from the same
+release and have the same version.
 
 `wasync-axi` was called `whatsapp-axi`. The installers keep `whatsapp-axi` as an alias
 (on Homebrew, the old `whatsapp-axi` formula now installs `wasync-axi` plus the alias),
 and the old environment variables, config folder, skill and hooks still work.
 
-| Where you install from | How you choose AXI for agents |
+| Where you install from | How you get AXI for agents |
 | --- | --- |
-| macOS `.pkg` | On the installer's **Customize** step, tick **AXI for agents (wasync-axi)**. It starts unticked. |
-| Linux archive | `./install.sh` asks and the default is no. Skip the question with `--with-axi` or `--without-axi`. |
+| macOS `.pkg` | Always installed. The installer lists **AXI for agents (wasync-axi)** next to wasync, both locked on. |
+| Linux archive | Always installed by `./install.sh`, without asking. |
 | macOS `.dmg` (the wasync app) | Always inside `wasync.app`. |
-| Windows Setup | Always installed beside `wasync.exe` and the wasync app. |
+| Windows Setup | Always installed beside `wasync.exe` and the wasync app, including by a silent install. |
 | Windows ZIP | The ZIP already contains `wasync-axi.exe` next to `wasync.exe`; extracting installs and configures nothing. |
 | Homebrew | `brew install gehariharan/tap/wasync-axi` (see [Homebrew](#homebrew)). |
 | Microsoft Store | Not offered: the Store edition is wasync only (see [Windows](windows.md#microsoft-store-edition)). |
 
-Installing AXI for agents never changes your agents' settings. To let your agents
-learn about it, you run (or accept an offer to run) these two commands; add
-`--dry-run` to either to preview what it would write:
-
-```sh
-wasync-axi setup skill   # adds the wasync-axi skill to your agents
-wasync-axi setup hooks   # adds wasync-axi's session hooks to your agents
-```
-
-The Linux script and Windows Setup offer these as separate steps, each off by default
-(Linux: `--axi-skill` and `--axi-hooks` say yes without asking; Windows: two unticked
-boxes on the last page, never run by a silent install). The macOS installer cannot run
-commands as you, so it only reminds you on its last page.
+No installer changes your agents' settings. When you want an AI agent to use your
+archive, connect it from wasync's **Connect an agent** step.
 
 ## macOS package
 
 The package installs `/usr/local/bin/wasync` and dependency notices under
-`/usr/local/share/wasync`; if you tick **AXI for agents** it also installs
-`/usr/local/bin/wasync-axi`. It asks for administrator approval. After installation,
+`/usr/local/share/wasync`, and **AXI for agents** at `/usr/local/bin/wasync-axi`. It asks
+for administrator approval. After installation,
 open Terminal and run:
 
 ```sh
@@ -89,7 +79,8 @@ signatures and include validated stapled notarization tickets. Older previews
 were unsigned/ad hoc. No installer removes quarantine or bypasses Gatekeeper.
 
 The package rejects the wrong CPU architecture, unsupported macOS versions and an existing
-`/usr/local/bin/wasync` symlink owned by another installation method.
+`/usr/local/bin/wasync` or `/usr/local/bin/wasync-axi` symlink owned by another installation
+method (for example Homebrew).
 
 ## Linux archive
 
@@ -99,17 +90,14 @@ installs nothing:
 
 ```sh
 tar -xzf wasync_VERSION_linux_amd64.tar.gz
-./install.sh                # installs wasync to ~/.local/bin; asks about AXI for agents (default no)
-./install.sh --with-axi     # or: install both without being asked
-./install.sh --without-axi  # or: install wasync only without being asked
+./install.sh                # installs wasync and wasync-axi to ~/.local/bin
 export PATH="$HOME/.local/bin:$PATH"
 wasync version
 ```
 
-`install.sh --bin-dir DIR` installs somewhere else. Without a terminal and without
-`--with-axi`, the script installs wasync only. To install by hand instead, copy
-`wasync` (and, if you want it, `wasync-axi`) with `install -m 755` into a directory on
-your PATH.
+`install.sh --bin-dir DIR` installs somewhere else. It asks no questions and changes no
+agent settings. To install by hand instead, copy `wasync` and `wasync-axi` with
+`install -m 755` into a directory on your PATH.
 
 On Linux there is no system confirmation prompt (Touch ID, Windows Hello) and no
 start-at-login item, so approvals happen in a terminal and you start `wasync serve`

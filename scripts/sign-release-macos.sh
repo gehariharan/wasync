@@ -38,8 +38,8 @@ for architecture in arm64 amd64; do
     echo "Unexpected executable architecture: $name" >&2; exit 1
   fi
   [[ "$(lipo -archs "$axi_binary")" == "$expected_cpu" ]]
-  # The installer is a product archive with two components: wasync (always
-  # installed) and wasync-axi (a choice that starts unticked).
+  # The installer is a product archive with two components, wasync and
+  # wasync-axi, both always installed.
   expanded="$work/$architecture-pkg"
   pkgutil --expand-full "$package" "$expanded"
   payload="$expanded/wasync.pkg/Payload"

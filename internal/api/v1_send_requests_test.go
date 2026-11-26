@@ -1,0 +1,272 @@
+package api
+
+import (
+	"context"
+	"encoding/json"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/approval"
+	"github.com/gehariharan/wasync/internal/humancheck"
+	"github.com/gehariharan/wasync/internal/query"
+)
+
+// connect grants name the credential a person gives an agent at Connect.
+func (f accessFixture) connect(t *testing.T, name string) string {
+	t.Helper()
+	credential, _, err := agentauth.Grant(f.dir, agentauth.ConnectRequest(name, nil), time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return credential
+}
+
+func (f accessFixture) sync(t *testing.T, chat string, on bool) {
+	t.Helper()
+	if err := f.store.SetEnabled(context.Background(), f.account, []string{chat}, on); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type sendRequestData struct {
+	Data  sendRequestView `json:"data"`
+	Error string          `json:"error"`
+	Code  string          `json:"error_code"`
+	Help  string          `json:"help"`
+}
+
+func (f accessFixture) askToSend(t *testing.T, token string, body any, want int) sendRequestData {
+	t.Helper()
+	code, out := f.do(t, "POST", "/api/v1/send-requests", token, body)
+	if code != want {
+		t.Fatalf("send request: got %d want %d: %s", code, want, out)
+	}
+	var got sendRequestData
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	return got
+}
+
+// A connected agent reads, replies and reacts in exactly the synced chats:
+// a chat synced or unsynced anywhere (here straight in the archive, as the CLI
+// or the TUI would) applies at its next request, with no prompt.
+func TestAConnectedAgentFollowsTheSyncedChats(t *testing.T) {
+	stub := &promptStub{}
+	f := setupAccessWith(t, humancheck.NewGate(stub))
+	codex := f.connect(t, "codex")
+	messages := "/api/v1/chats/" + familyChat + "/messages"
+	if code, out := f.do(t, "GET", messages, codex, nil); code != 403 || !strings.Contains(string(out), "not synced") {
+		t.Fatalf("an unsynced chat: %d %s", code, out)
+	}
+	f.sync(t, familyChat, true)
+	if code, out := f.do(t, "GET", messages, codex, nil); code != 200 || !strings.Contains(string(out), "synthetic family text") {
+		t.Fatalf("a chat synced later: %d %s", code, out)
+	}
+	if got := mustClient(t, f.dir, "codex"); strings.Join(got.Chats, ",") != familyChat {
+		t.Fatalf("stored chats %v", got.Chats)
+	}
+	// Replying passes authorization in a synced chat (the owner has no
+	// WhatsApp connection here, so it stops there), and asks nobody.
+	if code, out := f.do(t, "POST", "/api/v1/messages", codex, map[string]string{"chat": familyChat, "text": "hi"}); code == 403 || code == 401 {
+		t.Fatalf("send in a synced chat refused: %d %s", code, out)
+	}
+	f.sync(t, familyChat, false)
+	if code, _ := f.do(t, "GET", messages, codex, nil); code != 403 {
+		t.Fatalf("an unsynced chat is still readable: %d", code)
+	}
+	if len(stub.seen()) != 0 || len(f.queue.PendingList(f.account)) != 0 {
+		t.Fatalf("a synced chat asked the person: %q", stub.seen())
+	}
+	log, _ := os.ReadFile(filepath.Join(f.dir, agentauth.AuditFileName))
+	if strings.Count(string(log), `"event":"synced_chats"`) != 2 {
+		t.Fatalf("audit log:\n%s", log)
+	}
+	// An agent connected the old way keeps only what it had: no synced chat.
+	f.sync(t, familyChat, true)
+	if code, _ := f.do(t, "GET", messages, f.jit, nil); code != 403 {
+		t.Fatalf("an on-demand agent gained a synced chat: %d", code)
+	}
+}
+
+func TestAnAgentAsksToSendOnceAndThePersonApprovesThatMessage(t *testing.T) {
+	stub := &promptStub{confirm: true}
+	f := setupAccessWith(t, humancheck.NewGate(stub))
+	codex := f.connect(t, "codex")
+	f.sync(t, familyChat, true)
+
+	// A synced chat needs no request.
+	if got := f.askToSend(t, codex, map[string]string{"chat": familyChat, "text": "hi"}, 200); got.Data.Status != "already_allowed" {
+		t.Fatalf("synced chat: %+v", got)
+	}
+	// A chat that is not synced, and a number the archive has never seen.
+	asked := f.askToSend(t, codex, map[string]string{"chat": otherChat, "text": "Can we meet?"}, 202)
+	if asked.Data.Status != "pending" || asked.Data.Chat != otherChat || asked.Data.NewNumber || asked.Data.ExpiresAt == nil || asked.Data.ApproveWith != "wasync actions approve "+asked.Data.RequestID {
+		t.Fatalf("pending: %+v", asked)
+	}
+	fresh := f.askToSend(t, codex, map[string]string{"to": "+1 555 000 1111", "text": "Hello"}, 202)
+	if !fresh.Data.NewNumber || fresh.Data.Chat != "15550001111@s.whatsapp.net" {
+		t.Fatalf("new number: %+v", fresh)
+	}
+	if again := f.askToSend(t, codex, map[string]string{"chat": otherChat, "text": "Can we meet?"}, 202); again.Data.RequestID != asked.Data.RequestID {
+		t.Fatal("asking again prompted the person twice")
+	}
+	// Only the agent that asked can see it.
+	other := f.connect(t, "other-app")
+	if code, _ := f.do(t, "GET", "/api/v1/send-requests/"+asked.Data.RequestID, other, nil); code != 404 {
+		t.Fatalf("another agent read the request: %d", code)
+	}
+	if len(stub.seen()) != 0 || len(*f.sent) != 0 {
+		t.Fatal("asking sent something or prompted")
+	}
+
+	// The person approves one, from the desktop app's route.
+	code, out := f.signed(t, "POST", agentRequestsPath+"/"+asked.Data.RequestID+"/approve", f.approver, nil)
+	if code != 200 || len(*f.sent) != 1 || (*f.sent)[0].Text != "Can we meet?" || (*f.sent)[0].To != otherChat || (*f.sent)[0].SentBy != "codex" {
+		t.Fatalf("approve: %d %s %+v", code, out, *f.sent)
+	}
+	if got := stub.seen(); len(got) != 1 || !strings.Contains(got[0], `agent "codex" send this message to "+1∙∙∙∙21", a chat that was not synced when it asked: "Can we meet?"`) {
+		t.Fatalf("prompt %q", got)
+	}
+	code, out = f.do(t, "GET", "/api/v1/send-requests/"+asked.Data.RequestID, codex, nil)
+	var status sendRequestData
+	_ = json.Unmarshal(out, &status)
+	if code != 200 || status.Data.Status != "sent" || status.Data.MessageID == "" || status.Data.ExpiresAt != nil {
+		t.Fatalf("status: %d %s", code, out)
+	}
+	// Approving it twice sends nothing more.
+	if code, _ = f.signed(t, "POST", agentRequestsPath+"/"+asked.Data.RequestID+"/approve", f.approver, nil); code != 404 || len(*f.sent) != 1 {
+		t.Fatalf("second approval: %d", code)
+	}
+}
+
+func TestSendRequestsAreRefusedWithoutTheSendScopeOrWithBadInput(t *testing.T) {
+	f := setupAccess(t)
+	codex := f.connect(t, "codex")
+	if got := f.askToSend(t, f.other, map[string]string{"chat": otherChat, "text": "hi"}, 403); got.Code != query.CodeForbidden {
+		t.Fatalf("no send scope: %+v", got)
+	}
+	for name, body := range map[string]any{
+		"both":      map[string]string{"chat": otherChat, "to": "+15550001111", "text": "hi"},
+		"neither":   map[string]string{"text": "hi"},
+		"no text":   map[string]string{"chat": otherChat, "text": "  "},
+		"long text": map[string]string{"chat": otherChat, "text": strings.Repeat("x", approval.MaxSendText+1)},
+		"bad chat":  map[string]string{"chat": "not a chat", "text": "hi"},
+		"bad phone": map[string]string{"to": "call me", "text": "hi"},
+		"a video":   map[string]any{"chat": otherChat, "text": "hi", "video": "AAAA"},
+	} {
+		if got := f.askToSend(t, codex, body, 400); got.Code != query.CodeInvalidArgument {
+			t.Fatalf("%s: %+v", name, got)
+		}
+	}
+	for i := 0; i < approval.MaxPendingSendsPerAgent; i++ {
+		f.askToSend(t, codex, map[string]string{"chat": otherChat, "text": strings.Repeat("y", i+1)}, 202)
+	}
+	if got := f.askToSend(t, codex, map[string]string{"chat": otherChat, "text": "one too many"}, 429); got.Code != query.CodeRateLimited {
+		t.Fatalf("cap: %+v", got)
+	}
+	// A refused send points at a send request, never at the removed access requests.
+	code, out := f.do(t, "POST", "/api/v1/messages", codex, map[string]string{"chat": otherChat, "text": "hi"})
+	if code != 403 || !strings.Contains(string(out), "send-request --chat "+otherChat) || strings.Contains(string(out), "access request") {
+		t.Fatalf("refused send: %d %s", code, out)
+	}
+}
+
+func TestTheOwnerListsDeclinesAndApprovesAgentRequestsApartFromDeletes(t *testing.T) {
+	f := setupAccessWith(t, humancheck.NewGate(&promptStub{confirm: true}))
+	sendToken, err := loadNamedToken(f.dir, "send.token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	purge, err := f.queue.Add(f.account, approval.Input{Kind: "purge-chat", Chat: familyChat})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first := f.askSend(t, otherChat, "first")
+	second := f.askSend(t, phoneChat, "second")
+	third := f.askSend(t, familyChat, "third")
+
+	code, out := f.signed(t, "GET", agentRequestsPath, sendToken, nil)
+	var list struct {
+		Items []agentRequestView `json:"items"`
+	}
+	if code != 200 || json.Unmarshal(out, &list) != nil || len(list.Items) != 3 || list.Items[0].ID != first.ID || list.Items[2].ID != third.ID {
+		t.Fatalf("list: %d %s", code, out)
+	}
+	if item := list.Items[2]; item.Agent != "jit" || item.ChatName != "Family Group" || item.Text != "third" || item.ExpiresAt.Sub(item.AskedAt) != approval.RequestTTL || !strings.Contains(item.Effect, "send this message") {
+		t.Fatalf("item %+v", item)
+	}
+	// An agent credential or an unsigned request cannot reach these routes.
+	if code, _ = f.do(t, "GET", agentRequestsPath, f.jit, nil); code != 401 {
+		t.Fatalf("agent credential: %d", code)
+	}
+	// Approving needs the approve credential, not the send one.
+	if code, _ = f.signed(t, "POST", agentRequestsPath+"/"+first.ID+"/approve", sendToken, nil); code != 401 || len(*f.sent) != 0 {
+		t.Fatalf("approve with the send credential: %d", code)
+	}
+	// The owner's own delete is not an agent request.
+	if code, _ = f.signed(t, "POST", agentRequestsPath+"/"+purge.ID+"/decline", sendToken, nil); code != 404 {
+		t.Fatalf("declined a delete here: %d", code)
+	}
+	if code, _ = f.signed(t, "POST", agentRequestsPath+"/"+first.ID+"/decline", sendToken, nil); code != 200 || f.queue.Get(f.account, first.ID).Status != approval.StatusRejected {
+		t.Fatalf("decline one: %d", code)
+	}
+	code, out = f.signed(t, "POST", agentRequestsPath+"/decline-all", sendToken, nil)
+	if code != 200 || !strings.Contains(string(out), `"declined":2`) || f.queue.Get(f.account, second.ID).Status != approval.StatusRejected {
+		t.Fatalf("decline all: %d %s", code, out)
+	}
+	if f.queue.Get(f.account, purge.ID).Status != approval.StatusPending || len(*f.sent) != 0 {
+		t.Fatal("declining agent requests touched the owner's delete or sent something")
+	}
+	log, _ := os.ReadFile(filepath.Join(f.dir, agentauth.AuditFileName))
+	if strings.Count(string(log), `"event":"send_declined"`) != 3 {
+		t.Fatalf("audit:\n%s", log)
+	}
+}
+
+func TestTheApprovalsPageShowsAgentRequestsApartFromDeletesAndDeclinesThemAll(t *testing.T) {
+	f := setupAccessWith(t, humancheck.NewGate(&promptStub{confirm: true}))
+	purge, _ := f.queue.Add(f.account, approval.Input{Kind: "purge-chat", Chat: familyChat})
+	f.askSend(t, otherChat, "first message")
+	id, _, _ := agentauth.ParseCredential(f.jit)
+	if _, _, err := f.queue.AddSend(f.account, "15550001111@s.whatsapp.net", approval.AgentSend{Agent: "jit", AgentID: id, Text: "hello stranger", NewNumber: true}); err != nil {
+		t.Fatal(err)
+	}
+	c := newPageClient(t, f)
+	c.get(linkPath(t, f))
+	_, page, _ := c.get("/ui/approvals")
+	agents, deletes := strings.Index(page, "Agents asking to send"), strings.Index(page, "Your delete confirmations")
+	if agents < 0 || deletes < agents || !strings.Contains(page[agents:deletes], "first message") || !strings.Contains(page[agents:deletes], "the new number &#43;15550001111") || !strings.Contains(page[deletes:], "permanently erase") || !strings.Contains(page, "Not now to all") {
+		t.Fatalf("page:\n%s", page)
+	}
+	if strings.Contains(page, "How agents get chats") {
+		t.Fatal("the removed access mode is still offered")
+	}
+	code, _, hd := c.post("/ui/decide", url.Values{"csrf": {csrfOf(t, page)}, "action": {"decline-all"}})
+	if code != 303 || !strings.Contains(hd.Get("Location"), "n=rejected") || len(f.queue.AgentRequests(f.account)) != 0 || f.queue.Get(f.account, purge.ID).Status != approval.StatusPending {
+		t.Fatalf("decline all: %d %v", code, hd)
+	}
+}
+
+func TestAccessRequestsAreGoneAndSaySoAndTheModeIsGone(t *testing.T) {
+	f := setupAccess(t)
+	for _, call := range [][2]string{{"POST", "/api/v1/access-requests"}, {"GET", "/api/v1/access-requests/0123456789abcdef0123456789abcdef"}} {
+		code, out := f.do(t, call[0], call[1], f.jit, map[string]string{"match": "family"})
+		if code != 410 || !strings.Contains(string(out), "send-requests") {
+			t.Fatalf("%s %s: %d %s", call[0], call[1], code, out)
+		}
+	}
+	_, out := f.do(t, "GET", "/api/v1/version", f.jit, nil)
+	if !strings.Contains(string(out), `"write.send.request"`) || strings.Contains(string(out), `"access.request"`) {
+		t.Fatalf("features: %s", out)
+	}
+	apiToken, _ := loadNamedToken(f.dir, "api.token")
+	if code, _ := f.do(t, "GET", "/api/access/mode", apiToken, nil); code != 404 {
+		t.Fatalf("access mode route: %d", code)
+	}
+}

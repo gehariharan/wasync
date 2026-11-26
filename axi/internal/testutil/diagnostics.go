@@ -66,10 +66,11 @@ type DiagnosticsCheck struct {
 
 // DiagnosticsAgent is the agent block of wasync diagnostics.
 type DiagnosticsAgent struct {
-	Name      string   `json:"name"`
-	Scopes    []string `json:"scopes"`
-	Chats     []string `json:"chats"`
-	ExpiresAt *string  `json:"expires_at"`
+	Name        string   `json:"name"`
+	Scopes      []string `json:"scopes"`
+	Chats       []string `json:"chats"`
+	SyncedChats bool     `json:"synced_chats,omitempty"`
+	ExpiresAt   *string  `json:"expires_at"`
 }
 
 // Diagnostics is the data of GET /api/v1/diagnostics and `wasync query

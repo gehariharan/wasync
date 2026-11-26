@@ -23,7 +23,7 @@ import (
 
 // agentsUsage is the full reference for agent credential management, appended
 // to the catalog help of agents and its subcommands.
-const agentsUsage = `Usage: wasync agents grant NAME [--scope S1,S2] [--chat NAME ...] [--on-demand] [--expires 720h] [--rate N]
+const agentsUsage = `Usage: wasync agents grant NAME [--scope S1,S2] [--chat NAME ...] [--synced-chats] [--expires 720h] [--rate N]
        wasync agents list [--json]
        wasync agents revoke NAME
 
@@ -42,15 +42,15 @@ chat.state, group.admin, capture.manage, export. Without --scope the client
 gets read.chats,read.messages. There is no destructive scope: clean, delete,
 revoke and purge always need human approval.
 The scopes send, react, edit.own, chat.state, group.admin and capture.manage need a chat
-list. Normally use --on-demand: the client starts with no chats and asks for
-one by name (wasync-axi access request); you approve each chat, its access
-level (read, and separately send) and its history depth in the TUI or with
-wasync actions approve. Granted chats show in agents list. Revoke and
-re-grant the client to remove them.
---chat (repeatable) pre-approves a chat now. Give its name as it appears in
+list. Normally use --synced-chats: the client uses every chat you sync in
+wasync, now and later, and wasync keeps its chat list in step as you sync or
+unsync chats. To message any other chat or a new number it asks
+(wasync-axi send-request) and you approve each message in the web app, the
+TUI or with wasync actions approve.
+--chat (repeatable) instead pre-approves a fixed chat list now. Give its name as it appears in
 your archive (e.g. --chat "Family"); grant shows the matching chat with its
 JID and asks you to confirm. A raw JID also works. An ambiguous or unknown
-name is refused. The two options combine.
+name is refused. --chat and --synced-chats cannot be combined.
 --rate is requests per minute (default 60). --expires is a duration; omit it
 for no expiry.
 
@@ -112,7 +112,8 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	var scopes, chats stringList
 	fs.Var(&scopes, "scope", "comma-separated scopes (repeatable)")
 	fs.Var(&chats, "chat", "chat to allow, by name or JID (repeatable)")
-	onDemand := fs.Bool("on-demand", false, "start with no chats; approve each chat when the agent asks")
+	synced := fs.Bool("synced-chats", false, "use every chat you sync in wasync, now and later")
+	onDemand := fs.Bool("on-demand", false, "removed; use --synced-chats")
 	expires := fs.Duration("expires", 0, "credential lifetime, e.g. 720h")
 	rate := fs.Int("rate", agentauth.DefaultRatePerMinute, "requests per minute")
 	if err := a.parseFlags(fs, rest); err != nil {
@@ -121,7 +122,13 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	if name == "" && fs.NArg() == 1 {
 		name = fs.Arg(0)
 	} else if fs.NArg() != 0 || name == "" {
-		return fmt.Errorf("usage: wasync agents grant NAME [--scope S1,S2] [--chat NAME ...] [--on-demand] [--expires 720h] [--rate N]")
+		return fmt.Errorf("usage: wasync agents grant NAME [--scope S1,S2] [--chat NAME ...] [--synced-chats] [--expires 720h] [--rate N]")
+	}
+	if *onDemand {
+		return fmt.Errorf("--on-demand was removed: agents no longer ask for chats one by one. Use --synced-chats to let the agent use every chat you sync, or --chat for a fixed list")
+	}
+	if *synced && len(chats) > 0 {
+		return fmt.Errorf("use either --synced-chats or --chat, not both")
 	}
 	if *expires < 0 || (*expires > 0 && *expires < time.Minute) {
 		return fmt.Errorf("--expires must be at least 1m")
@@ -139,9 +146,11 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 			chatNames = append(chatNames, strings.TrimSpace(c))
 		}
 	}
-	req := agentauth.GrantRequest{Name: name, Scopes: scopes, Chats: chatIDs, OnDemand: *onDemand, RatePerMinute: *rate, Expires: *expires}
+	req := agentauth.GrantRequest{Name: name, Scopes: scopes, Chats: chatIDs, SyncedChats: *synced, RatePerMinute: *rate, Expires: *expires}
 	early := req
-	early.OnDemand = early.OnDemand || len(chatNames) > 0
+	if len(chatNames) > 0 {
+		early.Chats = append(early.Chats, "0@g.us") // names stand in for chats until they are looked up
+	}
 	if err := agentauth.ValidateGrant(early); err != nil {
 		return err
 	}
@@ -156,6 +165,13 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	} else if existing != nil {
 		return fmt.Errorf("client %s already exists; revoke it first with wasync agents revoke %s", name, name)
 	}
+	if *synced {
+		ids, err := syncedChatIDs(ctx, cfg)
+		if err != nil {
+			return err
+		}
+		req.Chats, chats = ids, ids
+	}
 	if len(chatNames) > 0 {
 		resolved, err := a.resolveChatNames(ctx, cfg, chatNames)
 		if err != nil {
@@ -169,12 +185,11 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 	}
 	normalizedScopes, _ := agentauth.ParseScopes(scopes...)
 	fmt.Fprintf(a.Err, "Grant agent client %s\nScopes: %s\n", name, strings.Join(normalizedScopes, ","))
-	if len(chats) > 0 {
+	if *synced {
+		fmt.Fprintf(a.Err, "Chats: every chat you sync in wasync (%d now), now and later\n", len(chats))
+	} else if len(chats) > 0 {
 		fmt.Fprintf(a.Err, "Chats: %s\n", strings.Join(chats, ", "))
-	}
-	if *onDemand {
-		fmt.Fprintln(a.Err, "Chats: only those you approve when the agent asks (on demand)")
-	} else if len(chats) == 0 {
+	} else {
 		fmt.Fprintln(a.Err, "Chats: all (no allowlist)")
 	}
 	fmt.Fprintf(a.Err, "Rate: %d/min\n", *rate)
@@ -190,7 +205,7 @@ func (a *App) agentsGrant(ctx context.Context, cfg config.Config, args []string)
 		return fmt.Errorf("confirmation did not match; no credential created")
 	}
 	// A typed name can be supplied by a pseudo-terminal; the system prompt cannot.
-	if err := a.confirmHuman(ctx, agentauth.GrantEffect(name, normalizedScopes, chats, *onDemand, *expires)); err != nil {
+	if err := a.confirmHuman(ctx, agentauth.GrantEffect(name, normalizedScopes, chats, *synced, *expires)); err != nil {
 		return fmt.Errorf("%w; no credential created", err)
 	}
 	credential, client, err := agentauth.Grant(cfg.DataDir, req, time.Now())
@@ -289,13 +304,43 @@ func (a *App) offerSaveAxiCredential(ctx context.Context, name, credential strin
 	return true
 }
 
+// syncedChatIDs are the chats synced in the archive now, for a credential
+// that uses every synced chat. With no archive or no account yet none are;
+// wasync adds them as they are synced.
+func syncedChatIDs(ctx context.Context, cfg config.Config) ([]string, error) {
+	path := filepath.Join(cfg.DataDir, "archive.db")
+	if _, err := os.Stat(path); err != nil {
+		return []string{}, nil
+	}
+	store, err := storage.OpenReadOnly(ctx, path)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the synced chats: %w", err)
+	}
+	defer store.Close()
+	account, err := store.Account(ctx)
+	if err != nil || account == nil {
+		return []string{}, err
+	}
+	groups, err := store.Groups(ctx, account.ID)
+	if err != nil {
+		return nil, err
+	}
+	ids := []string{}
+	for _, g := range groups {
+		if g.Enabled {
+			ids = append(ids, g.ID)
+		}
+	}
+	return ids, nil
+}
+
 // resolveChatNames turns --chat names into JIDs using the archive's chat
 // names. Each match is shown with its JID and needs a typed yes; an unknown or
 // ambiguous name is refused with the candidates.
 func (a *App) resolveChatNames(ctx context.Context, cfg config.Config, names []string) ([]string, error) {
 	path := filepath.Join(cfg.DataDir, "archive.db")
 	if _, err := os.Stat(path); err != nil {
-		return nil, fmt.Errorf("cannot look up chat %q: there is no archive yet. Pair and sync wasync first, or use --on-demand and let the agent ask for the chat", names[0])
+		return nil, fmt.Errorf("cannot look up chat %q: there is no archive yet. Pair and sync wasync first, or use --synced-chats", names[0])
 	}
 	store, err := storage.OpenReadOnly(ctx, path)
 	if err != nil {
@@ -307,7 +352,7 @@ func (a *App) resolveChatNames(ctx context.Context, cfg config.Config, names []s
 		return nil, fmt.Errorf("read archive account: %w", err)
 	}
 	if account == nil {
-		return nil, fmt.Errorf("cannot look up chat %q: the archive has no account yet. Pair wasync first, or use --on-demand", names[0])
+		return nil, fmt.Errorf("cannot look up chat %q: the archive has no account yet. Pair wasync first, or use --synced-chats", names[0])
 	}
 	groups, err := store.GroupSummaries(ctx, account.ID)
 	if err != nil {
@@ -318,7 +363,7 @@ func (a *App) resolveChatNames(ctx context.Context, cfg config.Config, names []s
 		found := query.MatchChats(groups, n)
 		switch {
 		case len(found) == 0:
-			return nil, fmt.Errorf("no chat in your archive matches %q; check the name with `wasync query chats`, or use --on-demand so the agent asks for it", n)
+			return nil, fmt.Errorf("no chat in your archive matches %q; check the name with `wasync query chats`, or use --synced-chats and sync the chat", n)
 		case len(found) > 1:
 			var b strings.Builder
 			fmt.Fprintf(&b, "%q matches %d chats; repeat --chat with a more exact name or one of these JIDs:", n, len(found))
@@ -382,6 +427,7 @@ type agentView struct {
 	Status        string      `json:"status"`
 	Scopes        []string    `json:"scopes"`
 	Chats         []string    `json:"chats"`
+	SyncedChats   bool        `json:"synced_chats"`
 	OnDemand      bool        `json:"on_demand"`
 	Grants        []grantView `json:"granted_chats"`
 	RatePerMinute int         `json:"rate_per_minute"`
@@ -390,7 +436,8 @@ type agentView struct {
 	RevokedAt     *time.Time  `json:"revoked_at"`
 }
 
-// grantView is one chat a human approved for an on-demand agent.
+// grantView is one chat a human approved for an on-demand agent, from before
+// agents used every synced chat.
 type grantView struct {
 	Chat      string    `json:"chat"`
 	Scopes    []string  `json:"scopes"`
@@ -425,7 +472,7 @@ func writeAgents(out io.Writer, clients []agentauth.Client, asJSON bool, now tim
 		for _, g := range c.Grants {
 			grants = append(grants, grantView{Chat: g.Chat, Scopes: g.Scopes, GrantedAt: g.GrantedAt})
 		}
-		views = append(views, agentView{ID: c.ID, Name: c.Name, Status: c.Status(now), Scopes: c.Scopes, Chats: chats, OnDemand: c.OnDemand, Grants: grants, RatePerMinute: c.RatePerMinute, CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, RevokedAt: c.RevokedAt})
+		views = append(views, agentView{ID: c.ID, Name: c.Name, Status: c.Status(now), Scopes: c.Scopes, Chats: chats, SyncedChats: c.SyncedChats, OnDemand: c.OnDemand, Grants: grants, RatePerMinute: c.RatePerMinute, CreatedAt: c.CreatedAt, ExpiresAt: c.ExpiresAt, RevokedAt: c.RevokedAt})
 	}
 	if asJSON {
 		return json.NewEncoder(out).Encode(struct {
@@ -436,7 +483,9 @@ func writeAgents(out io.Writer, clients []agentauth.Client, asJSON bool, now tim
 	fmt.Fprintln(w, "NAME\tID\tSTATUS\tSCOPES\tCHATS\tRATE/MIN\tCREATED\tEXPIRES")
 	for _, v := range views {
 		chats := "all"
-		if len(v.Chats) > 0 {
+		if v.SyncedChats {
+			chats = "every synced chat (" + strconv.Itoa(len(v.Chats)) + " when last checked)"
+		} else if len(v.Chats) > 0 {
 			chats = strings.Join(v.Chats, ",")
 		} else if v.OnDemand {
 			chats = "none yet"
