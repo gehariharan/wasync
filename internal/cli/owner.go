@@ -35,7 +35,8 @@ func (e *ownerBusyError) Error() string        { return e.message }
 func (e *ownerBusyError) Is(target error) bool { return target == processlock.ErrBusy }
 
 // credentialError means the approval credential could not be read, so no
-// request was sent. Nothing may act in place of the approval it stands for.
+// request was sent. No other request may stand in for the approval; only stop
+// goes on without it, by asking its own user's process directly.
 type credentialError struct{ err error }
 
 func (e *credentialError) Error() string { return e.err.Error() }
@@ -345,10 +346,20 @@ func (a *App) stopOwner(ctx context.Context, cfg config.Config) (owner processlo
 	return owner, true, a.stopLongLived(ctx, cfg, owner)
 }
 
+// stopLongLived asks a long-lived owner to stop and waits until it has.
+//
+// The owner's stop route needs the approval credential because anything that
+// can reach the local API (another device through tailscale serve, a page in
+// the browser, an agent holding a narrower credential) could otherwise stop
+// capture. This command does not need that route: it runs as the person who
+// owns the process, and that alone lets it ask the process to stop as Ctrl-C
+// or kill would. So when the credential cannot be read here - on macOS it is in
+// the login Keychain, which a shell outside the desktop session (SSH, say)
+// cannot open - the command asks the process instead of failing.
 func (a *App) stopLongLived(ctx context.Context, cfg config.Config, owner processlock.Owner) (err error) {
 	fmt.Fprintf(a.Out, "Stopping %s.\n", describeOwner(owner))
 	stopped := false
-	var apiFailure error
+	var apiFailure, noCredential error
 	if owner.APIAddr != "" {
 		ch := channel{cfg: cfg, owner: owner}
 		ch.cfg.APIAddr = owner.APIAddr
@@ -358,7 +369,7 @@ func (a *App) stopLongLived(ctx context.Context, cfg config.Config, owner proces
 		var denied *credentialError
 		switch {
 		case errors.As(err, &denied):
-			return err
+			noCredential = err
 		case err != nil:
 			apiFailure = err
 		case code/100 == 2:
@@ -374,10 +385,20 @@ func (a *App) stopLongLived(ctx context.Context, cfg config.Config, owner proces
 	if !stopped {
 		if owner.PID == os.Getpid() {
 			// Never signal ourselves: nothing legitimate stops by this route.
-			return fmt.Errorf("%s could not be stopped through its local API (%v), and wasync will not signal its own process", describeOwner(owner), apiFailure)
+			reason := apiFailure
+			if noCredential != nil {
+				reason = noCredential
+			}
+			return fmt.Errorf("%s could not be stopped through its local API (%v), and wasync will not signal its own process", describeOwner(owner), reason)
+		}
+		if noCredential != nil {
+			fmt.Fprintf(a.Out, "The approval credential cannot be read here (%v), so wasync is asking process %d to stop, as Ctrl-C would.\n", noCredential, owner.PID)
 		}
 		if err = processlock.Terminate(owner.PID); err != nil {
-			if apiFailure != nil {
+			switch {
+			case noCredential != nil:
+				err = fmt.Errorf("%w (the approval credential for its local API could not be read: %v)", err, noCredential)
+			case apiFailure != nil:
 				err = fmt.Errorf("%w (its local API said: %v)", err, apiFailure)
 			}
 			return fmt.Errorf("%w; end process %d yourself (Task Manager on Windows)", err, owner.PID)

@@ -56,7 +56,7 @@
     },
     {
       "description": "Stop the wasync that owns the data directory (serve, the TUI or run).",
-      "details": "Works from any folder, so nobody has to find the process and kill it. It says which wasync it is stopping (kind, PID, how it was started and the data directory), asks it to shut down cleanly through its local API, signed with the approval credential (or, when it has none, by asking the process to stop as Ctrl-C would), and waits until the data directory is free. It does not unlink the phone; use logout for that. Stopping a wasync started by the login item does not remove the login item; wasync service uninstall does. With nothing running it says so and succeeds.",
+      "details": "Works from any folder, so nobody has to find the process and kill it. It says which wasync it is stopping (kind, PID, how it was started and the data directory), asks it to shut down cleanly through its local API, signed with the approval credential, and waits until the data directory is free. When the owner has no API, or the approval credential cannot be read here (on macOS a shell outside your desktop session, such as SSH, cannot open the Keychain), it asks the process to stop as Ctrl-C would instead; that works only for a wasync running as your own user. It does not unlink the phone; use logout for that. Stopping a wasync started by the login item does not remove the login item; wasync service uninstall does. With nothing running it says so and succeeds.",
       "path": "stop",
       "usage": "stop"
     },

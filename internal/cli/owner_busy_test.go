@@ -14,10 +14,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"testing"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/processlock"
 )
@@ -142,12 +144,32 @@ func TestStopFallsBackToAskingTheProcessWhenThereIsNoAPI(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows cannot ask a process to stop cleanly")
 	}
+	dir, exited := startHelperOwner(t, "")
+	app, out, _ := otherApp(t)
+	if err := app.Run(context.Background(), []string{"--data-dir", dir, "stop"}); err != nil {
+		t.Fatalf("stop: %v\n%s", err, out.String())
+	}
+	select {
+	case <-exited:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the helper owner never exited")
+	}
+	if !strings.Contains(out.String(), "Stopped") {
+		t.Fatalf("output: %s", out.String())
+	}
+}
+
+// startHelperOwner runs TestHelperHoldsTheDataDirectory in another process, so
+// stop can signal it, and returns its data directory and a channel that
+// receives once it exits. apiAddr, when set, is recorded as its local API.
+func startHelperOwner(t *testing.T, apiAddr string) (string, <-chan error) {
+	t.Helper()
 	dir := filepath.Join(t.TempDir(), "private")
 	if err := localfs.EnsureDir(dir); err != nil {
 		t.Fatal(err)
 	}
-	helper := exec.Command(os.Args[0], "-test.run=TestHelperHoldsTheDataDirectory")
-	helper.Env = append(os.Environ(), "WASYNC_HELPER_DIR="+dir)
+	helper := exec.Command(os.Args[0], "-test.run=^TestHelperHoldsTheDataDirectory$")
+	helper.Env = append(os.Environ(), "WASYNC_HELPER_DIR="+dir, "WASYNC_HELPER_API="+apiAddr)
 	stdout, err := helper.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
@@ -161,22 +183,12 @@ func TestStopFallsBackToAskingTheProcessWhenThereIsNoAPI(t *testing.T) {
 	if line, _ := bufio.NewReader(stdout).ReadString('\n'); !strings.Contains(line, "ready") {
 		t.Fatalf("helper did not take the directory: %q", line)
 	}
-	app, out, _ := otherApp(t)
-	if err = app.Run(context.Background(), []string{"--data-dir", dir, "stop"}); err != nil {
-		t.Fatalf("stop: %v\n%s", err, out.String())
-	}
-	select {
-	case <-exited:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the helper owner never exited")
-	}
-	if !strings.Contains(out.String(), "Stopped") {
-		t.Fatalf("output: %s", out.String())
-	}
+	return dir, exited
 }
 
 // TestHelperHoldsTheDataDirectory is not a test: it is the other process the
-// test above stops. It holds the directory as `wasync run` without an API.
+// tests above stop. It holds the directory as a long-lived owner: `wasync run`
+// without an API, or `wasync serve` at WASYNC_HELPER_API when that is set.
 func TestHelperHoldsTheDataDirectory(t *testing.T) {
 	dir := os.Getenv("WASYNC_HELPER_DIR")
 	if dir == "" {
@@ -187,7 +199,11 @@ func TestHelperHoldsTheDataDirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer lock.Close()
-	if err = processlock.WriteOwner(dir, processlock.Owner{Kind: "run", PID: os.Getpid(), DataDir: dir, StartedAt: time.Now()}); err != nil {
+	record := processlock.Owner{Kind: "run", PID: os.Getpid(), DataDir: dir, StartedAt: time.Now()}
+	if addr := os.Getenv("WASYNC_HELPER_API"); addr != "" {
+		record.Kind, record.APIAddr = "serve", addr
+	}
+	if err = processlock.WriteOwner(dir, record); err != nil {
 		t.Fatal(err)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM)
@@ -196,25 +212,66 @@ func TestHelperHoldsTheDataDirectory(t *testing.T) {
 	<-ctx.Done()
 }
 
-// Stopping is approved with the approval credential. When it cannot be read
-// (missing here, as when the Keychain prompt is cancelled), stop reports that
-// and leaves the owner running instead of signalling its process.
-func TestStopWithoutTheApprovalCredentialLeavesTheOwnerRunning(t *testing.T) {
-	owner := startServeOwner(t)
-	if err := os.Remove(filepath.Join(owner.dir, "approve.token")); err != nil {
-		t.Fatal(err)
+// deniedKeychain refuses every read, as the macOS login Keychain does for a
+// shell outside the desktop session (SSH): no window can be shown to ask.
+type deniedKeychain struct{}
+
+func (deniedKeychain) Get(string) (string, error)       { return "", approvecred.ErrAccessDenied }
+func (deniedKeychain) Set(string, string, string) error { return approvecred.ErrAccessDenied }
+func (deniedKeychain) Delete(string) error              { return approvecred.ErrAccessDenied }
+
+// The report: on a Mac, `wasync stop` over SSH printed which wasync it was
+// stopping and then failed with "read the approval credential from the
+// Keychain: access to the approval credential was not allowed", leaving the
+// login item's serve running. The person running stop owns that process, so
+// it is asked to stop as Ctrl-C would; its approval-guarded API is not used.
+func TestStopWithoutKeychainAccessAsksTheOwnersProcessToStop(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows cannot ask a process to stop cleanly")
 	}
+	var apiCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		apiCalls.Add(1)
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	t.Cleanup(server.Close)
+	dir, exited := startHelperOwner(t, strings.TrimPrefix(server.URL, "http://"))
+	approvecred.Use(deniedKeychain{})
+	t.Cleanup(func() { approvecred.Use(nil) })
+
 	app, out, _ := otherApp(t)
-	err := app.Run(context.Background(), []string{"--data-dir", owner.dir, "stop"})
-	if err == nil {
-		t.Fatalf("stop succeeded without the approval credential:\n%s", out.String())
+	if err := app.Run(context.Background(), []string{"--data-dir", dir, "stop"}); err != nil {
+		t.Fatalf("stop failed without Keychain access: %v\n%s", err, out.String())
 	}
-	if strings.Contains(out.String(), "Stopped") {
-		t.Fatalf("stop claimed success:\n%s", out.String())
+	select {
+	case <-exited:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the owner never exited")
+	}
+	for _, want := range []string{"approval credential cannot be read here", "as Ctrl-C would", "Stopped"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("stop output is missing %q:\n%s", want, out.String())
+		}
+	}
+	if n := apiCalls.Load(); n != 0 {
+		t.Errorf("stop sent %d request(s) to the owner's API without the approval credential", n)
+	}
+}
+
+// Logout still needs the approval credential: without it nothing is unlinked
+// and the owner keeps running.
+func TestLogoutWithoutKeychainAccessLeavesTheOwnerRunning(t *testing.T) {
+	owner := startServeOwner(t)
+	approvecred.Use(deniedKeychain{})
+	t.Cleanup(func() { approvecred.Use(nil) })
+	app, out, _ := otherApp(t)
+	err := app.Run(context.Background(), []string{"--data-dir", owner.dir, "logout"})
+	if err == nil || !strings.Contains(err.Error(), approvecred.ErrAccessDenied.Error()) {
+		t.Fatalf("logout without the approval credential: %v\n%s", err, out.String())
 	}
 	time.Sleep(300 * time.Millisecond)
-	if !owner.held() {
-		t.Fatal("the owner was stopped without approval")
+	if !owner.held() || owner.client.loggedOut.Load() {
+		t.Fatalf("logout acted without approval: held=%v loggedOut=%v", owner.held(), owner.client.loggedOut.Load())
 	}
 }
 
