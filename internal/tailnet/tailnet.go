@@ -144,7 +144,7 @@ func Load(dir string) (s Setting, ok bool, err error) {
 }
 
 // Save writes the setting atomically as a private file.
-func Save(dir string, s Setting) (result error) {
+func Save(dir string, s Setting) error {
 	s, err := s.Validate()
 	if err != nil {
 		return err
@@ -157,7 +157,12 @@ func Save(dir string, s Setting) (result error) {
 	if err != nil {
 		return err
 	}
-	tmp := filepath.Join(dir, "."+FileName+".tmp")
+	return writePrivate(dir, FileName, append(data, '\n'))
+}
+
+// writePrivate replaces dir/name with data through a private temporary file.
+func writePrivate(dir, name string, data []byte) (result error) {
+	tmp := filepath.Join(dir, "."+name+".tmp")
 	f, err := localfs.OpenFile(tmp)
 	if err != nil {
 		return err
@@ -168,7 +173,7 @@ func Save(dir string, s Setting) (result error) {
 		}
 	}()
 	if err = f.Truncate(0); err == nil {
-		_, err = f.Write(append(data, '\n'))
+		_, err = f.Write(data)
 	}
 	if err == nil {
 		err = f.Sync()
@@ -176,7 +181,7 @@ func Save(dir string, s Setting) (result error) {
 	if err = errors.Join(err, f.Close()); err != nil {
 		return err
 	}
-	return os.Rename(tmp, filepath.Join(dir, FileName))
+	return os.Rename(tmp, filepath.Join(dir, name))
 }
 
 // Remove turns the opt-in off. Removing a setting that does not exist is not an error.

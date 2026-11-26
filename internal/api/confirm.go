@@ -12,6 +12,8 @@ import (
 type statusError struct {
 	code int
 	msg  string
+	// notice is what a web page says about it, when not the usual one for code.
+	notice string
 }
 
 func (e statusError) Error() string { return e.msg }
@@ -31,10 +33,13 @@ func failWith(w http.ResponseWriter, err error) {
 // only be answered by a person. When this computer has no such prompt (Linux, a
 // session with no screen), the typed confirmation in the terminal stays the
 // only check; the owner says so when it starts.
+//
+// A request from another device on the tailnet never raises the prompt here,
+// where nobody at that device could answer it: it needs a passkey set up on
+// that device instead (see passkeys.go).
 func (h *handler) confirmError(ctx context.Context, prompt string) error {
-	if remoteFrom(ctx) != "" {
-		// The prompt would appear on this computer, not the remote browser's.
-		return statusError{http.StatusForbidden, "confirm on the computer running wasync; nothing changed"}
+	if login := remoteFrom(ctx); login != "" {
+		return h.confirmRemote(ctx, login, prompt)
 	}
 	if !h.human.Enabled() {
 		return nil
@@ -44,9 +49,9 @@ func (h *handler) confirmError(ctx context.Context, prompt string) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, humancheck.ErrBusy), errors.Is(err, humancheck.ErrLocked):
-		return statusError{http.StatusTooManyRequests, err.Error() + "; nothing changed"}
+		return statusError{code: http.StatusTooManyRequests, msg: err.Error() + "; nothing changed"}
 	}
-	return statusError{http.StatusForbidden, "not confirmed on this computer; nothing changed"}
+	return statusError{code: http.StatusForbidden, msg: "not confirmed on this computer; nothing changed"}
 }
 
 func (h *handler) confirm(w http.ResponseWriter, r *http.Request, prompt string) bool {
