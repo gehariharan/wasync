@@ -2,9 +2,9 @@
 class Wasync < Formula
   desc "Local WhatsApp archive, terminal UI, and API for people and agents"
   homepage "https://github.com/gehariharan/wasync"
-  url "https://api.github.com/repos/gehariharan/wasync/tarball/v0.1.0-preview.20261126104409"
-  version "0.1.0-preview.20261126104409"
-  sha256 "0721c13384efd004a182286b99eadcdaacddd30435923303d72f68eff7f3c77e"
+  url "https://api.github.com/repos/gehariharan/wasync/tarball/v0.1.0-preview.20261126105548"
+  version "0.1.0-preview.20261126105548"
+  sha256 "aa0d47ad322d38732c3c1094f59d195f862d2a2f83b6131e8c929feb57f7ab62"
   license "MIT"
 
   depends_on :linux
@@ -17,7 +17,7 @@ class Wasync < Formula
     ldflags = %W[
       -s -w
       -X github.com/gehariharan/wasync/internal/buildinfo.Version=#{version}
-      -X github.com/gehariharan/wasync/internal/buildinfo.Commit=b65a600f9cea
+      -X github.com/gehariharan/wasync/internal/buildinfo.Commit=07caa3ab1ab4
       -X github.com/gehariharan/wasync/internal/buildinfo.BuiltAt=#{time.iso8601}
     ]
     system "go", "build", *std_go_args(ldflags:), "-tags", "sqlite_fts5", "./cmd/wasync"
