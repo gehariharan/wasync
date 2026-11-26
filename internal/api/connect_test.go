@@ -221,8 +221,12 @@ func TestConnectCodexWritesItsSettingsOnlyAfterThePersonConfirms(t *testing.T) {
 	prompts := len(f.stub.seen())
 	f.stub.set(false)
 	*f.ran = nil
-	if _, _, hd := c.post("/ui/setup/disconnect", url.Values{"csrf": {csrf}, "agent": {"codex"}}); !strings.Contains(hd.Get("Location"), "n=agentdisconnected") {
+	_, _, hd := c.post("/ui/setup/disconnect", url.Values{"csrf": {csrf}, "agent": {"codex"}})
+	if !strings.Contains(hd.Get("Location"), "n=agentdisconnected") {
 		t.Fatalf("disconnect: %v", hd)
+	}
+	if _, page, _ := c.get(hd.Get("Location")); strings.Contains(page, `name="digest"`) {
+		t.Fatalf("the page after Disconnect offers to connect again:\n%s", page)
 	}
 	if len(f.stub.seen()) != prompts {
 		t.Fatal("disconnect asked for a confirmation")

@@ -367,7 +367,8 @@ func (h *handler) connect(ctx context.Context, p *connectPlan, req agentauth.Gra
 	undoPlugin := func() {
 		_ = env.RemoveCodexPlugin(ctx, h.dataDir, conn.CodexMarketplace, conn.CodexPlugin)
 	}
-	if conn.Backup, err = env.Write(p.file); err != nil {
+	written, backup, err := env.Write(p.file)
+	if err != nil {
 		undoPlugin()
 		undoCredential()
 		if errors.Is(err, agentconnect.ErrChanged) {
@@ -375,10 +376,10 @@ func (h *handler) connect(ctx context.Context, p *connectPlan, req agentauth.Gra
 		}
 		return "connectfail", err
 	}
-	conn.Previous = p.file.Previous()
+	conn.Backup, conn.Previous = backup, written.Previous()
 	if err := agentconnect.Save(h.dataDir, conn); err != nil {
 		if undo, _, perr := env.PlanDisconnect(conn); perr == nil {
-			_, _ = env.Write(undo)
+			_, _, _ = env.Write(undo)
 		}
 		undoPlugin()
 		undoCredential()
@@ -404,14 +405,14 @@ func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess u
 	defer h.connectMu.Unlock()
 	c, err := agentconnect.Find(h.dataDir, a.Kind)
 	if err != nil {
-		h.connectBack(w, r, "failed", kind)
+		h.connectBack(w, r, "failed", "")
 		return
 	}
 	if c == nil {
-		h.connectBack(w, r, "notconnected", kind)
+		h.connectBack(w, r, "notconnected", "")
 		return
 	}
-	h.connectBack(w, r, h.disconnect(r.Context(), *c), kind)
+	h.connectBack(w, r, h.disconnect(r.Context(), *c), "")
 }
 
 // disconnect undoes a connection as far as it can and returns the notice.
@@ -432,7 +433,7 @@ func (h *handler) disconnect(ctx context.Context, c agentconnect.Connection) str
 	notice := "agentdisconnected"
 	plan, _, err := env.PlanDisconnect(c)
 	if err == nil && plan.Changes() {
-		_, err = env.Write(plan)
+		_, _, err = env.Write(plan)
 	}
 	if err != nil {
 		_ = audit.Append(agentauth.AuditEntry{Event: "disconnect", ClientID: c.ClientID, ClientName: c.Client, Ref: string(c.Agent), Outcome: agentauth.OutcomeDenied, Code: "settings_unchanged"})

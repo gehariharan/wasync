@@ -59,11 +59,12 @@ func connectThenDisconnect(t *testing.T, e Env, kind Kind) (connected, disconnec
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Write(p); err != nil {
+	written, _, err := e.Write(p)
+	if err != nil {
 		t.Fatal(err)
 	}
 	connected = read(t, p.Path)
-	c = Connection{Agent: kind, ConfigPath: p.Path, Entry: testEntry, Previous: p.Previous()}
+	c = Connection{Agent: kind, ConfigPath: p.Path, Entry: testEntry, Previous: written.Previous()}
 	if !Wrote(c) {
 		t.Fatalf("entry not recognised in:\n%s", connected)
 	}
@@ -71,7 +72,7 @@ func connectThenDisconnect(t *testing.T, e Env, kind Kind) (connected, disconnec
 	if err != nil || kept {
 		t.Fatalf("disconnect plan: kept=%v err=%v", kept, err)
 	}
-	if _, err := e.Write(d); err != nil {
+	if _, _, err := e.Write(d); err != nil {
 		t.Fatal(err)
 	}
 	return connected, read(t, p.Path), c
@@ -263,7 +264,7 @@ func TestWriteBacksUpAndRefusesAChangedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, path, `{"a": 1, "mcpServers": {"whatsapp": {"command": "other"}}}`)
-	if _, err := e.Write(p); !errors.Is(err, ErrChanged) {
+	if _, _, err := e.Write(p); !errors.Is(err, ErrChanged) {
 		t.Fatalf("err = %v, want ErrChanged", err)
 	}
 	if got := read(t, path); got != `{"a": 1, "mcpServers": {"whatsapp": {"command": "other"}}}` {
@@ -274,7 +275,7 @@ func TestWriteBacksUpAndRefusesAChangedFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	write(t, path, `{"a": 2}`)
-	bak, err := e.Write(p)
+	_, bak, err := e.Write(p)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -299,13 +300,58 @@ func TestWriteBacksUpAndRefusesAChangedFile(t *testing.T) {
 	}
 }
 
+func TestCodexWriteAfterTablesAreAddedBelowTheReplacedEntry(t *testing.T) {
+	for name, tail := range map[string]string{"no final newline": "", "blank lines at the end": "\n\n\n"} {
+		t.Run(name, func(t *testing.T) {
+			e := testEnv(t)
+			path := e.ConfigPath(Codex)
+			before := "model = \"m\"\n\n[mcp_servers.whatsapp]\ncommand = \"old\"" + tail
+			write(t, path, before)
+			p, err := e.PlanConnect(agent(Codex), testEntry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			added := "\n\n[marketplaces.wasync]\nsource = \"/x\"\n"
+			if tail == "" {
+				added = "\n" + added
+			}
+			write(t, path, before+added)
+			written, _, err := e.Write(p)
+			if err != nil {
+				t.Fatalf("a table added after the entry blocked the write: %v", err)
+			}
+			got, err := decodeTOML(read(t, path))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !testEntry.matches(got["mcp_servers"].(map[string]any)[ServerName]) || got["marketplaces"] == nil || got["model"] != "m" {
+				t.Fatalf("file after connect:\n%s", read(t, path))
+			}
+			c := Connection{Agent: Codex, ConfigPath: path, Entry: testEntry, Previous: written.Previous()}
+			d, _, err := e.PlanDisconnect(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := e.Write(d); err != nil {
+				t.Fatal(err)
+			}
+			if got, err = decodeTOML(read(t, path)); err != nil {
+				t.Fatalf("restored file is not TOML: %v\n%s", err, read(t, path))
+			}
+			if got["mcp_servers"].(map[string]any)[ServerName].(map[string]any)["command"] != "old" || got["marketplaces"] == nil {
+				t.Fatalf("file after disconnect:\n%s", read(t, path))
+			}
+		})
+	}
+}
+
 func TestNewFileIsPrivate(t *testing.T) {
 	e := testEnv(t)
 	p, err := e.PlanConnect(agent(ClaudeDesktop), testEntry)
 	if err != nil || p.Exists {
 		t.Fatalf("exists=%v err=%v", p.Exists, err)
 	}
-	if bak, err := e.Write(p); err != nil || bak != "" {
+	if _, bak, err := e.Write(p); err != nil || bak != "" {
 		t.Fatalf("backup=%q err=%v", bak, err)
 	}
 	if info, _ := os.Stat(p.Path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o600 {
@@ -327,7 +373,7 @@ func TestWriteFollowsASymlink(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.Write(p); err != nil {
+	if _, _, err := e.Write(p); err != nil {
 		t.Fatal(err)
 	}
 	if info, _ := os.Lstat(e.ConfigPath(ClaudeCode)); info.Mode()&os.ModeSymlink == 0 {
@@ -341,7 +387,7 @@ func TestWriteFollowsASymlink(t *testing.T) {
 func TestDisconnectLeavesAnEntryThePersonChanged(t *testing.T) {
 	e := testEnv(t)
 	p, _ := e.PlanConnect(agent(ClaudeCode), testEntry)
-	if _, err := e.Write(p); err != nil {
+	if _, _, err := e.Write(p); err != nil {
 		t.Fatal(err)
 	}
 	changed := `{"mcpServers": {"whatsapp": {"command": "mine"}}}`

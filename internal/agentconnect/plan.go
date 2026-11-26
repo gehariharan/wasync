@@ -110,9 +110,33 @@ func (p Plan) digest() string {
 	return hex.EncodeToString(h.Sum(nil))[:24]
 }
 
-// sameChange reports whether q makes the change p showed.
+// sameChange reports whether q makes the change p showed: the same entry
+// put in, and an entry taken out that holds the same settings.
 func (p Plan) sameChange(q Plan) bool {
-	return p.file.Target == q.file.Target && p.Exists == q.Exists && p.Removed == q.Removed && p.Added == q.Added
+	if p.file.Target != q.file.Target || p.Exists != q.Exists || p.Added != q.Added {
+		return false
+	}
+	a, errA := p.removedEntry()
+	b, errB := q.removedEntry()
+	return errA == nil && errB == nil && reflect.DeepEqual(a, b)
+}
+
+// removedEntry decodes the entry the plan takes out (nil when none).
+func (p Plan) removedEntry() (any, error) {
+	prev := p.Previous()
+	if prev == "" {
+		return nil, nil
+	}
+	if p.Agent.Kind == Codex {
+		m, err := decodeTOML(prev)
+		if err != nil {
+			return nil, err
+		}
+		return splitEntry(m, "mcp_servers"), nil
+	}
+	var v any
+	err := json.Unmarshal([]byte(prev), &v)
+	return v, err
 }
 
 // edit applies set (nil only removes wasync's entry, restore puts back an
@@ -235,31 +259,31 @@ func Wrote(c Connection) bool {
 
 // Write makes the change p describes, after backing up the file. It plans
 // the change again against the file as it is now, keeping whatever else
-// changed in it, and refuses when the entry it would take out or put in is
-// not exactly what p showed. It returns the backup's path ("" when the file
-// did not exist).
-func (e Env) Write(p Plan) (backupPath string, err error) {
+// changed in it, and refuses when that is not the change p showed. It
+// returns the plan it carried out, whose Previous is the entry text the file
+// held, and the backup's path ("" when the file did not exist).
+func (e Env) Write(p Plan) (written Plan, backupPath string, err error) {
 	if !p.Changes() {
-		return "", nil
+		return p, "", nil
 	}
 	q, err := e.edit(p.Agent, p.Path, p.set, p.restore)
 	if err != nil {
-		return "", err
+		return p, "", err
 	}
 	if !p.sameChange(q) {
-		return "", ErrChanged
+		return p, "", ErrChanged
 	}
 	if !q.Changes() {
-		return "", nil
+		return q, "", nil
 	}
 	f := q.file
 	if backupPath, err = backup(f, e.now().UTC().Format("20060102-150405")); err != nil {
-		return "", err
+		return p, "", err
 	}
 	if err := writeAtomic(f.Target, q.after, f.Mode); err != nil {
-		return backupPath, fmt.Errorf("write %s: %w", p.Path, err)
+		return p, backupPath, fmt.Errorf("write %s: %w", p.Path, err)
 	}
-	return backupPath, nil
+	return q, backupPath, nil
 }
 
 func isWindows() bool { return runtime.GOOS == "windows" }
