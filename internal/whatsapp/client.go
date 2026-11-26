@@ -70,6 +70,7 @@ type Client struct {
 	deviceID        atomic.Pointer[types.JID]                                  // the linked device row in session.db, for clearing it
 	unlinked        atomic.Bool                                                // WhatsApp rejected the saved login; it must be replaced
 	groupInfo       func(context.Context, types.JID) (*types.GroupInfo, error) // test seam; nil uses the whatsmeow client
+	outbound        outbound                                                   // test seam; nil sends through the whatsmeow client
 }
 
 func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {

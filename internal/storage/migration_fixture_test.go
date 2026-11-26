@@ -64,7 +64,7 @@ func buildArchive(t *testing.T, version int) string {
 
 // releasedSchemas is the newest schema shipped in a release; every schema from
 // 1 to it must upgrade to the current SchemaVersion.
-const releasedSchemas = 5
+const releasedSchemas = 6
 
 // TestUpgradeFromEveryReleasedSchema is the baseline for archive preservation:
 // every schema an installed release can have upgrades without losing rows.
@@ -110,7 +110,7 @@ func TestUpgradeFromEveryReleasedSchema(t *testing.T) {
 			}
 			if version >= 2 {
 				page, err := s.Messages(ctx, account.ID, "", MessageQuery{Search: "searchable", Limit: 10})
-				if err != nil || len(page.Items) != 1 || page.Items[0].MessageID != "m1" {
+				if err != nil || len(page.Items) != 1 || page.Items[0].MessageID != "m1" || page.Items[0].SentBy != "" {
 					t.Fatalf("archived message not searchable after upgrade: %+v %v", page.Items, err)
 				}
 				var tombstones int

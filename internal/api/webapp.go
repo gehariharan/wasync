@@ -271,10 +271,14 @@ func (h *handler) chatsView(w http.ResponseWriter, r *http.Request, sess uiSessi
 			case strings.TrimSpace(m.Text) != "":
 				msg.Text = bodyText(m.Text)
 			case msg.Att != nil:
+			case m.Source == storage.SourceSentLog:
+				msg.Text = "(list message sent before wasync kept it in its chat; text not kept)"
 			default:
 				msg.Text = "[" + humancheck.Clean(m.Type, 30) + "]"
 			}
 			switch {
+			case m.FromMe && m.SentBy != "":
+				msg.Who = "🤖 " + humancheck.Clean(m.SentBy, 40)
 			case m.FromMe:
 				msg.Who = "You"
 			case storage.ChatKind(cur.ID) == "direct":

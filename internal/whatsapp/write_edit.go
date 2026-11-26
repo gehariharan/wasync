@@ -97,5 +97,5 @@ func (c *Client) Edit(ctx context.Context, in EditInput) (SendResult, error) {
 		return out, err
 	}
 	jid, _ := ParseChat(in.To)
-	return c.sendWrite(ctx, jid, message, out)
+	return c.sendWrite(ctx, jid, message, out, "")
 }

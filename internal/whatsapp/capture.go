@@ -120,7 +120,12 @@ func (c *Client) handleEvent(evt any) bool {
 	c.onEvent(evt)
 	return true
 }
-func (c *Client) captureEvent(evt any) error {
+func (c *Client) captureEvent(evt any) error { return c.captureSent(evt, "") }
+
+// captureSent captures evt; a message stored from it is marked as sent by the
+// named agent. WhatsApp never hands a sent message back to the device that
+// sent it, so that copy is archived here or never.
+func (c *Client) captureSent(evt any, sentBy string) error {
 	p := c.capture
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -212,6 +217,7 @@ func (c *Client) captureEvent(evt any) error {
 			p.skipped.Add(1)
 			return nil
 		}
+		m.SentBy = sentBy
 		r, err := p.store.Apply(p.ctx, account, []storage.Message{m})
 		p.stored.Add(int64(r.Stored))
 		p.skipped.Add(int64(r.Skipped))

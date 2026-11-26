@@ -31,6 +31,9 @@ type SendInput struct {
 	// in place of a file wasync opens. It is never read from JSON, so only
 	// code that has checked the agent's right to send can set it.
 	Video []byte `json:"-"`
+	// SentBy names the agent sending, so the archived copy shows it; agents
+	// cannot set it themselves. It is empty for the owner's own sends.
+	SentBy string `json:"-"`
 }
 type SendResult struct {
 	ChatID         string    `json:"chat_id"`
@@ -89,10 +92,10 @@ func (c *Client) Send(ctx context.Context, in SendInput) (SendResult, error) {
 	if err := in.Validate(); err != nil {
 		return out, err
 	}
-	if !c.Paired() || !c.wa().IsConnected() {
-		return out, fmt.Errorf("connect your paired device before sending")
+	if err := c.requireConnected("sending"); err != nil {
+		return out, err
 	}
-	return c.send(ctx, c.wa(), c.wa().Store.ID.ToNonAD(), in)
+	return c.send(ctx, c.out(), c.wa().Store.ID.ToNonAD(), in)
 }
 
 // send uploads any attachment, sends the message once and archives it as the
@@ -117,7 +120,7 @@ func (c *Client) send(ctx context.Context, wa messageSender, own types.JID, in S
 	out.Timestamp = response.Timestamp
 	if c.capture != nil {
 		event := &events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, Sender: own, IsFromMe: true, IsGroup: jid.Server == types.GroupServer}, ID: out.MessageID, Timestamp: response.Timestamp}, Message: message, RawMessage: message}
-		if err = c.captureEvent(event); err != nil {
+		if err = c.captureSent(event, in.SentBy); err != nil {
 			out.ArchiveWarning = "Message acknowledged, but local archive failed; do not resend"
 			c.StopCapture(err)
 		}

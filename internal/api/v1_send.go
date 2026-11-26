@@ -174,7 +174,7 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 	}
-	in := whatsapp.SendInput{To: target, Text: body.Text, Video: body.Video, Thumbnail: body.Thumbnail}
+	in := whatsapp.SendInput{To: target, Text: body.Text, Video: body.Video, Thumbnail: body.Thumbnail, SentBy: agentName(r)}
 	if len(in.Video) > 0 {
 		in.Type = "video"
 	}
@@ -207,10 +207,13 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 	}
+	if wide == wideList {
+		h.captureListed(r.Context(), in.To)
+	}
 	result, err := h.sender(r.Context(), in)
 	h.recordSentEntry(entry, result, err)
 	if wide == wideList && (err == nil || result.MessageID != "") {
-		h.listSent(r.Context(), v1Client(r).ID, in.To)
+		h.listSent(v1Client(r).ID, in.To)
 	}
 	v1WriteResult(w, id, result, err)
 }

@@ -68,18 +68,33 @@ func validText(text string) error {
 
 // requireConnected is the shared precondition of every write.
 func (c *Client) requireConnected(action string) error {
-	if !c.Paired() || !c.wa().IsConnected() {
+	if !c.Paired() || !c.out().IsConnected() {
 		return fmt.Errorf("connect your paired device before %s", action)
 	}
 	return nil
 }
 
-// sendWrite sends one built message and archives the sender's own copy, as
-// Send does. A transport error leaves the outcome unknown and is never retried.
-func (c *Client) sendWrite(ctx context.Context, jid types.JID, message *waE2E.Message, out SendResult) (SendResult, error) {
-	out.MessageID = c.wa().GenerateMessageID()
+// outbound is what a write needs from WhatsApp. The whatsmeow client provides
+// it; tests use a fake so nothing is ever really sent.
+type outbound interface {
+	messageSender
+	IsConnected() bool
+}
+
+func (c *Client) out() outbound {
+	if c.outbound != nil {
+		return c.outbound
+	}
+	return c.wa()
+}
+
+// sendWrite sends one built message and archives the sender's own copy when
+// its chat is archived, marked with the agent that sent it, if any. A
+// transport error leaves the outcome unknown and is never retried.
+func (c *Client) sendWrite(ctx context.Context, jid types.JID, message *waE2E.Message, out SendResult, sentBy string) (SendResult, error) {
+	out.MessageID = c.out().GenerateMessageID()
 	out.Status = "unknown"
-	response, err := c.wa().SendMessage(ctx, jid, message, whatsmeow.SendRequestExtra{ID: out.MessageID, Timeout: 45 * time.Second, CheckPermissions: true})
+	response, err := c.out().SendMessage(ctx, jid, message, whatsmeow.SendRequestExtra{ID: out.MessageID, Timeout: 45 * time.Second, CheckPermissions: true})
 	if err != nil {
 		return out, fmt.Errorf("send outcome unknown; check WhatsApp before retrying; do not retry automatically")
 	}
@@ -87,7 +102,7 @@ func (c *Client) sendWrite(ctx context.Context, jid types.JID, message *waE2E.Me
 	out.Timestamp = response.Timestamp
 	if c.capture != nil {
 		event := &events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: jid, Sender: c.wa().Store.ID.ToNonAD(), IsFromMe: true, IsGroup: jid.Server == types.GroupServer}, ID: out.MessageID, Timestamp: response.Timestamp}, Message: message, RawMessage: message}
-		if err = c.captureEvent(event); err != nil {
+		if err = c.captureSent(event, sentBy); err != nil {
 			out.ArchiveWarning = "Message acknowledged, but local archive failed; do not resend"
 			c.StopCapture(err)
 		}

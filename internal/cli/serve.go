@@ -16,6 +16,7 @@ import (
 	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/processlock"
+	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
 	"github.com/gehariharan/wasync/internal/tui"
@@ -151,6 +152,12 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 			if err = live.EnableCapture(ctx, store); err != nil {
 				return err
 			}
+		}
+		// List messages earlier releases sent but did not keep go into their chats, once.
+		if n, err := sentlog.Backfill(ctx, cfg.DataDir, store); err != nil {
+			log.Warn("earlier list messages were not added to their chats; this is tried again at the next start", "error", err)
+		} else if n > 0 {
+			log.Info("added earlier list messages to their chats", "messages", n)
 		}
 		var status func() whatsapp.CaptureStatus
 		if live != nil {

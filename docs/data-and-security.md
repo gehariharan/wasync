@@ -43,6 +43,7 @@ encrypt data at rest.
 | `open-sending.json` | Whether open sending is on, and until when |
 | `tailnet.json` | The tailnet name and Tailscale login allowed to open the web app from other devices ([Tailscale](tailscale.md)); absent when off |
 | `sent-log.jsonl` | Every send by you or an agent: who, which chat, when, message ID and outcome, never the text |
+| `sent-log-backfill.done` | Empty; says earlier list messages were already added to their chats from the sent log, so that runs only once |
 | `agent-audit.log` | Agent requests, grants, approvals and webhook deliveries: identifiers and outcomes only |
 | `webhooks.json` | Webhook endpoints and their signing secrets; keep private |
 | `webhook-state.json` | Per-endpoint delivery position (journal sequence and retry timing) |

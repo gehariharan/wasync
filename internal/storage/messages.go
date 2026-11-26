@@ -15,12 +15,21 @@ type Message struct {
 	Type, Text                              string
 	FromMe                                  bool
 	ReplyTo, Media, Source                  string
+	// SentBy names the agent that sent this outgoing message through wasync;
+	// it is empty for the owner's own messages and everything received.
+	SentBy string
 	// Kind is normal, edit, or delete; mutations refer to MessageID of the original.
 	Kind                           string
 	MutationAt                     time.Time
 	EditedAt, DeletedAt, ExpiresAt *time.Time
 	ReceivedAt                     time.Time
 }
+
+// SourceSentLog marks a message filled in from the sent log rather than
+// captured: wasync sent it before it kept what it sends in the chat, so its
+// text is not known. The real copy replaces it if WhatsApp ever delivers one.
+const SourceSentLog = "sent_log"
+
 type WriteResult struct{ Stored, Skipped int }
 type Cursor struct {
 	Timestamp int64
@@ -117,15 +126,18 @@ func (s *Store) apply(ctx context.Context, account, batch int64, messages []Mess
     edited_at=excluded.edited_at
     WHERE messages.deleted_at IS NULL AND (messages.edited_at IS NULL OR messages.edited_at<excluded.edited_at)`, account, m.GroupID, m.MessageID, m.Source, now, m.Text, m.Type, m.Media, m.MutationAt.UnixMilli(), nullableTime(m.ExpiresAt))
 		default:
-			write, err = tx.ExecContext(ctx, `INSERT INTO messages(account_id,group_id,message_id,sender_id,sender_alt,timestamp,message_type,text_content,is_from_me,reply_to_message_id,media_metadata,source,has_original,expires_at,received_at)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?,?) ON CONFLICT(account_id,group_id,message_id) DO UPDATE SET
+			// A sent-log placeholder gives way to the real copy of the message.
+			write, err = tx.ExecContext(ctx, `INSERT INTO messages(account_id,group_id,message_id,sender_id,sender_alt,timestamp,message_type,text_content,is_from_me,reply_to_message_id,media_metadata,source,has_original,expires_at,received_at,sent_by)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,1,?,?,?) ON CONFLICT(account_id,group_id,message_id) DO UPDATE SET
     sender_id=excluded.sender_id,sender_alt=excluded.sender_alt,timestamp=excluded.timestamp,is_from_me=excluded.is_from_me,
     has_original=1,expires_at=excluded.expires_at,
+    source=CASE WHEN messages.source=? THEN excluded.source ELSE messages.source END,
+    sent_by=CASE WHEN excluded.sent_by<>'' THEN excluded.sent_by ELSE messages.sent_by END,
     message_type=CASE WHEN messages.deleted_at IS NOT NULL THEN 'deleted' WHEN messages.edited_at IS NOT NULL THEN messages.message_type ELSE excluded.message_type END,
     text_content=CASE WHEN messages.deleted_at IS NOT NULL THEN '' WHEN messages.edited_at IS NOT NULL THEN messages.text_content ELSE excluded.text_content END,
     media_metadata=CASE WHEN messages.deleted_at IS NOT NULL THEN '' WHEN messages.edited_at IS NOT NULL THEN messages.media_metadata ELSE excluded.media_metadata END,
     reply_to_message_id=CASE WHEN messages.deleted_at IS NOT NULL THEN '' ELSE excluded.reply_to_message_id END
-    WHERE messages.has_original=0`, account, m.GroupID, m.MessageID, m.SenderID, m.SenderAlt, m.Timestamp.UnixMilli(), m.Type, m.Text, m.FromMe, m.ReplyTo, m.Media, m.Source, nullableTime(m.ExpiresAt), now)
+    WHERE messages.has_original=0 OR (messages.source=? AND excluded.source<>?)`, account, m.GroupID, m.MessageID, m.SenderID, m.SenderAlt, m.Timestamp.UnixMilli(), m.Type, m.Text, m.FromMe, m.ReplyTo, m.Media, m.Source, nullableTime(m.ExpiresAt), now, m.SentBy, SourceSentLog, SourceSentLog, SourceSentLog)
 		}
 		if err != nil {
 			return WriteResult{}, fmt.Errorf("persist message: %w", err)
@@ -240,7 +252,7 @@ func (s *Store) Messages(ctx context.Context, account int64, group string, q Mes
 		limit = 50
 	}
 	filter, args := messageFilter(account, group, q)
-	query := "SELECT id,group_id,message_id,sender_id,sender_alt,timestamp,message_type,text_content,is_from_me,reply_to_message_id,media_metadata,source,edited_at,deleted_at,expires_at,received_at" + filter
+	query := "SELECT id,group_id,message_id,sender_id,sender_alt,timestamp,message_type,text_content,is_from_me,reply_to_message_id,media_metadata,source,edited_at,deleted_at,expires_at,received_at,(SELECT sent_by FROM messages x WHERE x.id=archived_messages.id)" + filter
 	query += " ORDER BY timestamp DESC,id DESC LIMIT ?"
 	args = append(args, limit+1)
 	rows, err := s.db.QueryContext(ctx, query, args...)
@@ -253,7 +265,7 @@ func (s *Store) Messages(ctx context.Context, account int64, group string, q Mes
 		var m Message
 		var ts, received int64
 		var edited, deleted, expiry sql.NullInt64
-		if err = rows.Scan(&m.ID, &m.GroupID, &m.MessageID, &m.SenderID, &m.SenderAlt, &ts, &m.Type, &m.Text, &m.FromMe, &m.ReplyTo, &m.Media, &m.Source, &edited, &deleted, &expiry, &received); err != nil {
+		if err = rows.Scan(&m.ID, &m.GroupID, &m.MessageID, &m.SenderID, &m.SenderAlt, &ts, &m.Type, &m.Text, &m.FromMe, &m.ReplyTo, &m.Media, &m.Source, &edited, &deleted, &expiry, &received, &m.SentBy); err != nil {
 			return MessagePage{}, err
 		}
 		m.Timestamp = time.UnixMilli(ts).UTC()

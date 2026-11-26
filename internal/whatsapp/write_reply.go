@@ -31,6 +31,8 @@ type ReplyInput struct {
 	Target   storage.Message
 	Text     string
 	Mentions []string
+	// SentBy names the agent replying; it is empty for the owner's replies.
+	SentBy string
 }
 type Replier func(context.Context, ReplyInput) (SendResult, error)
 
@@ -140,7 +142,7 @@ func (c *Client) Reply(ctx context.Context, in ReplyInput) (SendResult, error) {
 		return out, err
 	}
 	jid, _ := ParseChat(in.To)
-	return c.sendWrite(ctx, jid, message, out)
+	return c.sendWrite(ctx, jid, message, out, in.SentBy)
 }
 
 // Operations returns the writes this client can perform.
