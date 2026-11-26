@@ -207,12 +207,23 @@ wasync send --to '123456789@g.us' --text 'Hello'
 wasync send --to '15551234567@s.whatsapp.net' --text 'https://example.com'
 wasync send --to '123456789@g.us' --file ./photo.png --type image --text 'Caption'
 wasync send --to '15551234567@s.whatsapp.net' --file ./report.pdf --type document
+wasync send --to '15551234567@s.whatsapp.net' --file ./explainer.mp4 --type video --text 'Caption'
 ```
 
-Sending supports text/URLs, JPEG/PNG images and documents. WhatsApp determines
-which sizes and formats it accepts; wasync adds no fixed file-size cap (see
-[Media](media.md#media-size)). The default attachment type is document. Rich link-preview
-generation is not implemented.
+Sending supports text/URLs, JPEG/PNG images, videos and documents. WhatsApp determines
+which sizes and formats it accepts; wasync adds no fixed file-size cap for images and
+documents (see [Media](media.md#media-size)). The default attachment type is document. Rich
+link-preview generation is not implemented.
+
+`--type video` sends a clip that plays in the chat, with `--text` as its caption. It accepts
+an MP4 file with H.264 video and, when it has sound, AAC audio, up to 64 MiB, the most
+WhatsApp's linked devices send as a playable video; anything else is refused before anything
+is sent, with a message saying what to change (for example
+`ffmpeg -i IN -c:v libx264 -c:a aac -movflags +faststart OUT.mp4`). Send a larger or
+different file with `--type document`, where it arrives as a file. wasync reads the clip's
+length and shape from the file itself. Its preview picture is a frame taken with `ffmpeg`
+when it is installed (it is optional, looked up on `PATH` and in the usual Homebrew and system
+folders), otherwise a plain dark frame; the video plays the same either way.
 Output is JSON with `result.status` and `result.message_id`. A server acknowledgement
 is not proof of delivery or reading. An unknown outcome must be checked in WhatsApp
 before retrying. wasync does not add an application retry loop; whatsmeow may retry

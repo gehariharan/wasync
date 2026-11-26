@@ -22,7 +22,12 @@ func init() {
 
 // v1WriteBody reads one strict JSON object of at most 128 KiB.
 func v1WriteBody(w http.ResponseWriter, r *http.Request, id string, v any) bool {
-	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10))
+	return v1WriteBodyLimit(w, r, id, v, 128<<10)
+}
+
+// v1WriteBodyLimit decodes one strict JSON object of at most limit bytes.
+func v1WriteBodyLimit(w http.ResponseWriter, r *http.Request, id string, v any, limit int64) bool {
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, limit))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(v); err != nil {
 		v1Fail(w, id, 400, query.CodeInvalidArgument, "invalid JSON request body", "send one JSON object with the documented fields")

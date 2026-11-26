@@ -32,7 +32,7 @@ func (a *App) runSend(ctx context.Context, cfg config.Config, args []string) (re
 	fs.StringVar(&in.To, "to", "", "exact group or direct chat JID")
 	fs.StringVar(&in.Text, "text", "", "text, URL or attachment caption")
 	fs.StringVar(&in.File, "file", "", "local attachment (WhatsApp enforces supported transfer limits)")
-	fs.StringVar(&in.Type, "type", "", "image or document (default document)")
+	fs.StringVar(&in.Type, "type", "", "image, video or document (default document)")
 	if err := a.parseFlags(fs, args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return nil
@@ -40,7 +40,7 @@ func (a *App) runSend(ctx context.Context, cfg config.Config, args []string) (re
 		return err
 	}
 	if fs.NArg() != 0 {
-		return fmt.Errorf("usage: wasync send --to CHAT_ID --text TEXT [--file PATH --type image|document]")
+		return fmt.Errorf("usage: wasync send --to CHAT_ID --text TEXT [--file PATH --type image|video|document]")
 	}
 	if err := in.Validate(); err != nil {
 		return err
@@ -54,6 +54,13 @@ func (a *App) runSend(ctx context.Context, cfg config.Config, args []string) (re
 	}
 	ctx, cancel := context.WithTimeout(ctx, cfg.Timeout)
 	defer cancel()
+	if in.Type == "video" {
+		preview, err := a.videoPreview(ctx, in.File)
+		if err != nil {
+			return err
+		}
+		in.Thumbnail = preview
+	}
 	if err := localfs.EnsureDir(cfg.DataDir); err != nil {
 		return err
 	}
@@ -104,6 +111,40 @@ func (a *App) runSend(ctx context.Context, cfg config.Config, args []string) (re
 	}
 	return err
 }
+
+// videoPreview checks the video before anything connects and takes its
+// preview frame here, in the command the person ran, so the running owner
+// never starts ffmpeg. Without ffmpeg, or when it fails, it returns nothing
+// and the message gets a plain preview.
+func (a *App) videoPreview(ctx context.Context, path string) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open attachment: %w", err)
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil || !stat.Mode().IsRegular() {
+		return nil, fmt.Errorf("attachment must be a regular file")
+	}
+	info, err := whatsapp.ProbeMP4(f, stat.Size())
+	if err != nil {
+		return nil, err
+	}
+	frame, err := whatsapp.VideoFrame(ctx, path)
+	if err == nil {
+		frame, err = whatsapp.VideoThumbnail(frame, info)
+	}
+	switch {
+	case errors.Is(err, whatsapp.ErrNoFFmpeg):
+		fmt.Fprintln(a.Err, "ffmpeg is not installed, so the video gets a plain preview; install ffmpeg for a real one")
+		return nil, nil
+	case err != nil:
+		fmt.Fprintln(a.Err, "could not take a preview frame, so the video gets a plain preview:", err)
+		return nil, nil
+	}
+	return frame, nil
+}
+
 func (a *App) sendThroughOwner(ctx context.Context, cfg config.Config, in whatsapp.SendInput) error {
 	if cfg.NoAPI {
 		return fmt.Errorf("capture is running without a command channel; quit it before sending")

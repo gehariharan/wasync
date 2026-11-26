@@ -192,7 +192,11 @@ func (s *Server) call(ctx context.Context, params json.RawMessage) (any, *rpcErr
 	if !ok {
 		return nil, &rpcError{-32602, "unknown tool: " + p.Name}
 	}
-	ctx, cancel := context.WithTimeout(ctx, toolDeadline)
+	deadline := toolDeadline
+	if t.deadline != nil {
+		deadline = t.deadline(p.Arguments)
+	}
+	ctx, cancel := context.WithTimeout(ctx, deadline)
 	defer cancel()
 	args, err := t.build(p.Arguments)
 	if err != nil {

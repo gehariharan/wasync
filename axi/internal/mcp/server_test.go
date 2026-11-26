@@ -178,6 +178,8 @@ func TestToolsRunTheMatchingCommandLine(t *testing.T) {
 		{"whatsapp_changes", map[string]any{"consumer": "codex", "limit": 50}, []string{"observe", "--consumer", "codex", "--limit", "50"}},
 		{"whatsapp_send", map[string]any{"chat": "one@g.us", "text": "--chat sneaky"}, []string{"send", "--chat", "one@g.us", "--text", "--chat sneaky"}},
 		{"whatsapp_send", map[string]any{"to": "+15551230000", "text": "hi"}, []string{"send", "--to", "+15551230000", "--text", "hi"}},
+		{"whatsapp_send", map[string]any{"to": "+15551230000", "video": "/v/explainer.mp4", "text": "Watch"}, []string{"send", "--to", "+15551230000", "--video", "/v/explainer.mp4", "--text", "Watch"}},
+		{"whatsapp_send", map[string]any{"chat": "one@g.us", "video": "/v/a.mp4"}, []string{"send", "--chat", "one@g.us", "--video", "/v/a.mp4"}},
 		{"whatsapp_reply", map[string]any{"ref": "m1_x", "text": "--text sneaky"}, []string{"reply", "--text", "--text sneaky", "--", "m1_x"}},
 		{"whatsapp_react", map[string]any{"ref": "m1_x", "emoji": "👍"}, []string{"react", "--", "m1_x", "👍"}},
 		{"whatsapp_react", map[string]any{"ref": "m1_x", "remove": true}, []string{"react", "--remove", "--", "m1_x"}},
@@ -218,6 +220,9 @@ func TestBadArgumentsNeverReachACommand(t *testing.T) {
 		{"whatsapp_send", map[string]any{"text": "hi"}},
 		{"whatsapp_send", map[string]any{"text": "hi"}},
 		{"whatsapp_send", map[string]any{"chat": "a", "text": long}},
+		{"whatsapp_send", map[string]any{"chat": "a", "text": "hi", "thumbnail": "/v/a.jpg"}},
+		{"whatsapp_send", map[string]any{"chat": "a", "video": 7}},
+		{"whatsapp_send", map[string]any{"chat": "a", "file": "/etc/passwd", "text": "hi"}},
 		{"whatsapp_send", map[string]any{"chat": "a", "text": "hi", "file": "/etc/passwd"}},
 		{"whatsapp_react", map[string]any{"ref": "m"}},
 		{"whatsapp_react", map[string]any{"ref": "m", "emoji": "👍", "remove": true}},
@@ -365,5 +370,28 @@ func TestServeReturnsWhenCancelledMidCallWithAQueuedMessage(t *testing.T) {
 			t.Fatalf("run %d: Serve did not return after its context was cancelled", i)
 		}
 		pw.Close()
+	}
+}
+
+// A video send waits while wasync uploads the clip to WhatsApp, so it gets the
+// transfer's ten minutes rather than the usual 90 seconds.
+func TestVideoSendOutlastsTheUsualToolDeadline(t *testing.T) {
+	var left []time.Duration
+	s := &Server{Run: func(ctx context.Context, _ []string) (string, int) {
+		d, _ := ctx.Deadline()
+		left = append(left, time.Until(d))
+		return "ok", 0
+	}}
+	for _, args := range []map[string]any{
+		{"chat": "one@g.us", "text": "hi"},
+		{"chat": "one@g.us", "video": "/v/a.mp4"},
+	} {
+		params, _ := json.Marshal(map[string]any{"name": "whatsapp_send", "arguments": args})
+		if _, rpcErr := s.call(context.Background(), params); rpcErr != nil {
+			t.Fatal(rpcErr.Message)
+		}
+	}
+	if len(left) != 2 || left[0] > 90*time.Second || left[1] < 10*time.Minute {
+		t.Fatalf("deadlines %v", left)
 	}
 }

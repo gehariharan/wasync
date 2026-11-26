@@ -27,7 +27,7 @@ The implemented commands are:
 | `search` | Search message text, newest first, optionally with the messages around each hit |
 | `thread` | Show a message with the messages before and after it in its chat, oldest first |
 | `message` | Show one message by its ref (m1_...) |
-| `send` | Send a new message to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number on the list they approved for you or while open sending is on); sends once, never retries |
+| `send` | Send a new message or a video to a chat, or to a phone number (running wasync, scope send; a chat the person approved, or a number on the list they approved for you or while open sending is on); sends once, never retries |
 | `reply` | Quote the message REF in a reply (running wasync, scope send and an allowlisted chat); sends once, never retries |
 | `react` | React to the message REF with an emoji, or clear your reaction (running wasync, scope react and an allowlisted chat); sends once, never retries |
 | `edit` | Replace the text of one of your own recent messages REF (running wasync, scope edit.own and an allowlisted chat); wasync refuses other people's messages and edits past WhatsApp's window |

@@ -1,7 +1,13 @@
 package cli
 
 import (
+	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"image/jpeg"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -289,5 +295,142 @@ func TestSendToANumberPostsTheNumberAndNeedsTheNewFeature(t *testing.T) {
 	mustContain(t, out, "write.send.to")
 	if n, _ := posts(oldSrv); n != 0 {
 		t.Fatalf("posted to a wasync without write.send.to: %d", n)
+	}
+}
+
+func writeTemp(t *testing.T, name string, data []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+// fakeFFmpegEnv makes the test binary print its value and exit, as ffmpeg
+// writing a preview frame to stdout would.
+const fakeFFmpegEnv = "WASYNC_AXI_TEST_FAKE_FFMPEG_OUTPUT"
+
+func noFFmpeg(t *testing.T) {
+	t.Helper()
+	old := findFFmpeg
+	t.Cleanup(func() { findFFmpeg = old })
+	findFFmpeg = func() (string, error) { return "", errNoFFmpeg }
+}
+
+func TestSendVideoPostsItsBytesCaptionAndPreviewOnce(t *testing.T) {
+	fake, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(fakeFFmpegEnv, "synthetic jpeg")
+	old := findFFmpeg
+	t.Cleanup(func() { findFFmpeg = old })
+	findFFmpeg = func() (string, error) { return fake, nil }
+	h, srv := writerHarness(t)
+	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	video := writeTemp(t, "explainer.mp4", []byte("synthetic mp4 bytes"))
+	out, code := h.run(t, "send", "--to", "+15551230000", "--video", video, "--text", "A quick look")
+	if code != ExitOK {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	mustContain(t, out, "send:", "status: server_acknowledged")
+	n, body := posts(srv)
+	var sent map[string]any
+	if n != 1 || json.Unmarshal([]byte(body), &sent) != nil {
+		t.Fatalf("posts %d body %s", n, body)
+	}
+	if sent["to"] != "+15551230000" || sent["text"] != "A quick look" || sent["video"] != base64.StdEncoding.EncodeToString([]byte("synthetic mp4 bytes")) || sent["thumbnail"] != base64.StdEncoding.EncodeToString([]byte("synthetic jpeg")) || len(sent) != 4 {
+		t.Fatalf("body %s", body)
+	}
+	if strings.Contains(body, "explainer.mp4") {
+		t.Fatalf("the path reached wasync: %s", body)
+	}
+}
+
+func TestSendVideoWithoutFFmpegSendsNoPreviewAndSaysSo(t *testing.T) {
+	noFFmpeg(t)
+	h, srv := writerHarness(t)
+	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	out, code := h.run(t, "send", "--chat", "one@g.us", "--video", writeTemp(t, "v.mp4", []byte("mp4")))
+	if code != ExitOK {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	mustContain(t, out, "plain preview")
+	_, body := posts(srv)
+	var sent map[string]any
+	if json.Unmarshal([]byte(body), &sent) != nil || sent["chat"] != "one@g.us" || sent["thumbnail"] != nil || sent["text"] != nil || sent["video"] == nil {
+		t.Fatalf("body %s", body)
+	}
+}
+
+func TestSendVideoTakesAPreviewFrameWithFFmpeg(t *testing.T) {
+	ffmpeg, err := findFFmpeg()
+	if err != nil {
+		t.Skip("ffmpeg is not installed")
+	}
+	clip := filepath.Join(t.TempDir(), "clip.mp4")
+	if out, err := exec.Command(ffmpeg, "-v", "error", "-f", "lavfi", "-i", "testsrc=size=96x54:rate=5", "-t", "1", "-pix_fmt", "yuv420p", clip).CombinedOutput(); err != nil {
+		t.Skipf("ffmpeg cannot make a test clip: %v %s", err, out)
+	}
+	h, srv := writerHarness(t)
+	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	if out, code := h.run(t, "send", "--chat", "one@g.us", "--video", clip); code != ExitOK || strings.Contains(out, "plain preview") {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	_, body := posts(srv)
+	var sent struct {
+		Thumbnail []byte `json:"thumbnail"`
+	}
+	if json.Unmarshal([]byte(body), &sent) != nil {
+		t.Fatal(body)
+	}
+	if cfg, err := jpeg.DecodeConfig(bytes.NewReader(sent.Thumbnail)); err != nil || cfg.Width != 96 {
+		t.Fatalf("preview %+v %v", cfg, err)
+	}
+}
+
+func TestSendVideoUsageAndLimitsPostNothing(t *testing.T) {
+	noFFmpeg(t)
+	h, srv := writerHarness(t)
+	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	video := writeTemp(t, "v.mp4", []byte("mp4"))
+	big := filepath.Join(t.TempDir(), "big.mp4")
+	f, err := os.Create(big)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Truncate(maxVideoBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	for _, args := range [][]string{
+		{"send", "--chat", "one@g.us", "--thumbnail", video, "--text", "hi"},
+		{"send", "--chat", "one@g.us", "--video", filepath.Join(t.TempDir(), "absent.mp4")},
+		{"send", "--chat", "one@g.us", "--video", t.TempDir()},
+		{"send", "--chat", "one@g.us", "--video", big},
+		{"send", "--chat", "one@g.us", "--video", " "},
+		{"send", "--chat", "one@g.us"},
+	} {
+		if out, code := h.run(t, args...); code == ExitOK {
+			t.Fatalf("%v succeeded:\n%s", args, out)
+		}
+	}
+	if n, _ := posts(srv); n != 0 {
+		t.Fatalf("an invalid video send reached the API: %d posts", n)
+	}
+	// A wasync that cannot send video is told so before anything is posted.
+	old, oldSrv := writerHarness(t)
+	v := testutil.FakeVersion()
+	v.Features = []string{"write.send", "write.send.to"}
+	oldSrv.Version = v
+	oldSrv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	out, code := old.run(t, "send", "--to", "+15551230000", "--video", video)
+	if code == ExitOK {
+		t.Fatalf("send --video succeeded against a wasync without write.send.video:\n%s", out)
+	}
+	mustContain(t, out, "write.send.video")
+	if n, _ := posts(oldSrv); n != 0 {
+		t.Fatalf("posted to a wasync without write.send.video: %d", n)
 	}
 }

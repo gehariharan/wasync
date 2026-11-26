@@ -210,6 +210,7 @@ must be checked in WhatsApp first.
 | Agent command | API route | Needs |
 | --- | --- | --- |
 | `wasync-axi send --chat CHAT_JID --text TEXT` or `--to PHONE_NUMBER` | `POST /api/v1/messages` with `{ "chat", "text" }` or `{ "to", "text" }` | `send`, and a chat approved for sending, a number on the agent's approved list, or open sending |
+| `wasync-axi send (--chat CHAT_JID \| --to PHONE_NUMBER) --video FILE.mp4 [--text CAPTION]` | the same route with `"video"` (the MP4's bytes, base64) and, when one was taken, `"thumbnail"` (the preview frame, base64) | exactly as for text: one message under the same scope, approvals, list pacing, open-sending caps and rate limit |
 | `wasync-axi reply REF --text TEXT [--mentions JID,JID]` | `POST /api/v1/messages/{ref}/reply` with `{ "text", "mentions" }` | `send` and the chat approved |
 | `wasync-axi react REF EMOJI` / `--remove` | `PUT` / `DELETE /api/v1/messages/{ref}/reaction` | `react` and the chat approved |
 | `wasync-axi edit REF --text TEXT` | `POST /api/v1/messages/{ref}/edit` with `{ "text" }` | `edit.own` and the chat approved |
@@ -220,4 +221,12 @@ wasync records each attempt with its scope, chat and ref, never the text, in the
 `not_editable` and `edit_window_expired` for edits, and `send_failed`, whose outcome is unknown
 and must not be retried automatically. The rules each write follows (quoting, mentions, single
 emoji, WhatsApp's edit window) are the same as for the [command line](cli.md#sending-replying-reacting-and-editing).
+
+An agent sends a video as its bytes, not as a path, so wasync never opens a file on an agent's
+behalf. `wasync-axi send --video` reads the file with the agent's own permissions and takes a
+preview frame with `ffmpeg` when that is installed on the agent's side; wasync itself never runs
+`ffmpeg` on what an agent sends. It accepts the frame only as a JPEG of at most 64 KiB and 320
+pixels on each side, passed on unchanged, and a video with no frame gets a plain preview. wasync checks the video (MP4, H.264 video, AAC audio, at most 64 MiB) before the send
+counts against any pacing and refuses anything else with `invalid_argument`. A wasync that can
+take videos lists the feature `write.send.video`.
 The full agent interface is in the [interface contract](architecture/axi-contract.md).
