@@ -11,6 +11,7 @@ import (
 	"github.com/gehariharan/wasync/internal/axicred"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	linking "github.com/gehariharan/wasync/internal/setup"
+	"github.com/gehariharan/wasync/internal/update"
 )
 
 // The setup page walks a first-time person through what the terminal used to:
@@ -47,6 +48,8 @@ type setupData struct {
 	CanAddDevice bool
 	// DeviceCode is a code just made for setting up a device.
 	DeviceCode string
+	// Update is where updates stand; nil when this wasync cannot update.
+	Update *update.Status
 }
 
 func (h *handler) axiCredentialPath() (string, error) {
@@ -117,6 +120,13 @@ func (h *handler) setupView(w http.ResponseWriter, r *http.Request, sess uiSessi
 		d.Tailnet, d.TailnetHost, d.TailnetLogin = true, s.Host, s.Login
 		d.Devices = deviceRows(devices)
 		d.CanAddDevice = !d.Remote && h.human.Enabled()
+	}
+	if h.update != nil {
+		s := h.update.Status()
+		d.Update = &s
+		if updateBusy(d.Update) {
+			d.Refresh = 3
+		}
 	}
 	if tweak != nil {
 		tweak(d)
@@ -241,7 +251,7 @@ func (h *handler) setupService(w http.ResponseWriter, r *http.Request, sess uiSe
 	}
 }
 
-var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
+var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiHead + uiUpdateSection + `{{template "head" .}}
 <h1>Set up wasync</h1>
 {{template "notice" .}}
 
@@ -308,6 +318,7 @@ var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiH
 {{else}}<p class="bad">This computer cannot show a system confirmation, so devices cannot be added.</p>{{end}}
 </section>
 {{end}}
+{{template "update" .}}
 <p><a href="/ui/setup">Refresh</a></p>
 </main></body></html>
 `))

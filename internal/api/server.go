@@ -144,6 +144,8 @@ type Owner struct {
 	Unlink func(context.Context) error
 	// Stop shuts the owner down cleanly.
 	Stop func()
+	// Update checks for and installs a newer wasync; nil when this owner cannot.
+	Update Updater
 }
 
 // StartOwner starts the local API for a running owner.
@@ -165,6 +167,7 @@ func StartOwner(o Owner) (*Server, error) {
 	h.sent = sentlog.New(dir)
 	h.setup, h.service, h.serviceSpec, h.axiPath = o.Setup, o.Service, o.ServiceSpec, o.AxiPath
 	h.info, h.paired, h.unlink, h.stop = o.Info, o.Paired, o.Unlink, o.Stop
+	h.update = o.Update
 	{ // Policy configuration is available even when the media owner is offline.
 		h.sendToken, err = loadNamedToken(dir, "send.token")
 		if err != nil {
@@ -220,6 +223,7 @@ type handler struct {
 	paired           func() bool
 	unlink           func(context.Context) error
 	stop             func()
+	update           Updater
 	approveToken     string
 	syncer           whatsapp.Syncer
 	approvals        *approval.Queue

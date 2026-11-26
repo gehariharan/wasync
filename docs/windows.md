@@ -25,7 +25,8 @@ needed.
 
 If you set up your agents, run `wasync-axi setup hooks --remove` and
 `wasync-axi setup skill --remove` before uninstalling. Stop wasync (`wasync stop`) before
-upgrading or uninstalling. Uninstall removes program files and its
+upgrading by hand or uninstalling; **Update and restart…** on the Set up page does both steps
+for you (see [Updating from the web app](install.md#updating-from-the-web-app)). Uninstall removes program files and its
 PATH entry; it preserves `%APPDATA%\wasync`, including the archive and device
 session. The installer owns only the PATH entry it adds; a preexisting equivalent
 entry is preserved on uninstall. The portable ZIP uses the same data directory unless

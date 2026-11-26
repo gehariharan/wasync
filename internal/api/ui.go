@@ -253,6 +253,10 @@ var notices = map[string]struct {
 	"connected":  {"Connected. The credential was saved where wasync-axi reads it and is not shown anywhere.", true},
 	"loginon":    {"On. wasync starts at every login.", true},
 	"loginoff":   {"wasync will no longer start by itself when you log in.", true},
+	"updstart":   {"Updating. wasync downloads and checks the update, installs it and restarts.", true},
+	"updnone":    {"There is no update to install. Check for updates again.", false},
+	"updbusy":    {"An update is already under way.", false},
+	"updhere":    {"Update wasync on the computer running it.", false},
 }
 
 func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
@@ -303,6 +307,9 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 			h.passkeyRegister(w, r, sess)
 			return
 		}
+	}
+	if h.uiDispatchUpdate(w, r, sess) {
+		return
 	}
 	h.uiDispatch(w, r, sess)
 }
