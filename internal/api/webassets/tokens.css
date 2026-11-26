@@ -1,0 +1,92 @@
+/* wasync design tokens: the one place colours, type, spacing and shapes are
+   defined. components.css builds every page from these; pages carry no styles
+   of their own. Inter is bundled (latin subset, weights 400-700), see
+   inter-license.txt. */
+
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/ui/inter.woff2") format("woff2");
+}
+
+:root {
+  color-scheme: light dark;
+
+  /* type */
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --fs-xs: .75rem;
+  --fs-sm: .875rem;
+  --fs: 1rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.5rem;
+  --lh: 1.5;
+
+  /* colour: surfaces and text */
+  --bg: #f6f7f5;
+  --surface: #ffffff;
+  --surface-2: #f0f2ef;
+  --line: #dfe3de;
+  --line-2: #c6cdc5;
+  --fg: #17201b;
+  --fg-2: #3c4741;
+  --mut: #5f6a63;
+
+  /* colour: brand (logo D green) and states */
+  --brand: #128254;
+  --brand-strong: #0d6a44;
+  --brand-50: #e9f5ef;
+  --brand-100: #cde8da;
+  --on-brand: #ffffff;
+  --link: #0d6a44;
+  --danger: #b42318;
+  --danger-50: #fdeceb;
+  --warn: #9a4a06;
+  --warn-50: #fff3e3;
+
+  /* spacing */
+  --s1: .25rem;
+  --s2: .5rem;
+  --s3: .75rem;
+  --s4: 1rem;
+  --s5: 1.5rem;
+  --s6: 2rem;
+
+  /* shape and depth */
+  --r-sm: 6px;
+  --r: 10px;
+  --r-lg: 14px;
+  --r-pill: 999px;
+  --shadow: 0 1px 2px rgba(16, 24, 20, .05), 0 2px 6px rgba(16, 24, 20, .06);
+  --focus: 0 0 0 3px var(--brand-100);
+
+  /* layout */
+  --rail-w: 4.25rem;
+  --content-w: 44rem;
+  --wide-w: 76rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111513;
+    --surface: #191e1b;
+    --surface-2: #212823;
+    --line: #2b332e;
+    --line-2: #3b4540;
+    --fg: #e7ece9;
+    --fg-2: #c2cbc5;
+    --mut: #97a29b;
+    --brand: #1b7a50;
+    --brand-strong: #4cc38a;
+    --brand-50: #15271e;
+    --brand-100: #1e3b2c;
+    --link: #5fd19a;
+    --danger: #ff8a80;
+    --danger-50: #3a1d1b;
+    --warn: #f3b25a;
+    --warn-50: #33261a;
+    --shadow: none;
+  }
+}

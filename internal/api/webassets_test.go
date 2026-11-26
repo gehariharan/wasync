@@ -23,7 +23,7 @@ func TestTheWebAppOpensOnChatsAndApprovalsKeepTheirPage(t *testing.T) {
 	if code != 200 || !strings.Contains(page, "<h1>wasync approvals</h1>") {
 		t.Fatalf("approvals page: %d\n%s", code, page)
 	}
-	if !strings.Contains(page, `<a href="/ui/approvals">Approvals</a>`) {
+	if !strings.Contains(page, `<a class="rail-i" href="/ui/approvals" title="Approvals"`) {
 		t.Fatalf("nav does not reach approvals:\n%s", page)
 	}
 	// Signed out, the bare address still lands on Chats, which then signs in.

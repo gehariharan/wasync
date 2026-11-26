@@ -29,6 +29,11 @@ for name, module in sorted(modules.items()):
     for source in Path(module["Dir"]).iterdir():
         if source.is_file() and source.name.upper().startswith(("LICENSE", "LICENCE", "COPYING", "NOTICE", "COPYRIGHT")):
             shutil.copyfile(source, destination / source.name)
+# The web app embeds the Inter typeface (a latin subset of Inter 4.1), under the
+# SIL Open Font License.
+index.append("Inter 4.1 typeface (web app, latin subset) - https://github.com/rsms/inter/releases/tag/v4.1")
+(output / "Inter@4.1").mkdir()
+shutil.copyfile(root / "internal" / "api" / "webassets" / "inter-license.txt", output / "Inter@4.1" / "LICENSE.txt")
 goroot = Path(subprocess.check_output(["go", "env", "GOROOT"], text=True, encoding="utf-8").strip())
 shutil.copyfile(goroot / "LICENSE", output / "GO_LICENSE")
 (output / "DEPENDENCIES.txt").write_text("\n".join(index) + "\n", encoding="utf-8")
