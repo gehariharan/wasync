@@ -43,6 +43,9 @@ On any device signed in to your tailnet as the allowed login, open:
 https://machine.example.ts.net/ui/
 ```
 
+It opens on Chats. The app has a name and icon, so you can pin it like an app, for example with
+Safari's **File > Add to Dock** on a Mac or **Add to Home Screen** on a phone.
+
 There is no link to copy: the page signs you in because Tailscale says who you are. A session
 lasts 30 minutes after the page you last opened; after that, opening any page signs you in again.
 
