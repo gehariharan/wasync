@@ -262,6 +262,9 @@ func (h *handler) chatsView(w http.ResponseWriter, r *http.Request, sess uiSessi
 		if d.MediaMode, err = h.store.MediaPolicy(r.Context(), account.ID, cur.ID); err != nil {
 			d.MediaMode = "inherit"
 		}
+		// Messages an agent sent are marked with its name, as on the Sent page.
+		// Without the sent log they still show, as sent by you.
+		byAgent, _ := h.sent.Agents(cur.ID)
 		for i := len(page.Items) - 1; i >= 0; i-- {
 			m := page.Items[i]
 			msg := chatMsg{Me: m.FromMe, Time: shortTime(m.Timestamp), Edited: m.EditedAt != nil, Deleted: m.DeletedAt != nil, Att: attachmentFor(cur.ID, m)}
@@ -271,10 +274,14 @@ func (h *handler) chatsView(w http.ResponseWriter, r *http.Request, sess uiSessi
 			case strings.TrimSpace(m.Text) != "":
 				msg.Text = bodyText(m.Text)
 			case msg.Att != nil:
+			case m.Source == sentlog.Source:
+				msg.Text = "(sent before wasync kept sent messages in chats; text not kept)"
 			default:
 				msg.Text = "[" + humancheck.Clean(m.Type, 30) + "]"
 			}
 			switch {
+			case m.FromMe && byAgent[m.MessageID] != "":
+				msg.Who = "🤖 " + humancheck.Clean(byAgent[m.MessageID], 40)
 			case m.FromMe:
 				msg.Who = "You"
 			case storage.ChatKind(cur.ID) == "direct":

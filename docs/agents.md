@@ -177,7 +177,8 @@ even if you approve it later. Only replies that arrive after wasync's first list
 number count, so older chat with that person never removes it. That counts any reply with the word "stop",
 "unsubscribe", "opt out", "remove me" or "take me off", in any case and with any punctuation
 ("Stop.", "STOP!", "please stop", "stop messaging me"), and a reply that is only "cancel",
-"end", "quit" or "revoke". A word that merely contains "stop", such as "nonstop", does not count. wasync archives those chats from then on so it
+"end", "quit" or "revoke". A word that merely contains "stop", such as "nonstop", does not count. wasync archives a listed
+number's chat from its first list message on, so that message shows in the chat on the Chats page and wasync
 can see the replies, including a listed contact's replies that WhatsApp delivers in a separate
 hidden-ID chat, unless you already turned archiving of that hidden-ID chat on or off yourself.
 **Pause** stops a list's sends and keeps everything else; **Resume…** asks you to confirm.
@@ -200,6 +201,14 @@ Every send, by you or by an agent, is noted in `sent-log.jsonl` in the data fold
 chat, when, the WhatsApp message ID and the outcome, never the text) and listed on the web app's
 **Sent** page, which reads the text back from your archive. "Sent" means WhatsApp accepted the
 message, not that it was delivered or read.
+
+Whatever wasync sends is also kept in its chat as your outgoing message, so the chat moves to the
+top of **Chats**; a message an agent sent is marked there with the agent's name, as on the Sent
+page. Sending to a chat you never chose to sync turns syncing on for it; a chat you turned off
+stays off and keeps nothing. Releases before this kept a message only when its chat was already
+syncing, so the first start of this one adds those earlier messages to chats that sync now,
+once, from the sent log: they show at the time they were sent, without their text, which was
+never stored.
 
 ## What agents can do
 

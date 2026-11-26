@@ -223,11 +223,26 @@ func (h *handler) listSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 	return true
 }
 
-// listSent notes that the number was messaged, picks when the next first
-// message may go, and makes sure its chat is
-// archived from now on so a reply, or a STOP, can be seen. Both are best
-// effort: the message is already on its way.
-func (h *handler) listSent(ctx context.Context, agentID, chat string) {
+// captureListed makes sure a listed number's chat is archived before the
+// message goes, so the message itself is kept in that chat and a reply, or a
+// STOP, can be seen. It is best effort, and it holds even for a chat the owner
+// turned off: an approved list needs its replies seen.
+func (h *handler) captureListed(ctx context.Context, chat string) {
+	account, err := h.store.Account(ctx)
+	if err != nil || account == nil {
+		return
+	}
+	if on, err := h.store.IsEnabled(ctx, account.ID, chat); err != nil || on {
+		return
+	}
+	if h.store.SaveDiscoveredChat(ctx, account.ID, storage.Group{ID: chat, Name: chat}) == nil {
+		_ = h.store.EnableCapture(ctx, account.ID, chat, false)
+	}
+}
+
+// listSent notes that the number was messaged and picks when the next first
+// message may go. It is best effort: the message is already on its way.
+func (h *handler) listSent(agentID, chat string) {
 	now := time.Now().UTC()
 	_ = sendlist.Update(h.dataDir, agentID, now, func(l *sendlist.List) error {
 		if n := l.Find(chat); n != nil {
@@ -240,14 +255,4 @@ func (h *handler) listSent(ctx context.Context, agentID, chat string) {
 		}
 		return nil
 	})
-	account, err := h.store.Account(ctx)
-	if err != nil || account == nil {
-		return
-	}
-	if on, err := h.store.IsEnabled(ctx, account.ID, chat); err != nil || on {
-		return
-	}
-	if h.store.SaveDiscoveredChat(ctx, account.ID, storage.Group{ID: chat, Name: chat}) == nil {
-		_ = h.store.EnableCapture(ctx, account.ID, chat, false)
-	}
 }
