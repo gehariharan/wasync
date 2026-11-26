@@ -63,8 +63,6 @@ func TestTheManifestAndIconsNeedNoSession(t *testing.T) {
 		"/ui/icon-512.png":         "image/png",
 		"/ui/apple-touch-icon.png": "image/png",
 		"/ui/favicon.ico":          "image/x-icon",
-		"/favicon.ico":             "image/x-icon",
-		"/apple-touch-icon.png":    "image/png",
 	} {
 		code, body, hd := c.get(path)
 		if code != 200 || hd.Get("Content-Type") != kind || len(body) == 0 || hd.Get("Set-Cookie") != "" {
@@ -104,18 +102,18 @@ func TestTheTailnetNameServesTheIconsButNotTheAPI(t *testing.T) {
 	f := setupAccess(t)
 	allowTailnet(t, f)
 	c := newTailnetClient(t, f, tailnetLogin)
-	for _, path := range []string{"/ui/manifest.webmanifest", "/ui/icon-512.png", "/favicon.ico", "/apple-touch-icon.png"} {
+	for _, path := range []string{"/ui/manifest.webmanifest", "/ui/icon-512.png", "/ui/favicon.ico", "/ui/apple-touch-icon.png"} {
 		if code, _, _ := c.get(path); code != 200 {
 			t.Fatalf("%s through the tailnet: %d", path, code)
 		}
 	}
-	for _, path := range []string{"/api/status", "/api/v1/health", "/icon.svg", "/"} {
+	for _, path := range []string{"/api/status", "/api/v1/health", "/icon.svg", "/favicon.ico", "/apple-touch-icon.png", "/"} {
 		if code, body, _ := c.get(path); code != 403 || !strings.Contains(body, "only the web app") {
 			t.Fatalf("%s through the tailnet: %d %s", path, code, body)
 		}
 	}
 	// Another login gets nothing, icons included.
-	if code, _, _ := newTailnetClient(t, f, "someone@example.com").get("/favicon.ico"); code != 403 {
+	if code, _, _ := newTailnetClient(t, f, "someone@example.com").get("/ui/favicon.ico"); code != 403 {
 		t.Fatalf("unknown login: %d", code)
 	}
 }

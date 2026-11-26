@@ -299,7 +299,7 @@ func (h *handler) routes() http.Handler {
 				deny(w, 403, "invalid host")
 			case login == "":
 				fail(w, 403, "tailscale login not allowed")
-			case !isUI(r.URL.Path) && !isWebAsset(r.URL.Path):
+			case !isUI(r.URL.Path):
 				fail(w, 403, "only the web app is served on this address")
 			case !sameHTTPSOrigin(r):
 				fail(w, 403, "foreign origin")

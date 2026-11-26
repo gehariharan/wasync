@@ -14,9 +14,7 @@ import (
 //go:embed webassets
 var webAssetFiles embed.FS
 
-// webAssets maps each served path to its file and type. Browsers also ask for
-// /favicon.ico and /apple-touch-icon.png at the root without being told, so
-// those two are served there too.
+// webAssets maps each served path to its file and type.
 var webAssets = map[string]struct{ file, kind string }{
 	"/ui/manifest.webmanifest": {"manifest.webmanifest", "application/manifest+json"},
 	"/ui/icon.svg":             {"icon.svg", "image/svg+xml"},
@@ -24,8 +22,6 @@ var webAssets = map[string]struct{ file, kind string }{
 	"/ui/icon-512.png":         {"icon-512.png", "image/png"},
 	"/ui/apple-touch-icon.png": {"apple-touch-icon.png", "image/png"},
 	"/ui/favicon.ico":          {"favicon.ico", "image/x-icon"},
-	"/favicon.ico":             {"favicon.ico", "image/x-icon"},
-	"/apple-touch-icon.png":    {"apple-touch-icon.png", "image/png"},
 }
 
 func isWebAsset(p string) bool { _, ok := webAssets[p]; return ok }
