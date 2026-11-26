@@ -316,6 +316,9 @@ func TestCodexWriteAfterTablesAreAddedBelowTheReplacedEntry(t *testing.T) {
 				added = "\n" + added
 			}
 			write(t, path, before+added)
+			if again, err := e.PlanConnect(agent(Codex), testEntry); err != nil || again.Digest != p.Digest {
+				t.Fatalf("a table added after the entry changed the preview's fingerprint (err %v)", err)
+			}
 			written, _, err := e.Write(p)
 			if err != nil {
 				t.Fatalf("a table added after the entry blocked the write: %v", err)
@@ -340,6 +343,37 @@ func TestCodexWriteAfterTablesAreAddedBelowTheReplacedEntry(t *testing.T) {
 			}
 			if got["mcp_servers"].(map[string]any)[ServerName].(map[string]any)["command"] != "old" || got["marketplaces"] == nil {
 				t.Fatalf("file after disconnect:\n%s", read(t, path))
+			}
+		})
+	}
+}
+
+func TestDisconnectRemovesAnEntryThatWasAlreadyThere(t *testing.T) {
+	for _, kind := range []Kind{Codex, ClaudeCode, ClaudeDesktop} {
+		t.Run(string(kind), func(t *testing.T) {
+			e := testEnv(t)
+			first, _ := e.PlanConnect(agent(kind), testEntry)
+			if _, _, err := e.Write(first); err != nil {
+				t.Fatal(err)
+			}
+			p, err := e.PlanConnect(agent(kind), testEntry)
+			if err != nil {
+				t.Fatal(err)
+			}
+			written, _, err := e.Write(p)
+			if err != nil {
+				t.Fatal(err)
+			}
+			c := Connection{Agent: kind, ConfigPath: p.Path, Entry: testEntry, Previous: written.Previous()}
+			d, _, err := e.PlanDisconnect(c)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := e.Write(d); err != nil {
+				t.Fatal(err)
+			}
+			if Wrote(c) {
+				t.Fatalf("wasync's entry is still in the file after Disconnect:\n%s", read(t, p.Path))
 			}
 		})
 	}

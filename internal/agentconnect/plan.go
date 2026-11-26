@@ -102,8 +102,13 @@ type Plan struct {
 func (p Plan) Changes() bool { return string(p.after) != string(p.file.Data) }
 
 func (p Plan) digest() string {
+	removed := p.Removed
+	if v, err := p.removedEntry(); err == nil {
+		b, _ := json.Marshal(v)
+		removed = string(b)
+	}
 	h := sha256.New()
-	for _, s := range []string{p.file.Target, fmt.Sprint(p.Exists), p.Removed, p.Added} {
+	for _, s := range []string{p.file.Target, fmt.Sprint(p.Exists), removed, p.Added} {
 		h.Write([]byte(s))
 		h.Write([]byte{0})
 	}
@@ -123,7 +128,7 @@ func (p Plan) sameChange(q Plan) bool {
 
 // removedEntry decodes the entry the plan takes out (nil when none).
 func (p Plan) removedEntry() (any, error) {
-	prev := p.Previous()
+	prev := p.removedText()
 	if prev == "" {
 		return nil, nil
 	}
@@ -205,8 +210,18 @@ func (e Env) PlanConnect(a Agent, entry Entry) (Plan, error) {
 }
 
 // Previous is the entry text a connect plan replaces, in the form a later
-// disconnect puts back: the TOML table, or the raw JSON value.
+// disconnect puts back: the TOML table, or the raw JSON value. It is empty
+// when the entry replaced is the one being written, so disconnect takes it out.
 func (p Plan) Previous() string {
+	if p.set != nil {
+		if v, err := p.removedEntry(); err == nil && p.set.matches(v) {
+			return ""
+		}
+	}
+	return p.removedText()
+}
+
+func (p Plan) removedText() string {
 	if p.Removed == "" || p.Agent.Kind == Codex {
 		return p.Removed
 	}
