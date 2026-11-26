@@ -307,6 +307,10 @@ func writeTemp(t *testing.T, name string, data []byte) string {
 	return path
 }
 
+// fakeFFmpegEnv makes the test binary print its value and exit, as ffmpeg
+// writing a preview frame to stdout would.
+const fakeFFmpegEnv = "WASYNC_AXI_TEST_FAKE_FFMPEG_OUTPUT"
+
 func noFFmpeg(t *testing.T) {
 	t.Helper()
 	old := findFFmpeg
@@ -315,10 +319,11 @@ func noFFmpeg(t *testing.T) {
 }
 
 func TestSendVideoPostsItsBytesCaptionAndPreviewOnce(t *testing.T) {
-	fake := writeTemp(t, "ffmpeg", []byte("#!/bin/sh\nprintf 'synthetic jpeg'\n"))
-	if err := os.Chmod(fake, 0o700); err != nil {
+	fake, err := os.Executable()
+	if err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv(fakeFFmpegEnv, "synthetic jpeg")
 	old := findFFmpeg
 	t.Cleanup(func() { findFFmpeg = old })
 	findFFmpeg = func() (string, error) { return fake, nil }

@@ -24,6 +24,11 @@ import (
 
 func TestMain(m *testing.M) {
 	testutil.MaybeRunFakeWasync()
+	// The test binary stands in for ffmpeg, so the fake runs on every OS.
+	if os.Getenv(fakeFFmpegEnv) != "" {
+		os.Stdout.WriteString(os.Getenv(fakeFFmpegEnv))
+		os.Exit(0)
+	}
 	os.Exit(m.Run())
 }
 
