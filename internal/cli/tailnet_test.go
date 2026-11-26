@@ -72,16 +72,11 @@ func TestTailnetAllowIsAHumanChoice(t *testing.T) {
 		t.Fatalf("allow output: %s", out.String())
 	}
 	app, out = build("", false)
-	if err := run(app, "status"); err != nil || !strings.Contains(out.String(), "on") || !strings.Contains(out.String(), "machine.example.ts.net") || !strings.Contains(out.String(), "devices that approve with a passkey: 0") {
+	if err := run(app, "status"); err != nil || !strings.Contains(out.String(), "on") || !strings.Contains(out.String(), "machine.example.ts.net") {
 		t.Fatalf("status: %v %s", err, out.String())
 	}
-	// A device set up in the web app shows in status.
 	s, _, _ := tailnet.Load(dir)
 	addDevice(t, dir, s, "Laptop")
-	app, out = build("", false)
-	if err := run(app, "status"); err != nil || !strings.Contains(out.String(), "devices that approve with a passkey: 1") || !strings.Contains(out.String(), "Laptop (added ") {
-		t.Fatalf("status with a device: %v %s", err, out.String())
-	}
 	// Turning it off is always allowed, needs no confirmation and forgets the devices.
 	app, out = build("", false)
 	if err := run(app, "off"); err != nil || on() || !strings.Contains(out.String(), "forgotten") {

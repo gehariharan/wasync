@@ -24,7 +24,7 @@ Open the web app from your other computers on your Tailscale network, through
           available, the system prompt; there is no --yes.
   off     Stop answering on the tailnet name at once, and forget every
           device set up to approve from there.
-  status  Show the setting and the devices set up to approve.
+  status  Show the setting.
 
 Then share the loopback address with your tailnet over HTTPS (never use
 tailscale funnel, which would make it public):
@@ -60,24 +60,8 @@ func (a *App) runTailnet(ctx context.Context, cfg config.Config, args []string) 
 			_, err = fmt.Fprintln(a.Out, "tailnet access: off")
 			return err
 		}
-		all, err := tailnet.LoadDevices(cfg.DataDir)
-		if err != nil {
-			return err
-		}
-		devices := s.For(all)
-		if _, err = fmt.Fprintf(a.Out, "tailnet access: on\nhost: %s\nlogin: %s\ndevices that approve with a passkey: %d\n", s.Host, s.Login, len(devices)); err != nil {
-			return err
-		}
-		for _, d := range devices {
-			used := "never used"
-			if d.UsedAt != nil {
-				used = "last used " + d.UsedAt.Local().Format("2 Jan 2006 15:04")
-			}
-			if _, err = fmt.Fprintf(a.Out, "  %s (added %s, %s)\n", d.Name, d.AddedAt.Local().Format("2 Jan 2006"), used); err != nil {
-				return err
-			}
-		}
-		return nil
+		_, err = fmt.Fprintf(a.Out, "tailnet access: on\nhost: %s\nlogin: %s\n", s.Host, s.Login)
+		return err
 	case "off":
 		if len(args) != 1 {
 			break

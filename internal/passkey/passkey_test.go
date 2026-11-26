@@ -179,7 +179,7 @@ func TestTheCounterMustMoveForwardWhenTheAuthenticatorKeepsOne(t *testing.T) {
 	}
 }
 
-func TestCBORRefusesWhatAuthenticatorsNeverSend(t *testing.T) {
+func TestMalformedAttestationObjectsAreRefused(t *testing.T) {
 	for name, b := range map[string][]byte{
 		"empty":               {},
 		"indefinite map":      {0xbf, 0xff},

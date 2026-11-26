@@ -42,7 +42,7 @@ var ErrTooManyDevices = fmt.Errorf("at most %d devices can be set up; remove one
 type Device struct {
 	// ID is the passkey's credential ID, base64url without padding.
 	ID        string     `json:"id"`
-	PublicKey []byte     `json:"public_key"` // SubjectPublicKeyInfo, DER
+	PublicKey []byte     `json:"public_key"` // COSE_Key
 	Alg       int        `json:"alg"`
 	SignCount uint32     `json:"sign_count"`
 	Host      string     `json:"host"`

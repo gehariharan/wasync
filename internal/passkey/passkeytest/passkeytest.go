@@ -16,7 +16,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"math/big"
-	"sort"
+
+	"github.com/go-webauthn/webauthn/protocol/webauthncbor"
 
 	"github.com/gehariharan/wasync/internal/passkey"
 )
@@ -96,7 +97,7 @@ func (a *Authenticator) Register(host string, challenge []byte) passkey.Registra
 	cred = binary.BigEndian.AppendUint16(cred, uint16(len(a.ID)))
 	cred = append(cred, a.ID...)
 	cred = append(cred, a.COSEKey()...)
-	obj := encode(map[any]any{"fmt": "none", "attStmt": map[any]any{}, "authData": a.authData(host, cred)})
+	obj := encode(map[string]any{"fmt": "none", "attStmt": map[string]any{}, "authData": a.authData(host, cred)})
 	return passkey.Registration{ID: append([]byte(nil), a.ID...), ClientDataJSON: a.clientData("webauthn.create", host, challenge), AttestationObject: obj}
 }
 
@@ -128,54 +129,21 @@ func (a *Authenticator) Assert(host string, challenge []byte) passkey.Assertion 
 func (a *Authenticator) COSEKey() []byte {
 	switch pub := a.key.Public().(type) {
 	case ed25519.PublicKey:
-		return encode(map[any]any{int64(1): int64(1), int64(3): int64(passkey.AlgEdDSA), int64(-1): int64(6), int64(-2): []byte(pub)})
+		return encode(map[int]any{1: 1, 3: passkey.AlgEdDSA, -1: 6, -2: []byte(pub)})
 	case *rsa.PublicKey:
-		return encode(map[any]any{int64(1): int64(3), int64(3): int64(passkey.AlgRS256), int64(-1): pub.N.Bytes(), int64(-2): big.NewInt(int64(pub.E)).Bytes()})
+		return encode(map[int]any{1: 3, 3: passkey.AlgRS256, -1: pub.N.Bytes(), -2: big.NewInt(int64(pub.E)).Bytes()})
 	case *ecdsa.PublicKey:
 		raw, _ := pub.Bytes()
-		return encode(map[any]any{int64(1): int64(2), int64(3): int64(passkey.AlgES256), int64(-1): int64(1), int64(-2): raw[1:33], int64(-3): raw[33:]})
+		return encode(map[int]any{1: 2, 3: passkey.AlgES256, -1: 1, -2: raw[1:33], -3: raw[33:]})
 	}
 	panic("unknown key")
 }
 
-// encode writes the few CBOR types WebAuthn uses, with map keys in a fixed order.
+// encode writes CBOR the way authenticators do (CTAP2 canonical form).
 func encode(v any) []byte {
-	head := func(major byte, n uint64) []byte {
-		switch {
-		case n < 24:
-			return []byte{major<<5 | byte(n)}
-		case n < 1<<8:
-			return []byte{major<<5 | 24, byte(n)}
-		case n < 1<<16:
-			return binary.BigEndian.AppendUint16([]byte{major<<5 | 25}, uint16(n))
-		default:
-			return binary.BigEndian.AppendUint32([]byte{major<<5 | 26}, uint32(n))
-		}
+	b, err := webauthncbor.Marshal(v)
+	if err != nil {
+		panic(err)
 	}
-	switch x := v.(type) {
-	case int64:
-		if x >= 0 {
-			return head(0, uint64(x))
-		}
-		return head(1, uint64(-1-x))
-	case []byte:
-		return append(head(2, uint64(len(x))), x...)
-	case string:
-		return append(head(3, uint64(len(x))), x...)
-	case map[any]any:
-		keys := make([][]byte, 0, len(x))
-		values := map[string][]byte{}
-		for k, val := range x {
-			ek := encode(k)
-			keys = append(keys, ek)
-			values[string(ek)] = encode(val)
-		}
-		sort.Slice(keys, func(i, j int) bool { return string(keys[i]) < string(keys[j]) })
-		out := head(5, uint64(len(x)))
-		for _, k := range keys {
-			out = append(append(out, k...), values[string(k)]...)
-		}
-		return out
-	}
-	panic("cannot encode")
+	return b
 }

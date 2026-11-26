@@ -86,8 +86,7 @@ those devices too, since each of them still asks for your face, fingerprint or P
 nearby can also answer for a computer through the browser's "use a phone" option.
 
 The Set up page on either computer lists the devices, when each was added and last used, with a
-**Remove** button that takes effect at once and needs no confirmation. `wasync tailnet status`
-lists them too. Allowing another tailnet name or login forgets the devices set up for the old
+**Remove** button that takes effect at once and needs no confirmation. Allowing another tailnet name or login forgets the devices set up for the old
 one, and `wasync tailnet off` forgets them all.
 
 Adding a device needs the system prompt, so on a computer that cannot show one (Linux, or a
