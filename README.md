@@ -110,19 +110,20 @@ wasync web
 
 With wasync running, `wasync web` opens the web app in your browser through a one-time link
 that works for two minutes and is never printed. It stays signed in while you use it; if a page
-signs you out, press **Sign in** and confirm. It has five pages:
+signs you out, press **Sign in** and confirm. Its five pages are icons on the rail down the left
+side:
 
 - **Chats**: your synced chats and their messages, side by side. A small robot marks chats an
   agent can read. Write to an open chat from the box under its messages, or start a message to
-  a new number with the pencil icon; messages you send go out once, as you. Use the ☑ icon to
-  choose which chats sync, and the chat header's **Downloads** setting to choose how
+  a new number with the pencil icon; messages you send go out once, as you. Use the tick-box icon
+  to choose which chats sync, and the chat header's **Downloads** setting to choose how
   attachments download ([Media](docs/media.md)).
 - **Sent**: what was sent from this computer, by you or by an agent.
 - **Agents**: each agent's access; allow or stop sending, approve a paced list of phone numbers
   for one agent, or switch on open sending for an hour.
 - **Approvals**: requests agents are waiting on (also `wasync approvals`), and the choice
   between asking you each time and syncing all chats.
-- **Set up**: the setup page above.
+- **Set up and settings** (the gear at the foot of the rail): the setup page above.
 
 Anything that gives an agent more power asks your computer to confirm, and the operating-system
 prompt names exactly what you are approving. Stopping things never needs confirmation. The page
