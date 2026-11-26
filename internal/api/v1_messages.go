@@ -18,12 +18,12 @@ import (
 // W-03b/W-03c: chats, messages, search with context, message refs and threads.
 func init() {
 	for _, route := range []v1Route{
-		{Pattern: "/api/v1/chats", Scope: agentauth.ScopeReadChats, Chat: nil, Handle: (*handler).v1Chats},
-		{Pattern: "/api/v1/chats/{chat}", Scope: agentauth.ScopeReadChats, Chat: pathChat("chat"), Handle: (*handler).v1Chat},
-		{Pattern: "/api/v1/chats/{chat}/messages", Scope: agentauth.ScopeReadMessages, Chat: pathChat("chat"), Handle: (*handler).v1ChatMessages},
-		{Pattern: "/api/v1/messages/search", Scope: agentauth.ScopeReadMessages, Chat: queryChat("chat"), Handle: (*handler).v1Search},
-		{Pattern: "/api/v1/messages/{ref}", Scope: agentauth.ScopeReadMessages, Chat: refChat("ref"), Handle: (*handler).v1Message},
-		{Pattern: "/api/v1/messages/{ref}/thread", Scope: agentauth.ScopeReadMessages, Chat: refChat("ref"), Handle: (*handler).v1Thread},
+		{Pattern: "/api/v1/chats", Scope: agentauth.ScopeReadChats, Chat: nil, ListRead: true, Handle: (*handler).v1Chats},
+		{Pattern: "/api/v1/chats/{chat}", Scope: agentauth.ScopeReadChats, Chat: pathChat("chat"), ListRead: true, Handle: (*handler).v1Chat},
+		{Pattern: "/api/v1/chats/{chat}/messages", Scope: agentauth.ScopeReadMessages, Chat: pathChat("chat"), ListRead: true, Handle: (*handler).v1ChatMessages},
+		{Pattern: "/api/v1/messages/search", Scope: agentauth.ScopeReadMessages, Chat: queryChat("chat"), ListRead: true, Handle: (*handler).v1Search},
+		{Pattern: "/api/v1/messages/{ref}", Scope: agentauth.ScopeReadMessages, Chat: refChat("ref"), ListRead: true, Handle: (*handler).v1Message},
+		{Pattern: "/api/v1/messages/{ref}/thread", Scope: agentauth.ScopeReadMessages, Chat: refChat("ref"), ListRead: true, Handle: (*handler).v1Thread},
 	} {
 		handle := route.Handle
 		route.Handle = func(h *handler, w http.ResponseWriter, r *http.Request, id string) {
@@ -95,6 +95,18 @@ func (h *handler) v1Chats(w http.ResponseWriter, r *http.Request, id string) {
 		return
 	}
 	list, ambiguous := query.V1Chats(a.ID, groups, enabled, match, v1Client(r).AllowsChat)
+	var chats []string
+	for _, g := range list.Items {
+		chats = append(chats, g.ID)
+	}
+	if ambiguous != nil {
+		for _, c := range ambiguous.Candidates {
+			chats = append(chats, c.ID)
+		}
+	}
+	if !h.auditListReads(w, r, id, agentauth.ScopeReadChats, chats) {
+		return
+	}
 	if ambiguous != nil {
 		writeJSON(w, 409, query.V1Error{RequestID: id, ErrorCode: query.CodeChatAmbiguous, Error: ambiguous.Error(), Help: query.ChatAmbiguousHelp, Details: ambiguous})
 		return
@@ -203,6 +215,17 @@ func (h *handler) v1List(w http.ResponseWriter, r *http.Request, id string, a *s
 	if err != nil {
 		v1Fail(w, id, 503, query.CodeArchiveUnavailable, "archive query failed", "check wasync status")
 		return
+	}
+	if chat == "" {
+		chats := make([]string, 0, len(page.Items))
+		for _, m := range page.Items {
+			if v1Client(r).AllowsChat(m.GroupID) {
+				chats = append(chats, m.GroupID)
+			}
+		}
+		if !h.auditListReads(w, r, id, agentauth.ScopeReadMessages, chats) {
+			return
+		}
 	}
 	var total int64
 	if client := v1Client(r); !client.Restricted() {

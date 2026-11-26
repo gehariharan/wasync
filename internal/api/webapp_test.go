@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/sendlist"
 	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/storage"
 )
@@ -107,6 +108,39 @@ func TestChatsPageMarksChatsAnAgentCanRead(t *testing.T) {
 	}
 	if _, page, _ := c.get("/ui/chats"); strings.Contains(page, `class="bot"`) {
 		t.Fatalf("a revoked agent still showed on a chat:\n%s", page)
+	}
+}
+
+// A chat an agent reads because its approved list messaged the number is
+// marked too, from the first message on.
+func TestChatsPageMarksTheChatsAnApprovedListLetsItsAgentRead(t *testing.T) {
+	f, c, _ := chatsFixture(t)
+	ctx := context.Background()
+	if err := f.store.SetEnabled(ctx, f.account, []string{phoneChat}, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.store.Apply(ctx, f.account, []storage.Message{{GroupID: phoneChat, MessageID: "p1", SenderID: phoneChat, Timestamp: time.Now(), Type: "text", Text: "a reply", Source: "live"}}); err != nil {
+		t.Fatal(err)
+	}
+	agent, err := agentauth.ActiveByName(f.dir, "jit")
+	if err != nil || agent == nil {
+		t.Fatal(err)
+	}
+	if err = sendlist.Put(f.dir, sendlist.List{AgentID: agent.ID, Agent: agent.Name, GrantedAt: time.Now(), Numbers: []sendlist.Number{{Chat: phoneChat}}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, page, _ := c.get("/ui/chats?c=" + url.QueryEscape(phoneChat)); strings.Contains(page, `class="bot"`) {
+		t.Fatalf("a listed number no list messaged yet was shown as read:\n%s", page)
+	}
+	now := time.Now()
+	if err = sendlist.Update(f.dir, agent.ID, now, func(l *sendlist.List) error {
+		l.Numbers[0].FirstSentAt, l.Numbers[0].LastSentAt = &now, &now
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, page, _ := c.get("/ui/chats?c=" + url.QueryEscape(phoneChat)); !strings.Contains(page, "agents can read this chat") {
+		t.Fatalf("a messaged list number's chat had no icon:\n%s", page)
 	}
 }
 

@@ -22,6 +22,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -80,6 +81,11 @@ type List struct {
 	Numbers   []Number   `json:"numbers"`
 	Stopped   int        `json:"stopped,omitempty"`   // numbers dropped after they replied STOP
 	PausedAt  *time.Time `json:"paused_at,omitempty"` // no sends while set
+	// StoppedChats are the numbers Stopped counts, kept so the agent's list
+	// status can name the numbers that replied STOP. They never let the
+	// agent read those chats. Lists saved before it was kept count numbers
+	// here without naming them.
+	StoppedChats []string `json:"stopped_chats,omitempty"`
 }
 
 // Active reports whether the list is in force at now. A paused list is in
@@ -140,6 +146,20 @@ func (l List) NotMessaged() int {
 	return n
 }
 
+// Messaged lists the numbers on the list that a list has messaged: the chats
+// the agent may read to see replies. A number counts as messaged once any
+// agent's list messaged it, as for sending. A number dropped after it replied
+// STOP is no longer on the list, so it is not among them.
+func (l List) Messaged() []string {
+	var out []string
+	for _, x := range l.Numbers {
+		if x.FirstSentAt != nil || x.LastSentAt != nil {
+			out = append(out, x.Chat)
+		}
+	}
+	return out
+}
+
 // Drop removes the numbers in stop from the list, counting them as stopped,
 // and reports how many went.
 func (l *List) Drop(stop map[string]bool) int {
@@ -147,6 +167,8 @@ func (l *List) Drop(stop map[string]bool) int {
 	for _, x := range l.Numbers {
 		if !stop[x.Chat] {
 			kept = append(kept, x)
+		} else if !slices.Contains(l.StoppedChats, x.Chat) {
+			l.StoppedChats = append(l.StoppedChats, x.Chat)
 		}
 	}
 	gone := len(l.Numbers) - len(kept)
@@ -225,9 +247,17 @@ func load(dir string) (file, error) {
 		if l.AgentID == "" || len(l.Numbers) > MaxNumbers || l.PerHour != 0 && !ValidPerHour(l.PerHour) {
 			return file{}, fmt.Errorf("invalid %s: a list has no agent, too many numbers or an invalid pace", FileName)
 		}
+		if len(l.StoppedChats) > MaxNumbers {
+			return file{}, fmt.Errorf("invalid %s: a list has too many stopped numbers", FileName)
+		}
 		for _, x := range l.Numbers {
 			if !numberAddress(x.Chat) {
 				return file{}, fmt.Errorf("invalid %s: %q is not a phone number address", FileName, x.Chat)
+			}
+		}
+		for _, chat := range l.StoppedChats {
+			if !numberAddress(chat) {
+				return file{}, fmt.Errorf("invalid %s: %q is not a phone number address", FileName, chat)
 			}
 		}
 	}
@@ -398,7 +428,7 @@ func Put(dir string, l List) error {
 	if err != nil {
 		return err
 	}
-	l.Stopped = 0
+	l.Stopped, l.StoppedChats = 0, nil
 	l.Drop(chatSet(r.OptedOut))
 	v.Lists, v.Sent = append(out, l), kept
 	return save(dir, v)

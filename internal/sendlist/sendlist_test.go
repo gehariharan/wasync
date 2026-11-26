@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -101,6 +102,58 @@ func TestDropCountsStoppedNumbers(t *testing.T) {
 	l := List{Numbers: []Number{{Chat: "1@s.whatsapp.net"}, {Chat: "2@s.whatsapp.net"}, {Chat: "3@s.whatsapp.net"}}}
 	if n := l.Drop(map[string]bool{"2@s.whatsapp.net": true, "9@s.whatsapp.net": true}); n != 1 || l.Stopped != 1 || len(l.Numbers) != 2 || l.Find("2@s.whatsapp.net") != nil {
 		t.Fatalf("drop: %d %+v", n, l)
+	}
+	if strings.Join(l.StoppedChats, ",") != "2@s.whatsapp.net" {
+		t.Fatalf("the stopped number is not remembered: %+v", l)
+	}
+}
+
+// The chats a list may read are the numbers on it a list messaged; a number
+// that replied STOP is only named among the stopped numbers, also when the
+// same numbers are approved again.
+func TestMessagedListsOnlyTheMessagedNumbersStillOnTheList(t *testing.T) {
+	dir := privateDir(t)
+	x, y, z := "15551230000@s.whatsapp.net", "15551230001@s.whatsapp.net", "15551230002@s.whatsapp.net"
+	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: x}, {Chat: y}, {Chat: z}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := For(dir, "a1", time.Now()); len(got.Messaged()) != 0 {
+		t.Fatalf("nothing was messaged yet: %v", got.Messaged())
+	}
+	now := time.Now()
+	if err := Update(dir, "a1", now, func(l *List) error {
+		for _, c := range []string{x, y} {
+			l.Find(c).FirstSentAt, l.Find(c).LastSentAt = &now, &now
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := OptOut(dir, map[string]bool{x: true}); err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		got, _ := For(dir, "a1", time.Now())
+		if m := got.Messaged(); !slices.Equal(m, []string{y}) || got.Find(x) != nil || !slices.Equal(got.StoppedChats, []string{x}) {
+			t.Fatalf("messaged: %v from %+v", m, got)
+		}
+		if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: x}, {Chat: y}, {Chat: z}}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Leaving the number out of the list ends it.
+	if err := Put(dir, List{AgentID: "a1", Agent: "helper", Numbers: []Number{{Chat: y}}}); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := For(dir, "a1", time.Now()); strings.Join(got.Messaged(), ",") != y {
+		t.Fatalf("messaged after x left the list: %v", got.Messaged())
+	}
+	bad := `{"lists":[{"agent_id":"a1","numbers":[{"chat":"` + y + `"}],"stopped_chats":["one@g.us"]}]}`
+	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(bad), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(dir); err == nil {
+		t.Fatal("a list naming a group among its stopped numbers loaded")
 	}
 }
 

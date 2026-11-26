@@ -20,7 +20,8 @@ Scopes are `read.chats`, `read.messages`, `read.media`, `observe`, `send`, `reac
 `read.chats,read.messages`. Which chats an agent sees depends on how you create it: with
 `--on-demand` it starts with none and asks for each one; with `--chat` it gets the chats you
 list; with neither, a read-only agent can read every archived chat (the Agents page marks it
-"reads every chat"). The write scopes `send`, `react`, `edit.own`, `chat.state`, `group.admin`
+"reads every chat"). An agent with [approved numbers](#approved-numbers) can also read the
+chats of the numbers its list has messaged. The write scopes `send`, `react`, `edit.own`, `chat.state`, `group.admin`
 and `capture.manage` always need a chat list. There is no destructive scope: cleaning, deleting, revoking and
 purging always need a person's approval. `--rate` sets requests per minute (default 60) and
 `--expires` an expiry (none by default). `wasync help agents grant` has the full reference.
@@ -181,11 +182,28 @@ number count, so older chat with that person never removes it. That counts any r
 number's chat from its first list message on, so that message shows in the chat on the Chats page and wasync
 can see the replies, including a listed contact's replies that WhatsApp delivers in a separate
 hidden-ID chat, unless you already turned archiving of that hidden-ID chat on or off yourself.
+
 **Pause** stops a list's sends and keeps everything else; **Resume…** asks you to confirm.
 Removing a list needs no confirmation. The one-message-until-reply rule belongs to the number,
 not the agent: wasync remembers for good when any agent's list last messaged each number, so no
 list sends it another message until it replies to that one, even when two agents' lists hold the
 same number, after a list is removed, or when the same numbers are approved for another agent.
+
+The agent may also read those chats, so it can see the replies and any STOP without you
+approving each chat: with the `read.messages` and `read.chats` scopes it already holds, it may
+read the chat of every number on its list that a list has messaged and the hidden-ID chat wasync
+links to that number. It cannot read a number on its list that no list has messaged yet, a
+number its list dropped after a STOP, another agent's numbers, or any other chat, and a list
+never adds a scope, media or the change feed. A number counts as messaged once any agent's list
+messaged it, the same rule the sending follows. Reading stops when you remove the list, when it
+ends, when the number replies STOP, or when you approve it again without that number; a paused
+list can still be read. So that the agent can record an opt-out, `GET /api/v1/send-list` names
+the numbers its list dropped after a STOP, with no message text. The agent reads the whole
+archived chat with that person, not only what came after its first message, so list only
+numbers whose chat you are happy for the agent to read. Each read that names such a chat, and
+each chat list or search over every chat that returns one, is recorded in the audit log as
+`read_list`, one entry per such chat, and the Chats page marks those chats as readable by an
+agent.
 
 ### Open sending
 

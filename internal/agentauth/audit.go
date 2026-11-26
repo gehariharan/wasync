@@ -31,7 +31,9 @@ const (
 //
 // Policy: every v1 mutation attempt (allowed or denied) and every denial is
 // audited. Successful reads are not audited, to keep the log small and avoid
-// recording browsing behaviour; denied reads are.
+// recording browsing behaviour; denied reads are. The exception is a read
+// that only an approved recipient list allows (event read_list), which is
+// audited either way so the person can see what the list let the agent read.
 type AuditEntry struct {
 	Time       time.Time `json:"time"`
 	Event      string    `json:"event,omitempty"` // "request" (default), "grant" or "revoke"

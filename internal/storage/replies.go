@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"slices"
+	"sort"
 	"strings"
 	"time"
 	"unicode"
@@ -63,6 +64,22 @@ func (s *Store) personChats(ctx context.Context, account int64, chats []string) 
 		}
 	}
 	return out, rows.Err()
+}
+
+// PersonChats returns chats (phone-number addresses) and every hidden-address
+// chat whose person writes as one of them, sorted: all the direct chats of
+// those people.
+func (s *Store) PersonChats(ctx context.Context, account int64, chats []string) ([]string, error) {
+	person, err := s.personChats(ctx, account, chats)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(person))
+	for c := range person {
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out, nil
 }
 
 // inChats returns personChats and the JSON array of its chats for the queries.
