@@ -206,7 +206,11 @@ func (f *fakeWhatsApp) UploadReader(_ context.Context, plaintext io.Reader, _ io
 		return whatsmeow.UploadResponse{}, err
 	}
 	f.uploaded, f.mediaType = data, appInfo
-	return whatsmeow.UploadResponse{URL: "https://mmg.example/v", DirectPath: "/v/t62/abc", MediaKey: []byte("key"), FileEncSHA256: []byte("enc"), FileSHA256: []byte("sha"), FileLength: uint64(len(data))}, nil
+	resp := whatsmeow.UploadResponse{URL: "https://mmg.example/v", DirectPath: "/v/t62/abc", MediaKey: []byte("key"), FileEncSHA256: []byte("enc"), FileSHA256: []byte("sha"), FileLength: uint64(len(data))}
+	if appInfo == whatsmeow.MediaVideo {
+		resp.StreamingSidecar = []byte("sidecar")
+	}
+	return resp, nil
 }
 
 func (f *fakeWhatsApp) GenerateMessageID() types.MessageID { return "VIDEO1" }
@@ -241,7 +245,7 @@ func TestSendVideoArrivesAsAPlayableVideoAndIsArchived(t *testing.T) {
 		if v == nil || wa.sent.GetDocumentMessage() != nil {
 			t.Fatalf("%s: not sent as a video message: %v", name, wa.sent)
 		}
-		if v.GetMimetype() != "video/mp4" || v.GetSeconds() != 2 || v.GetWidth() != 96 || v.GetHeight() != 54 || v.GetCaption() != "Watch this" || v.GetFileLength() != uint64(len(data)) || v.GetDirectPath() == "" || len(v.GetMediaKey()) == 0 {
+		if v.GetMimetype() != "video/mp4" || v.GetSeconds() != 2 || v.GetWidth() != 96 || v.GetHeight() != 54 || v.GetCaption() != "Watch this" || v.GetFileLength() != uint64(len(data)) || v.GetDirectPath() == "" || len(v.GetMediaKey()) == 0 || string(v.GetStreamingSidecar()) != "sidecar" {
 			t.Fatalf("%s: %v", name, v)
 		}
 		cfg, err := jpeg.DecodeConfig(bytes.NewReader(v.GetJPEGThumbnail()))

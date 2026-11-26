@@ -75,10 +75,14 @@ func Normalize(e *events.Message, source string, now time.Time) (storage.Message
 			if protocol.GetTimestampMS() > 0 {
 				out.MutationAt = time.UnixMilli(protocol.GetTimestampMS())
 			}
-			m = protocol.GetEditedMessage()
-			if m == nil || out.MessageID == "" {
+			edited := protocol.GetEditedMessage()
+			if edited == nil || out.MessageID == "" || viewOnceMessage(edited) {
 				return out, false
 			}
+			// New content can be wrapped like a new message (a group mention,
+			// spoiler or captioned document); unwrap it the way whatsmeow
+			// unwraps received messages.
+			m = events.UnwrapMessage(edited)
 		default:
 			return out, false
 		}

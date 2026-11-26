@@ -74,6 +74,49 @@ func TestNormalizeMutationsAndEphemeralBoundaries(t *testing.T) {
 		t.Fatal("view-once retained")
 	}
 }
+func TestNormalizeArchivesContentInsideNewerWrappers(t *testing.T) {
+	now := time.Now()
+	text := &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: proto.String("hello @group")}}
+	sticker := &waE2E.Message{StickerMessage: &waE2E.StickerMessage{Mimetype: proto.String("image/webp")}}
+	image := &waE2E.Message{ImageMessage: &waE2E.ImageMessage{Caption: proto.String("hidden"), Mimetype: proto.String("image/jpeg")}}
+	for name, tc := range map[string]struct {
+		raw       *waE2E.Message
+		typ, text string
+	}{
+		"group mention": {&waE2E.Message{GroupMentionedMessage: &waE2E.FutureProofMessage{Message: text}}, "text", "hello @group"},
+		"audio sticker": {&waE2E.Message{AudioStickerMessage: &waE2E.FutureProofMessage{Message: sticker}}, "sticker", ""},
+		"spoiler":       {&waE2E.Message{SpoilerMessage: &waE2E.FutureProofMessage{Message: image}}, "image", "hidden"},
+	} {
+		// Live and history deliveries both reach Normalize through UnwrapRaw.
+		e := fixture(tc.raw)
+		e.UnwrapRaw()
+		m, ok := Normalize(e, "live", now)
+		if !ok || m.Type != tc.typ || m.Text != tc.text {
+			t.Errorf("%s: %+v %v", name, m, ok)
+		}
+	}
+
+	// An edit whose new content is wrapped is archived with that content.
+	target := &waCommon.MessageKey{ID: proto.String("target"), RemoteJID: proto.String("123@g.us")}
+	edit := func(content *waE2E.Message) *events.Message {
+		protocol := &waE2E.ProtocolMessage{Type: waE2E.ProtocolMessage_MESSAGE_EDIT.Enum(), Key: target, EditedMessage: content, TimestampMS: proto.Int64(now.UnixMilli())}
+		e := fixture(&waE2E.Message{EditedMessage: &waE2E.FutureProofMessage{Message: &waE2E.Message{ProtocolMessage: protocol}}})
+		e.UnwrapRaw()
+		return e
+	}
+	m, ok := Normalize(edit(&waE2E.Message{GroupMentionedMessage: &waE2E.FutureProofMessage{Message: &waE2E.Message{ExtendedTextMessage: &waE2E.ExtendedTextMessage{Text: proto.String("edited @group")}}}}), "live", now)
+	if !ok || m.Kind != "edit" || m.Type != "text" || m.Text != "edited @group" {
+		t.Fatalf("wrapped edit %+v %v", m, ok)
+	}
+	m, ok = Normalize(edit(&waE2E.Message{DocumentWithCaptionMessage: &waE2E.FutureProofMessage{Message: &waE2E.Message{DocumentMessage: &waE2E.DocumentMessage{Caption: proto.String("new caption")}}}}), "live", now)
+	if !ok || m.Type != "document" || m.Text != "new caption" {
+		t.Fatalf("captioned document edit %+v %v", m, ok)
+	}
+	// Unwrapping must not let view-once content through an edit.
+	if m, ok = Normalize(edit(&waE2E.Message{ViewOnceMessage: &waE2E.FutureProofMessage{Message: image}}), "live", now); ok {
+		t.Fatalf("view-once edit retained %+v", m)
+	}
+}
 func TestHistoryAndLiveUseSameConsentAndDedup(t *testing.T) {
 	ctx := context.Background()
 	s, err := storage.Open(ctx, filepath.Join(privateTestDir(t), "archive.db"))

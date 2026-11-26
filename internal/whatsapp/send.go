@@ -182,7 +182,9 @@ func attachmentMessage(ctx context.Context, wa messageSender, in SendInput) (*wa
 		message.ImageMessage = &waE2E.ImageMessage{Caption: proto.String(in.Text), Mimetype: proto.String(mime), URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey, FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256, FileLength: &uploaded.FileLength}
 	case whatsmeow.MediaVideo:
 		message.VideoMessage = &waE2E.VideoMessage{Mimetype: proto.String(mime), URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey, FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256, FileLength: &uploaded.FileLength,
-			Seconds: proto.Uint32(video.Seconds), Width: proto.Uint32(video.Width), Height: proto.Uint32(video.Height), JPEGThumbnail: thumbnail}
+			Seconds: proto.Uint32(video.Seconds), Width: proto.Uint32(video.Width), Height: proto.Uint32(video.Height), JPEGThumbnail: thumbnail,
+			// Lets the recipient start playing before the whole file arrives.
+			StreamingSidecar: uploaded.StreamingSidecar}
 		if in.Text != "" {
 			message.VideoMessage.Caption = proto.String(in.Text)
 		}

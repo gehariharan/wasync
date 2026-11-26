@@ -94,7 +94,9 @@ after pairing. Its ordinary retry delay is currently linear. A custom exponentia
 supervisor remains future hardening work. Reconnects and periods when wasync was
 stopped create uncertain account intervals; ending an interval means observation
 resumed, not that all missed messages were recovered. Decryption failures for an
-enabled chat also mark uncertainty. `wasync query status`, `query groups` and the terminal UI
+enabled chat also mark uncertainty. wasync asks the phone to resend a message it could not
+decrypt or that arrived as unavailable, and captures the copy if the phone sends one; the
+uncertainty mark stays either way. `wasync query status`, `query groups` and the terminal UI
 report these potential gaps.
 
 Selected live messages are written synchronously before our handler reports
