@@ -38,9 +38,11 @@ started with a different `--api-addr`.
 
 `wasync stop` stops the owner (a `serve` started by hand or by the login item, the setup page,
 the terminal UI or `run`) cleanly and waits until the data directory is free. It asks the owner
-through its local API, or, when the owner runs without the API, asks its process to shut down as
-Ctrl-C would (on Windows, end the process it names). It does not unlink the phone and does not
-remove the login item (`wasync service uninstall` does). Nothing restarts it by itself until
+through its local API, signed with the approval credential. When the owner runs without the API,
+or the approval credential cannot be read (on macOS, a shell outside your desktop session, such
+as SSH, cannot open the Keychain), it asks the owner's process to shut down as Ctrl-C would,
+which works only for a wasync running as your own user (on Windows, end the process it names).
+It does not unlink the phone and does not remove the login item (`wasync service uninstall` does). Nothing restarts it by itself until
 your next login; `wasync service restart` starts the login item's wasync again at once, after a
 stop or an upgrade, and also moves a wasync running in a terminal to the background.
 

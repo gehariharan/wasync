@@ -72,7 +72,7 @@ and outside Git. Installers and upgrades never touch this directory.
 | --- | --- | --- |
 | `api.token` | Archive queries and capture selection over the [local API](api.md) | You and your own scripts |
 | `send.token` | Explicit sending, sync requests, media control and queuing cleanup requests | The `wasync` CLI |
-| `approve.token` | Carrying out a request after a person's confirmation; stopping and unlinking | The running wasync and the interactive CLI |
+| `approve.token` | Carrying out a request after a person's confirmation; stopping and unlinking through the local API | The running wasync and the interactive CLI |
 | Agent credentials (`wsa_…`) | Only the scopes and chats you granted, through `/api/v1` | Agents, via `wasync-axi` (see [Agents](agents.md)) |
 
 None of these is printed in command output (an agent credential is printed once only if you
@@ -92,7 +92,10 @@ On macOS `approve.token` is kept in your login Keychain instead of a file (an ex
 moved there when wasync next starts), so another program that asks for it makes macOS ask for
 your password; Windows and Linux keep the private file. If you cancel or deny the Keychain
 prompt when wasync starts by itself at login, it stops without restarting and shows one
-notification: approvals stay off until you run wasync again. There is one Keychain item per data
+notification: approvals stay off until you run wasync again. A shell outside your desktop
+session, such as SSH, cannot open the Keychain at all, so commands that need the approval
+credential (approving, `wasync logout`) fail there; `wasync stop` still works, because it then
+asks your own wasync process to stop as Ctrl-C would. There is one Keychain item per data
 directory (named `approve:` plus a short hash of its path, service `wasync`), so a wasync
 started with a temporary `--data-dir` leaves an item behind. `wasync keychain` lists them
 without reading any secret, and `wasync keychain prune --apply` removes the ones whose recorded
