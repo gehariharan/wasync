@@ -272,7 +272,7 @@ func (h *handler) chatsView(w http.ResponseWriter, r *http.Request, sess uiSessi
 				msg.Text = bodyText(m.Text)
 			case msg.Att != nil:
 			case m.Source == storage.SourceSentLog:
-				msg.Text = "(sent before wasync kept sent messages in chats; text not kept)"
+				msg.Text = "(list message sent before wasync kept it in its chat; text not kept)"
 			default:
 				msg.Text = "[" + humancheck.Clean(m.Type, 30) + "]"
 			}

@@ -115,9 +115,11 @@ func TestBackfillPutsEarlierSentMessagesInTheirChatsOnce(t *testing.T) {
 	log := sentlog.New(a.dir)
 	for _, e := range []sentlog.Entry{
 		{Time: at, Actor: "outreach", Kind: "send", Chat: listed, MessageID: "OLD1", Outcome: sentlog.OutcomeSent, List: true, NewNumber: true},
-		{Time: at, Actor: "outreach", Kind: "send", Chat: otherChat, MessageID: "OLD2", Outcome: sentlog.OutcomeSent},   // not captured: left alone
-		{Time: at, Actor: "outreach", Kind: "send", Chat: listed, MessageID: "OLD3", Outcome: sentlog.OutcomeUnknown},   // may not have gone
-		{Time: at, Actor: sentlog.Owner, Kind: "send", Chat: familyChat, MessageID: "m1", Outcome: sentlog.OutcomeSent}, // already archived
+		{Time: at, Actor: "outreach", Kind: "send", Chat: otherChat, MessageID: "OLD2", Outcome: sentlog.OutcomeSent, List: true}, // not captured: left alone
+		{Time: at, Actor: "outreach", Kind: "send", Chat: listed, MessageID: "OLD3", Outcome: sentlog.OutcomeUnknown, List: true}, // may not have gone
+		{Time: at, Actor: sentlog.Owner, Kind: "send", Chat: familyChat, MessageID: "m1", Outcome: sentlog.OutcomeSent},           // already archived
+		{Time: at, Actor: sentlog.Owner, Kind: "send", Chat: familyChat, MessageID: "OLD4", Outcome: sentlog.OutcomeSent},         // not a list send
+		{Time: at, Actor: "outreach", Kind: "reply", Chat: familyChat, MessageID: "OLD5", Outcome: sentlog.OutcomeSent},           // not a list send
 	} {
 		if err := log.Append(e); err != nil {
 			t.Fatal(err)
@@ -144,7 +146,8 @@ func TestBackfillPutsEarlierSentMessagesInTheirChatsOnce(t *testing.T) {
 	if fam, err := a.store.MessageByWhatsAppID(ctx, a.account, familyChat, "m1"); err != nil || fam.Text != "synthetic family text" {
 		t.Fatalf("an archived message was changed: %+v %v", fam, err)
 	}
-	for chat, id := range map[string]string{otherChat: "OLD2", listed: "OLD3"} {
+	for _, c := range [][2]string{{otherChat, "OLD2"}, {listed, "OLD3"}, {familyChat, "OLD4"}, {familyChat, "OLD5"}} {
+		chat, id := c[0], c[1]
 		if _, err := a.store.MessageByWhatsAppID(ctx, a.account, chat, id); err == nil {
 			t.Fatalf("%s in %s should not have been added", id, chat)
 		}

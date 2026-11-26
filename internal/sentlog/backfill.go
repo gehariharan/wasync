@@ -14,8 +14,8 @@ import (
 // runs only once; a chat the owner purges later never gets these back.
 const BackfillMarker = "sent-log-backfill.done"
 
-// Backfill puts the messages earlier releases sent but did not keep into
-// their chats, once: each message WhatsApp accepted that is in the sent log
+// Backfill puts the list messages earlier releases sent but did not keep into
+// their chats, once: each list message WhatsApp accepted that is in the sent log
 // with its message ID but not in the archive is added as an outgoing message
 // at the time it was sent, with no text and marked with the agent that sent
 // it, in a chat that is being captured. A chat that is not captured is left
@@ -38,7 +38,7 @@ func Backfill(ctx context.Context, dir string, store *storage.Store) (int, error
 	seen := map[[2]string]bool{}
 	for _, e := range entries {
 		key := [2]string{e.Chat, e.MessageID}
-		if e.Outcome != OutcomeSent || e.MessageID == "" || seen[key] {
+		if !e.List || e.Outcome != OutcomeSent || e.MessageID == "" || seen[key] {
 			continue
 		}
 		seen[key] = true

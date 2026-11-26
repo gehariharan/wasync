@@ -119,7 +119,7 @@ journal row:
 
 | op | written by |
 |---|---|
-| `message.created` | a new original, or a placeholder (edit or revoke that arrived first) gaining its original |
+| `message.created` | a new original, a placeholder (edit or revoke that arrived first) gaining its original, or a list message filled in from the sent log (schema 7) replaced by its real copy |
 | `message.updated` | an applied edit |
 | `message.revoked` | an applied revoke |
 | `message.expired` | `Expire` removing disappearing-message content |
