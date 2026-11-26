@@ -19,7 +19,6 @@ import (
 //	GET  /ui/update/progress  where updates stand (see update.Status)
 //	POST /ui/update/check     ask GitHub for the newest release now
 //	POST /ui/update/start     download, check, install and restart (confirmed)
-//	GET  /ui/update/result    how the last installed update ended
 //
 // POST routes need the session's form token as the "csrf" form field or the
 // X-Wasync-CSRF header. Nothing checks for updates by itself: each check is a
@@ -37,7 +36,6 @@ const (
 	updateProgressPath = "/ui/update/progress"
 	updateCheckPath    = "/ui/update/check"
 	updateStartPath    = "/ui/update/start"
-	updateResultPath   = "/ui/update/result"
 	setupUpdatePath    = "/ui/setup/update"
 )
 
@@ -50,8 +48,6 @@ func (h *handler) uiDispatchUpdate(w http.ResponseWriter, r *http.Request, sess 
 		h.updateCheck(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == updateStartPath:
 		h.updateStart(w, r, sess)
-	case r.Method == http.MethodGet && r.URL.Path == updateResultPath:
-		h.updateResult(w, r)
 	case r.Method == http.MethodPost && r.URL.Path == setupUpdatePath:
 		h.setupUpdate(w, r, sess)
 	default:
@@ -90,13 +86,6 @@ func (h *handler) updateProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, h.update.Status())
-}
-
-func (h *handler) updateResult(w http.ResponseWriter, r *http.Request) {
-	if h.noUpdater(w) {
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"last_result": h.update.Status().LastResult})
 }
 
 func (h *handler) updateCheck(w http.ResponseWriter, r *http.Request, sess uiSession) {

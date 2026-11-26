@@ -53,7 +53,8 @@ type Status struct {
 	Progress *Progress `json:"progress,omitempty"`
 	// Error says why the last check or update failed.
 	Error string `json:"error,omitempty"`
-	// LastResult is how the last installed update ended, kept across restarts.
+	// LastResult is how the last installed update ended, kept across restarts,
+	// while it still describes the running version.
 	LastResult *Result `json:"last_result,omitempty"`
 }
 
@@ -135,8 +136,18 @@ func (m *Manager) Status() Status {
 	m.mu.Lock()
 	s := m.statusLocked()
 	m.mu.Unlock()
-	s.LastResult, _ = LastResult(m.cfg.DataDir)
+	s.LastResult = m.lastResult()
 	return s
+}
+
+// lastResult is how the last update ended, while it still describes the
+// running version: a success that installed it or a failure that kept it.
+func (m *Manager) lastResult() *Result {
+	r, _ := LastResult(m.cfg.DataDir)
+	if r == nil || (r.OK && r.To != m.cfg.Current) || (!r.OK && r.From != m.cfg.Current) {
+		return nil
+	}
+	return r
 }
 
 func (m *Manager) statusLocked() Status {
@@ -222,7 +233,7 @@ func (m *Manager) Check(ctx context.Context) Status {
 	}
 	s := m.statusLocked()
 	m.mu.Unlock()
-	s.LastResult, _ = LastResult(m.cfg.DataDir)
+	s.LastResult = m.lastResult()
 	return s
 }
 

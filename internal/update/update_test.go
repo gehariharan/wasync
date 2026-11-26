@@ -427,6 +427,29 @@ func TestChecksSayWhyOneClickIsNotOffered(t *testing.T) {
 	}
 }
 
+func TestTheLastResultShowsOnlyWhileItDescribesTheRunningVersion(t *testing.T) {
+	f := newManagerFixture(t, &fakeSource{release: &Release{Tag: "v1.0.0"}}, windowsChannel)
+	for _, c := range []struct {
+		r    Result
+		show bool
+	}{
+		{Result{From: "0.9.0", To: "1.0.0", OK: true}, true},
+		{Result{From: "1.0.0", To: "1.1.0", Error: "Setup did not finish"}, true},
+		{Result{From: "0.8.0", To: "0.9.0", OK: true}, false},
+		{Result{From: "0.9.0", To: "0.9.5", Error: "Setup did not finish"}, false},
+		{Result{From: "0.9.0", To: "1.0.0", Error: "Setup did not finish"}, false},
+	} {
+		if err := writeJSONFile(Folder(f.dir), resultFile, c.r); err != nil {
+			t.Fatal(err)
+		}
+		for name, s := range map[string]Status{"status": f.m.Status(), "check": f.m.Check(context.Background())} {
+			if got := s.LastResult != nil; got != c.show {
+				t.Errorf("%s on 1.0.0 with %+v: shown %v, want %v", name, c.r, got, c.show)
+			}
+		}
+	}
+}
+
 // applyFixture is a data directory with a staged update and a plan.
 func applyFixture(t *testing.T, kind string) (dir string, plan Plan) {
 	t.Helper()

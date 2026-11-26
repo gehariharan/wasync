@@ -217,6 +217,15 @@ func TestWindowsMatchesTheSignerOnlyWhenTheRunningCopyIsSigned(t *testing.T) {
 	if _, err := w.Prepare(context.Background(), ch, setup, filepath.Dir(setup)); err != nil {
 		t.Fatal(err)
 	}
+
+	for _, status := range []string{"NotTrusted", "UnknownError", "HashMismatch"} {
+		sig[exe] = status + "\nCN=Hariharan Ragunathan"
+		ch = Channel{Kind: KindWindowsSetup, OneClick: true, Target: exe}
+		w.Probe(context.Background(), &ch)
+		if ch.OneClick || ch.Note == "" {
+			t.Fatalf("a signed copy Windows reports as %s must not fall back to the checksum alone: %+v", status, ch)
+		}
+	}
 }
 
 func TestWindowsInstallRunsSetupSilentlyOnlyIfUnchanged(t *testing.T) {

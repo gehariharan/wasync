@@ -19,10 +19,8 @@ import (
 
 // releasesURL lists the newest releases. /releases/latest skips pre-releases,
 // and every current wasync release is one, so the list is read instead (as
-// scripts/install-windows.ps1 does). A release build may point it at a local
-// test server with -ldflags "-X ...update.releasesURL=http://127.0.0.1:PORT/...";
-// only a literal loopback address may use plain HTTP.
-var releasesURL = "https://api.github.com/repos/gehariharan/wasync/releases?per_page=10"
+// scripts/install-windows.ps1 does).
+const releasesURL = "https://api.github.com/repos/gehariharan/wasync/releases?per_page=10"
 
 const (
 	// ChecksumsAsset is the release's SHA-256 list (see .github/workflows/release.yml).

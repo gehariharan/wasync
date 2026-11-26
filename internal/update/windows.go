@@ -67,8 +67,12 @@ func (w Windows) Probe(ctx context.Context, ch *Channel) {
 		ch.OneClick, ch.Note = false, "wasync could not read its own signature, so it cannot check an update. Download the new Setup from "+releasePage+"."
 		return
 	}
-	if status == "Valid" {
+	switch {
+	case status == "NotSigned":
+	case status == "Valid" && subject != "":
 		ch.Signer = subject
+	default:
+		ch.OneClick, ch.Note = false, "Windows cannot check wasync's own signature ("+status+"), so wasync cannot check an update. Download the new Setup from "+releasePage+"."
 	}
 }
 

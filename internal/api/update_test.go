@@ -91,10 +91,8 @@ func TestUpdatesNeedTheOwnersBrowserSession(t *testing.T) {
 	f := newUpdateFixture(t, true, availableUpdate())
 	f.stub.set(true)
 	for _, token := range []string{f.jit, f.approver, ""} {
-		for _, path := range []string{updateProgressPath, updateResultPath} {
-			if code, _ := f.do(t, "GET", path, token, nil); code != http.StatusUnauthorized {
-				t.Errorf("GET %s with an agent or owner token and no session: %d", path, code)
-			}
+		if code, _ := f.do(t, "GET", updateProgressPath, token, nil); code != http.StatusUnauthorized {
+			t.Errorf("GET %s with an agent or owner token and no session: %d", updateProgressPath, code)
 		}
 		for _, path := range []string{updateCheckPath, updateStartPath} {
 			if code, _ := f.do(t, "POST", path, token, nil); code != http.StatusUnauthorized {
@@ -141,7 +139,7 @@ func TestUpdateProgressCheckAndResult(t *testing.T) {
 	f := newUpdateFixture(t, true, status)
 	code, body, _ := f.page.get(updateProgressPath)
 	var got update.Status
-	if code != 200 || json.Unmarshal([]byte(body), &got) != nil || got.State != update.StateAvailable || !got.CanInstall || got.Latest.Version != "0.1.0-preview.2" {
+	if code != 200 || json.Unmarshal([]byte(body), &got) != nil || got.State != update.StateAvailable || !got.CanInstall || got.Latest.Version != "0.1.0-preview.2" || got.LastResult == nil || got.LastResult.To != "0.1.0-preview.1" {
 		t.Fatalf("progress: %d %s", code, body)
 	}
 	if code, out := f.postJSON(t, updateCheckPath, f.csrf); code != 200 || out["state"] != update.StateAvailable {
@@ -149,10 +147,6 @@ func TestUpdateProgressCheckAndResult(t *testing.T) {
 	}
 	if checks, _ := f.updater.counts(); checks != 1 {
 		t.Fatalf("checks %d", checks)
-	}
-	code, body, _ = f.page.get(updateResultPath)
-	if code != 200 || !strings.Contains(body, `"to":"0.1.0-preview.1"`) {
-		t.Fatalf("result: %d %s", code, body)
 	}
 }
 

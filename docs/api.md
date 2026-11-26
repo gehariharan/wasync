@@ -124,10 +124,9 @@ field or the `X-Wasync-CSRF` header. They answer with JSON.
 
 | Route | What it does |
 | --- | --- |
-| `GET /ui/update/progress` | Where updates stand: `current`, `channel` (`kind`, `one_click`, `note`), `state` (`idle`, `checking`, `up-to-date`, `available`, `downloading`, `verifying`, `installing` or `failed`), `latest`, `can_install`, `note`, `progress` (`done`, `total` bytes), `error` and `last_result` |
+| `GET /ui/update/progress` | Where updates stand: `current`, `channel` (`kind`, `one_click`, `note`), `state` (`idle`, `checking`, `up-to-date`, `available`, `downloading`, `verifying`, `installing` or `failed`), `latest`, `can_install`, `note`, `progress` (`done`, `total` bytes), `error` and `last_result` (how the last installed update ended: `from`, `to`, `ok`, `error`, `restart`, `finished`; kept across the restart while it still describes the running version) |
 | `POST /ui/update/check` | Asks GitHub for the newest published release now and returns the same object |
 | `POST /ui/update/start` | Asks the person to confirm with the system prompt, then downloads, checks and installs the update and restarts wasync; `202` with the object, `409` when there is nothing to install, `403` when not confirmed or asked from another device, `503` without a system prompt |
-| `GET /ui/update/result` | `last_result`: how the last installed update ended (`from`, `to`, `ok`, `error`, `restart`, `finished`), kept across the restart |
 
 See [Updating from the web app](install.md#updating-from-the-web-app) for what each kind of
 install does.
