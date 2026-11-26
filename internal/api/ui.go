@@ -343,6 +343,16 @@ func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.pickPage(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/chats/pick":
 		h.pickSave(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/api/chats":
+		h.pickChatsJSON(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/api/chats/sync":
+		h.pickSyncJSON(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/api/settings":
+		h.settingsGetJSON(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/api/settings":
+		h.settingsPostJSON(w, r, sess)
+	case r.Method == http.MethodGet && r.URL.Path == "/ui/avatar":
+		h.avatar(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/setup":
 		h.setupHome(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/link" && h.setup != nil:

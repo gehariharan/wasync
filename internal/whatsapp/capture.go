@@ -10,6 +10,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/sendlist"
 	"github.com/gehariharan/wasync/internal/storage"
+	"go.mau.fi/whatsmeow/proto/waHistorySync"
 	"go.mau.fi/whatsmeow/types"
 	"go.mau.fi/whatsmeow/types/events"
 )
@@ -155,8 +156,12 @@ func (c *Client) captureSent(evt any, sentBy string) error {
 			if !e.Info.IsFromMe {
 				name = e.Info.PushName
 			}
-			return c.discoverDirect(p.ctx, account, e.Info.Chat, name)
+			if err := c.discoverDirect(p.ctx, account, e.Info.Chat, name); err != nil {
+				return err
+			}
+			return p.noteActivity(account, e.Info.Chat, e.Info.Timestamp)
 		case *events.HistorySync:
+			active := map[string]time.Time{}
 			for _, conv := range e.Data.GetConversations() {
 				jid, err := types.ParseJID(conv.GetID())
 				if err == nil {
@@ -167,8 +172,10 @@ func (c *Client) captureSent(evt any, sentBy string) error {
 					if err = c.discoverDirect(p.ctx, account, jid, name); err != nil {
 						return err
 					}
+					addActivity(active, jid, conversationActivity(conv))
 				}
 			}
+			return p.store.SaveChatActivity(p.ctx, account, active)
 		}
 		return nil
 	}
@@ -210,7 +217,9 @@ func (c *Client) captureSent(evt any, sentBy string) error {
 			return err
 		}
 		if !enabled {
-			return nil
+			// The message is not kept, but when its chat was last active is,
+			// so the chat picker can list recent chats first.
+			return p.noteActivity(account, e.Info.Chat, e.Info.Timestamp)
 		}
 		m, ok := Normalize(e, "live", time.Now())
 		if !ok {
@@ -267,6 +276,7 @@ func (c *Client) captureSent(evt any, sentBy string) error {
 			pendingMedia = pendingMedia[:0]
 			return nil
 		}
+		active := map[string]time.Time{}
 		for _, conv := range e.Data.GetConversations() {
 			jid, err := types.ParseJID(conv.GetID())
 			if err != nil || !SupportedChat(jid) {
@@ -279,6 +289,7 @@ func (c *Client) captureSent(evt any, sentBy string) error {
 			if err := c.discoverDirect(p.ctx, account, jid, name); err != nil {
 				return err
 			}
+			addActivity(active, jid, conversationActivity(conv))
 			enabled, err := p.store.IsEnabled(p.ctx, account, jid.String())
 			if err != nil {
 				return err
@@ -313,6 +324,9 @@ func (c *Client) captureSent(evt any, sentBy string) error {
 			}
 		}
 		if err = flush(); err != nil {
+			return err
+		}
+		if err = p.store.SaveChatActivity(p.ctx, account, active); err != nil {
 			return err
 		}
 		if failures > 0 {
@@ -425,4 +439,46 @@ func (c *Client) forgetCaptureAccount(ctx context.Context) error {
 	p.account.Store(0)
 	p.run.Store(0)
 	return nil
+}
+
+// maxActivitySkew bounds how far in the future a reported activity time may be;
+// anything later is a wrong clock or a forged timestamp and is ignored.
+const maxActivitySkew = 24 * time.Hour
+
+// addActivity records at as chat's last activity in active when it is a
+// usable time for a supported chat, keeping the newest one.
+func addActivity(active map[string]time.Time, chat types.JID, at time.Time) {
+	if !SupportedChat(chat) || at.Unix() <= 0 || at.After(time.Now().Add(maxActivitySkew)) {
+		return
+	}
+	key := chat.ToNonAD().String()
+	if at.After(active[key]) {
+		active[key] = at
+	}
+}
+
+// noteActivity records that a chat was active at a time, without keeping any
+// of its content.
+func (p *capture) noteActivity(account int64, chat types.JID, at time.Time) error {
+	active := map[string]time.Time{}
+	addActivity(active, chat, at)
+	return p.store.SaveChatActivity(p.ctx, account, active)
+}
+
+// conversationActivity is when WhatsApp says a conversation was last active:
+// the newest of its own timestamps and those of the messages it carries.
+func conversationActivity(conv *waHistorySync.Conversation) time.Time {
+	ts := conv.GetConversationTimestamp()
+	if v := conv.GetLastMsgTimestamp(); v > ts {
+		ts = v
+	}
+	for _, item := range conv.GetMessages() {
+		if v := item.GetMessage().GetMessageTimestamp(); v > ts {
+			ts = v
+		}
+	}
+	if ts == 0 || ts > 1<<62 {
+		return time.Time{}
+	}
+	return time.Unix(int64(ts), 0)
 }

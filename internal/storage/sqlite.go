@@ -36,15 +36,18 @@ var migration6 string
 //go:embed migrations/007_sent_by.sql
 var migration7 string
 
+//go:embed migrations/008_chat_activity.sql
+var migration8 string
+
 // migrations lists every embedded migration in order; migration i+1 sets
 // user_version to i+1. New migrations must follow docs/architecture/migrations.md.
-var migrations = []string{migration1, migration2, migration3, migration4, migration5, migration6, migration7}
+var migrations = []string{migration1, migration2, migration3, migration4, migration5, migration6, migration7, migration8}
 
 // schemaVersion is the newest archive schema this binary writes.
 var schemaVersion = len(migrations)
 
 // SchemaVersion is the archive schema this build migrates to and queries.
-const SchemaVersion = 7
+const SchemaVersion = 8
 
 type Store struct{ db *sql.DB }
 type Group struct {

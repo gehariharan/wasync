@@ -14,7 +14,9 @@ import (
 	"github.com/gehariharan/wasync/internal/api"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/approvecred"
+	"github.com/gehariharan/wasync/internal/avatars"
 	"github.com/gehariharan/wasync/internal/config"
+	"github.com/gehariharan/wasync/internal/prefs"
 	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/setup"
@@ -40,6 +42,19 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 	// Being asked to stop is a clean exit, not a cancellation by the person at the keyboard.
 	owner.Stop = func() { stoppedByRequest.Store(true); cancel() }
 	if client := a.ownerClient; client != nil {
+		if p, ok := client.(interface {
+			ProfilePicture(context.Context, string, string) (whatsapp.ProfilePicture, error)
+		}); ok {
+			owner.Pictures = func(ctx context.Context, chat, knownID string) (avatars.Picture, error) {
+				pic, err := p.ProfilePicture(ctx, chat, knownID)
+				return avatars.Picture{ID: pic.ID, Data: pic.Data, Unchanged: pic.Unchanged}, err
+			}
+		}
+		if p, ok := client.(interface {
+			PhoneNumber(context.Context, string) string
+		}); ok {
+			owner.PhoneOf = p.PhoneNumber
+		}
 		owner.Paired = client.Paired
 		owner.Unlink = func(ctx context.Context) error {
 			if !client.Paired() {
@@ -95,6 +110,23 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 	return result
 }
 
+// configureMedia points a WhatsApp client at the media folder, the
+// --download-media flag and the owner's "Also save photos, videos and files"
+// setting, which it reads each time an attachment arrives.
+func configureMedia(client any, cfg config.Config) {
+	if media, ok := client.(interface{ ConfigureMedia(string, bool) }); ok {
+		media.ConfigureMedia(filepath.Join(cfg.DataDir, "media"), cfg.DownloadMedia)
+	}
+	if media, ok := client.(interface{ ConfigureSaveMedia(func() bool) }); ok {
+		settings := prefs.Open(cfg.DataDir)
+		media.ConfigureSaveMedia(func() bool {
+			// A damaged settings file keeps the default, which is on.
+			s, _ := settings.Get()
+			return s.MediaOn()
+		})
+	}
+}
+
 // startWebhooks runs the webhook dispatcher until the returned stop function
 // is called. It idles cheaply when no endpoint is registered.
 func (a *App) startWebhooks(ctx context.Context, cfg config.Config, store *storage.Store) (stop func()) {
@@ -146,9 +178,7 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 			if history, ok := client.(interface{ ConfigurePairingHistory(bool) }); ok {
 				history.ConfigurePairingHistory(cfg.PairingFullHistory)
 			}
-			if media, ok := client.(interface{ ConfigureMedia(string, bool) }); ok {
-				media.ConfigureMedia(filepath.Join(cfg.DataDir, "media"), cfg.DownloadMedia)
-			}
+			configureMedia(client, cfg)
 			if lists, ok := client.(interface{ ConfigureLists(string) }); ok {
 				lists.ConfigureLists(cfg.DataDir)
 			}

@@ -104,7 +104,10 @@ Migration 006 (the change journal) is the first to create `schema_compat`, with
 schema-5 owner would write without appending to the journal. Migration 007
 adds `messages.sent_by` (the agent that sent an outgoing message, empty
 otherwise) and keeps both values: older readers ignore the column, and a
-schema-6 owner only leaves it empty.
+schema-6 owner only leaves it empty. Migration 008 adds `chat_activity`, when
+each chat was last active as WhatsApp reports it (a time per chat, also for
+chats that are not synced), and keeps both values too: older readers ignore
+the table, and an older owner only leaves it stale.
 
 Binaries before this check (schema 5 releases without it) ignore
 `schema_compat` and always refuse newer archives, so the release containing it

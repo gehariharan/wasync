@@ -78,9 +78,7 @@ func (a *App) tuiAction(offline bool) action {
 		if history, ok := client.(interface{ ConfigurePairingHistory(bool) }); ok {
 			history.ConfigurePairingHistory(cfg.PairingFullHistory)
 		}
-		if media, ok := client.(interface{ ConfigureMedia(string, bool) }); ok {
-			media.ConfigureMedia(filepath.Join(cfg.DataDir, "media"), cfg.DownloadMedia)
-		}
+		configureMedia(client, cfg)
 		if lists, ok := client.(interface{ ConfigureLists(string) }); ok {
 			lists.ConfigureLists(cfg.DataDir)
 		}
