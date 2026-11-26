@@ -69,7 +69,7 @@ func TestChatShowsAttachmentDetailsBeforeDownload(t *testing.T) {
 			t.Fatalf("chat lacks %q:\n%s", want, page)
 		}
 	}
-	if strings.Contains(page, "/ui/media?") || strings.Contains(page, "<img") {
+	if strings.Contains(page, "/ui/media?") || strings.Contains(page, `<img class="media"`) {
 		t.Fatalf("a file that was never downloaded was linked:\n%s", page)
 	}
 }

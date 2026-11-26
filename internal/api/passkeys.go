@@ -435,14 +435,14 @@ func (h *handler) passkeyPage(w http.ResponseWriter, r *http.Request, need passk
 	d.Back = passkeyBack(r.URL.Path)
 	d.RPID, d.Challenge, d.Allow, d.Ask = need.host, base64.RawURLEncoding.EncodeToString(need.challenge), credentialIDs(need.devices), need.id
 	d.ExpiresMinutes = int(passkeyTTL / time.Minute)
-	h.passkeyRender(w, d)
+	h.passkeyRender(w, r, d)
 }
 
-func (h *handler) passkeyRender(w http.ResponseWriter, d *passkeyData) {
+func (h *handler) passkeyRender(w http.ResponseWriter, r *http.Request, d *passkeyData) {
 	// These two pages run one script of wasync's own, served from this origin,
 	// because a passkey can only be used from script.
-	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; img-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
-	h.webRender(w, passkeyTemplate, d)
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	h.webRender(w, r, passkeyTemplate, d)
 }
 
 // passkeyAnswer takes the person's passkey answer for an action started in
@@ -575,7 +575,7 @@ func (h *handler) passkeyBegin(w http.ResponseWriter, r *http.Request, sess uiSe
 	d.RPID, d.Challenge, d.Allow, d.Ask = s.Host, base64.RawURLEncoding.EncodeToString(challenge), credentialIDs(devices), id
 	d.User, d.Login, d.DeviceName, d.DeviceCount = base64.RawURLEncoding.EncodeToString(user[:16]), s.Login, name, len(devices)
 	d.Back, d.ExpiresMinutes = "/ui/setup", int(passkeyTTL/time.Minute)
-	h.passkeyRender(w, d)
+	h.passkeyRender(w, r, d)
 }
 
 // passkeyRegister keeps the passkey this browser made, once it checks out.
@@ -632,7 +632,7 @@ func deviceRows(devices []tailnet.Device) []deviceRow {
 	return rows
 }
 
-var passkeyTemplate = template.Must(template.New("passkey").Parse(uiHead + `{{template "head" .}}
+var passkeyTemplate = template.Must(template.New("passkey").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
 {{if eq .Mode "create"}}<h1>Set up this device</h1>
 <section class="card">
 <p>Make a passkey for wasync on this device, named <strong>{{.DeviceName}}</strong>. Your browser asks you to save it and to confirm with Touch ID, Face ID, Windows Hello or this device's PIN.</p>
@@ -645,10 +645,10 @@ var passkeyTemplate = template.Must(template.New("passkey").Parse(uiHead + `{{te
 <form id="passkey" method="post" action="/ui/passkey/confirm" data-mode="get" data-rp="{{.RPID}}" data-challenge="{{.Challenge}}" data-allow="{{.Allow}}">
 {{end}}<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="ask" value="{{.Ask}}"><input type="hidden" name="back" value="{{.Back}}">
 <input type="hidden" name="credential" value=""><input type="hidden" name="client" value=""><input type="hidden" name="authdata" value=""><input type="hidden" name="signature" value=""><input type="hidden" name="attestation" value="">
-<p><button type="button" class="go" id="passkey-go">{{if eq .Mode "create"}}Make the passkey…{{else}}Confirm with passkey…{{end}}</button> <a href="{{.Back}}">Cancel</a></p>
+<div class="btn-row"><button type="button" class="go" id="passkey-go">{{if eq .Mode "create"}}Make the passkey…{{else}}Confirm with passkey…{{end}}</button> <a href="{{.Back}}">Cancel</a></div>
 </form>
 <p id="passkey-status" role="status" class="mut">Nothing changes until you confirm. This page works for {{.ExpiresMinutes}} minutes.</p>
-<noscript><p class="bad">Passkeys need JavaScript, which is off in this browser.</p></noscript>
+<noscript><p class="notice bad">Passkeys need JavaScript, which is off in this browser.</p></noscript>
 </section>
 </main></body></html>
 `))

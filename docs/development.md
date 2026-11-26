@@ -31,6 +31,17 @@ export PATH="$HOME/.local/bin:$PATH"
 Add the PATH export to your shell configuration if needed. Reinstall the binary
 after rebuilding.
 
+## Web app styles
+
+The web app's look lives in two shared stylesheets in `internal/api/webassets`:
+`tokens.css` holds the colours, type, spacing and shapes (light and dark), and
+`components.css` builds every page from them, including the icon rail. Pages
+carry no `<style>` blocks or `style` attributes, and their content policy only
+allows wasync's own stylesheets (`style-src 'self'`), so a new look is a class
+in `components.css`. `TestNoTemplateCarriesItsOwnStyles` fails on any inline
+style. The Inter typeface is bundled as a latin subset of Inter 4.1
+(`inter.woff2`, weights 400 to 700) with its licence beside it.
+
 ## Validation
 
 ```sh

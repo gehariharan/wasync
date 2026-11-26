@@ -257,7 +257,7 @@ var notices = map[string]struct {
 
 func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	hd := w.Header()
-	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; img-src 'self'; media-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
 	hd.Set("X-Frame-Options", "DENY")
 	hd.Set("Referrer-Policy", "same-origin")
 	login := remoteLogin(r)
@@ -367,7 +367,7 @@ func (h *handler) signedOut(w http.ResponseWriter, r *http.Request, notice strin
 	if n, ok := notices[notice]; ok {
 		d.Notice, d.NoticeOK = n.text, n.ok
 	}
-	h.uiRender(w, http.StatusUnauthorized, d)
+	h.uiRender(w, r, http.StatusUnauthorized, d)
 }
 
 // uiSignIn opens a session for this browser once the person confirms it with
@@ -561,6 +561,10 @@ type uiData struct {
 	// terminal; WarnSetup links it to Start at login.
 	Warn      string
 	WarnSetup bool
+	// Page names the rail item to mark as current; Waiting is the count of
+	// requests waiting for approval, shown on the rail.
+	Page    string
+	Waiting int
 }
 
 func (d *uiData) frame() *uiData { return d }
@@ -584,6 +588,35 @@ func (h *handler) warnBackground(data any) {
 		d.Warn, d.WarnSetup = "wasync stops when its terminal closes.", true
 	case h.info.StartedBy != "":
 		d.Warn = "Not in the background: wasync stops when its terminal closes. Run wasync service restart."
+	}
+}
+
+// railPage names the rail item a page's address marks as current: its first
+// part after /ui/, so a form posted under /ui/setup/ stays on Set up.
+func railPage(path string) string {
+	first, _, _ := strings.Cut(strings.TrimPrefix(path, "/ui/"), "/")
+	switch first {
+	case "chats", "sent", "agents", "approvals", "setup":
+		return first
+	}
+	return ""
+}
+
+// frameFor fills what every signed-in page's frame shows: the background
+// warning, the current rail item and how many requests wait for approval.
+func (h *handler) frameFor(r *http.Request, data any) {
+	h.warnBackground(data)
+	f, ok := data.(framed)
+	if !ok || f.frame().Signedout {
+		return
+	}
+	d := f.frame()
+	d.Page = railPage(r.URL.Path)
+	if h.approvals == nil {
+		return
+	}
+	if account, err := h.store.Account(r.Context()); err == nil && account != nil {
+		d.Waiting = len(h.approvals.PendingList(account.ID))
 	}
 }
 
@@ -629,58 +662,68 @@ func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession)
 	} else if set {
 		data.Mode = "Ask me each time"
 	}
-	h.uiRender(w, http.StatusOK, data)
+	h.uiRender(w, r, http.StatusOK, data)
 }
 
-func (h *handler) uiRender(w http.ResponseWriter, code int, data *uiData) {
-	h.warnBackground(data)
+func (h *handler) uiRender(w http.ResponseWriter, r *http.Request, code int, data *uiData) {
+	h.frameFor(r, data)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(code)
 	_ = uiTemplate.Execute(w, data)
 }
 
-// uiHead is the page frame shared by the approval, setup and chats pages.
-const uiHead = uiHeadBase + uiWideCSS
-
-const uiHeadBase = `{{define "head"}}<!doctype html>
+// uiHead is the page frame every web app page shares: the design system's
+// stylesheets, the icon rail and the notices. Pages carry no styles of their
+// own; components.css holds them all.
+const uiHead = `{{define "head"}}<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 {{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
 <title>{{.Title}}</title>
 <link rel="manifest" href="/ui/manifest.webmanifest"><link rel="icon" href="/ui/favicon.ico" sizes="48x48"><link rel="icon" href="/ui/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/ui/apple-touch-icon.png">
 <meta name="application-name" content="wasync"><meta name="apple-mobile-web-app-title" content="wasync">
-<meta name="theme-color" content="#fafaf7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#141716" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f6f7f5" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#111513" media="(prefers-color-scheme: dark)">
+<link rel="preload" href="/ui/inter.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/ui/tokens.css?v={{tokensv}}"><link rel="stylesheet" href="/ui/components.css?v={{componentsv}}">
 {{if .Script}}<script src="/ui/passkey.js" defer></script>{{end}}
-<style>
-:root{color-scheme:light dark;--bg:#fafaf7;--fg:#1c1f1d;--mut:#5d6660;--card:#fff;--line:#d9ddd8;--acc:#0f7a4a;--bad:#a4262c}
-@media (prefers-color-scheme:dark){:root{--bg:#141716;--fg:#e7ebe8;--mut:#9aa59e;--card:#1c201e;--line:#2c3330;--acc:#4cc38a;--bad:#ff8a8f}}
-body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 system-ui,sans-serif}
-nav{margin:0 0 .6rem}a{color:var(--acc)}
-main{max-width:42rem;margin:0 auto;padding:1.25rem 16px 3rem}
-h1{font-size:1.4rem;margin:.2rem 0 .6rem}h2{font-size:1.05rem;margin:1.8rem 0 .5rem}
-.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1rem;margin:.7rem 0}
-.mut{color:var(--mut)}.ok{color:var(--acc)}.bad{color:var(--bad)}
-label{display:block;margin:.25rem 0}fieldset{border:0;padding:0;margin:.6rem 0}legend{font-weight:600}
-button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;margin-right:.5rem}
-button.go{background:var(--acc);border-color:var(--acc);color:#fff}
-button:disabled{opacity:.55;cursor:default}
-code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
-</style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
-<nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/approvals">Approvals</a> · <a href="/ui/setup">Set up</a></nav>
-{{if .Warn}}<p class="bad" role="status"><strong>{{.Warn}}</strong>{{if .WarnSetup}} <a href="/ui/setup#login">Start at login</a>{{end}}</p>{{end}}{{end}}`
+</head><body class="{{if .Signedout}}bare{{else}}app-shell{{end}}">
+{{if not .Signedout}}{{template "rail" .}}{{end}}<main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
+{{if .Warn}}<p class="notice warn" role="status"><strong>{{.Warn}}</strong>{{if .WarnSetup}} <a href="/ui/setup#login">Start at login</a>{{end}}</p>{{end}}{{end}}
+{{define "notice"}}{{if .Notice}}<p role="status" class="notice {{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}{{end}}
+{{define "rail"}}<nav class="rail" aria-label="wasync">
+<a class="rail-logo" href="/ui/chats" title="{{if .Warn}}{{.Warn}}{{else}}wasync is running{{end}}"><img src="/ui/icon.svg" alt="wasync" width="36" height="36"><span class="rail-dot{{if .Warn}} warn{{end}}"></span></a>
+<a class="rail-i" href="/ui/chats" title="Chats" aria-label="Chats"{{if eq .Page "chats"}} aria-current="page"{{end}}>{{template "icon" "chats"}}</a>
+<a class="rail-i" href="/ui/sent" title="Sent" aria-label="Sent"{{if eq .Page "sent"}} aria-current="page"{{end}}>{{template "icon" "sent"}}</a>
+<a class="rail-i" href="/ui/agents" title="Agents" aria-label="Agents"{{if eq .Page "agents"}} aria-current="page"{{end}}>{{template "icon" "agents"}}</a>
+<a class="rail-i" href="/ui/approvals" title="Approvals{{if .Waiting}}: {{.Waiting}} waiting{{end}}" aria-label="Approvals{{if .Waiting}}, {{.Waiting}} waiting{{end}}"{{if eq .Page "approvals"}} aria-current="page"{{end}}>{{template "icon" "approvals"}}{{if .Waiting}}<span class="rail-badge" aria-hidden="true">{{.Waiting}}</span>{{end}}</a>
+<span class="rail-sp"></span>
+<a class="rail-i" href="/ui/setup" title="Set up and settings" aria-label="Set up and settings"{{if eq .Page "setup"}} aria-current="page"{{end}}>{{template "icon" "settings"}}</a>
+</nav>{{end}}
+` + uiIcons
 
-var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "head" .}}
-<h1>wasync approvals</h1>
-{{if .Signedout}}{{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}{{if .Remote}}
+// uiIcons are the line icons the rail and the chats tools use, drawn inline
+// so they follow the text colour. Each is decorative: its link names it.
+const uiIcons = `{{define "icon"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">{{if eq . "chats"}}<path d="M4 5h16v11H9l-5 4z"/>{{else if eq . "sent"}}<path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/>{{else if eq . "agents"}}<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3.5" r="1"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/>{{else if eq . "approvals"}}<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="m9 12 2 2 4-4"/>{{else if eq . "settings"}}<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>{{else if eq . "all"}}<path d="M4 6h16M4 12h16M4 18h16"/>{{else if eq . "pick"}}<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>{{else if eq . "new"}}<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>{{end}}</svg>{{end}}`
+
+// uiFuncs are the helpers every page template may call.
+var uiFuncs = template.FuncMap{
+	"tokensv":     func() string { return tokensCSSVersion },
+	"componentsv": func() string { return componentsCSSVersion },
+}
+
+var uiTemplate = template.Must(template.New("ui").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
+{{if .Signedout}}<div class="brand-head"><img src="/ui/icon.svg" alt="" width="40" height="40"><h1>wasync approvals</h1></div>
+{{template "notice" .}}<section class="card">{{if .Remote}}
 <p>Signed out. Reload the page.</p>{{else}}
 <p>Signed out.</p>
-{{if .Gate}}<form method="post" action="/ui/signin"><input type="hidden" name="next" value="{{.Next}}"><button class="go">Sign in…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></form>
+{{if .Gate}}<form method="post" action="/ui/signin" class="btn-row"><input type="hidden" name="next" value="{{.Next}}"><button class="go">Sign in…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></form>
 <p class="mut">Or run <code>wasync web</code> in a terminal.</p>{{else}}
-<p>Run <code>wasync web</code> in a terminal to sign in.</p>{{end}}{{end}}
+<p>Run <code>wasync web</code> in a terminal to sign in.</p>{{end}}{{end}}</section>
 {{else}}
-{{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
+<h1>wasync approvals</h1>
+{{template "notice" .}}
 {{if .Gate}}<p class="mut">Every approval here asks you for {{.Gate}} on this {{if .Remote}}device{{else}}computer{{end}}, showing exactly what you are approving. This page cannot approve anything by itself.</p>
-{{else if .Remote}}<p class="bad">To approve from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Or approve on the computer running wasync.</p>
-{{else}}<p class="bad">This computer cannot show a system confirmation, so this page only shows requests. Approve in a terminal with <code>wasync actions approve REQUEST_ID</code>.</p>{{end}}
+{{else if .Remote}}<p class="notice bad">To approve from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Or approve on the computer running wasync.</p>
+{{else}}<p class="notice bad">This computer cannot show a system confirmation, so this page only shows requests. Approve in a terminal with <code>wasync actions approve REQUEST_ID</code>.</p>{{end}}
 <h2>Waiting for you</h2>
 {{range .Pending}}<section class="card">
 <form method="post" action="/ui/decide">
@@ -695,10 +738,10 @@ var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "he
 <label><input type="radio" name="history" value="now" checked> From now on only (no older messages requested)</label>
 <label><input type="radio" name="history" value="full"> Full history (also asks your phone for older messages, best effort)</label></fieldset>{{end}}
 {{else}}<p><strong>{{.Effect}}</strong> <span class="mut">Request {{.Short}}, about {{.Minutes}} min left.</span></p>{{end}}
-{{if or (not .Access) (not .NoMatch)}}{{if $.Gate}}<button class="go" name="action" value="approve">Approve…</button>{{end}}{{end}}
-<button name="action" value="reject">Reject</button>
+<div class="btn-row">{{if or (not .Access) (not .NoMatch)}}{{if $.Gate}}<button class="go" name="action" value="approve">Approve…</button>{{end}}{{end}}
+<button name="action" value="reject">Reject</button></div>
 </form></section>
-{{else}}<p class="mut">Nothing is waiting.</p>{{end}}
+{{else}}<p class="card mut">Nothing is waiting.</p>{{end}}
 <p><a href="/ui/approvals">Refresh</a></p>
 <h2>How agents get chats</h2>
 <section class="card">
@@ -711,7 +754,7 @@ var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "he
 <fieldset><legend>If syncing all chats</legend>
 <label><input type="radio" name="history" value="now" checked> From now on only</label>
 <label><input type="radio" name="history" value="full"> Full history</label></fieldset>
-<button>Save…</button> <span class="mut">Choosing sync all asks you to confirm{{if .Gate}} with {{.Gate}}{{else if .Remote}} on the computer running wasync{{else}} on this computer{{end}}.</span>
+<div class="btn-row"><button>Save…</button> <span class="mut">Choosing sync all asks you to confirm{{if .Gate}} with {{.Gate}}{{else if .Remote}} on the computer running wasync{{else}} on this computer{{end}}.</span></div>
 </form></section>
 {{end}}
 </main></body></html>

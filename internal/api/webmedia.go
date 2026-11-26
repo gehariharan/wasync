@@ -3,7 +3,6 @@ package api
 import (
 	"encoding/json"
 	"fmt"
-	"html/template"
 	"net/http"
 	"net/url"
 	"os"
@@ -30,9 +29,10 @@ type chatAttachment struct {
 	// State is ready, pending (queued or downloading), failed or none.
 	State string
 	// Show says how a ready file appears: img, video, audio or file.
-	Show  string
-	URL   string
-	Ratio template.CSS
+	Show string
+	URL  string
+	// W and H are the pixel size of a photo or video, when known.
+	W, H  int64
 	MsgID string
 }
 
@@ -120,7 +120,7 @@ func attachmentFor(chat string, m storage.Message) *chatAttachment {
 	}
 	if meta.Width > 0 && meta.Height > 0 && (m.Type == "image" || m.Type == "video") {
 		parts = append(parts, fmt.Sprintf("%d×%d", meta.Width, meta.Height))
-		a.Ratio = template.CSS(fmt.Sprintf("%d/%d", meta.Width, meta.Height))
+		a.W, a.H = int64(meta.Width), int64(meta.Height)
 	}
 	if meta.Size > 0 {
 		parts = append(parts, byteSize(meta.Size))

@@ -93,6 +93,9 @@ func TestSetupLinkOpensTheSetupPageAndNothingElse(t *testing.T) {
 	}
 }
 
+// qrImage marks the QR code drawing; the page has other drawings (its icons).
+const qrImage = `aria-label="QR code to scan`
+
 func TestSetupPageShowsTheQRCodeAsAnImageUntilTheScan(t *testing.T) {
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "private")
@@ -114,18 +117,18 @@ func TestSetupPageShowsTheQRCodeAsAnImageUntilTheScan(t *testing.T) {
 	c.get(strings.TrimPrefix(server.NewLink("setup"), server.URL))
 
 	_, page, _ := c.get("/ui/setup")
-	if strings.Contains(page, "<svg") || !strings.Contains(page, "Waiting for WhatsApp") || !strings.Contains(page, `http-equiv="refresh"`) {
+	if strings.Contains(page, qrImage) || !strings.Contains(page, "Waiting for WhatsApp") || !strings.Contains(page, `http-equiv="refresh"`) {
 		t.Fatalf("before any code:\n%s", page)
 	}
 	const secret = "2@PAIRINGSECRETPAIRINGSECRET,abc,def"
 	state.SetQR(secret)
 	_, page, _ = c.get("/ui/setup")
-	if !strings.Contains(page, "<svg") || strings.Contains(page, "PAIRINGSECRET") || !strings.Contains(page, `http-equiv="refresh"`) {
+	if !strings.Contains(page, qrImage) || strings.Contains(page, "PAIRINGSECRET") || !strings.Contains(page, `http-equiv="refresh"`) {
 		t.Fatalf("with a code: the page must show an image, never the code as text:\n%.600s", page)
 	}
 	state.SetFailure("Linking stopped: phone said no")
 	_, page, _ = c.get("/ui/setup")
-	if !strings.Contains(page, "phone said no") || strings.Contains(page, "<svg") || !strings.Contains(page, "Get a new code") {
+	if !strings.Contains(page, "phone said no") || strings.Contains(page, qrImage) || !strings.Contains(page, "Get a new code") {
 		t.Fatalf("after failure:\n%.600s", page)
 	}
 	csrf := csrfOf(t, page)
@@ -151,7 +154,7 @@ func TestSetupPageShowsTheQRCodeAsAnImageUntilTheScan(t *testing.T) {
 	state.SetQR(secret)
 	state.SetPaired()
 	_, page, _ = c.get("/ui/setup")
-	if !strings.Contains(page, "Linked.") || strings.Contains(page, "<svg") || strings.Contains(page, "PAIRINGSECRET") {
+	if !strings.Contains(page, "Linked.") || strings.Contains(page, qrImage) || strings.Contains(page, "PAIRINGSECRET") {
 		t.Fatalf("after pairing:\n%.600s", page)
 	}
 }
@@ -168,7 +171,7 @@ func TestSetupShowsTheCodeAgainForAnArchiveWhoseDeviceWasUnlinked(t *testing.T) 
 	c.get(strings.TrimPrefix(server.NewLink("setup"), server.URL))
 	state.SetQR("2@RELINKCODE,abc,def")
 	_, page, _ := c.get("/ui/setup")
-	if strings.Contains(page, "Linked.") || !strings.Contains(page, "<svg") || strings.Contains(page, `action="/ui/setup/chats"`) {
+	if strings.Contains(page, "Linked.") || !strings.Contains(page, qrImage) || strings.Contains(page, `action="/ui/setup/chats"`) {
 		t.Fatalf("an old archive hid the code to scan:\n%.600s", page)
 	}
 	state.SetPaired()

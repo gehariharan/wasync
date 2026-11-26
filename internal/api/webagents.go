@@ -156,7 +156,7 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 			d.Open.Recent = append(d.Open.Recent, row)
 		}
 	}
-	h.webRender(w, agentsTemplate, d)
+	h.webRender(w, r, agentsTemplate, d)
 }
 
 // chatNames maps chat IDs to the archive's names for them.
@@ -447,10 +447,10 @@ func (h *handler) listResume(w http.ResponseWriter, r *http.Request, name string
 	back("listresume")
 }
 
-var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{template "head" .}}
+var agentsTemplate = template.Must(template.New("agents").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
 <h1>Agents</h1>
-{{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
-{{if not .Open.Gate}}{{if .Remote}}<p class="bad">To give agents more power from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Stopping things works without it.</p>{{else}}<p class="bad">This computer cannot show a system confirmation, so this page is read-only. Anything that gives an agent more power cannot be done here; stopping things still can.</p>{{end}}{{end}}
+{{template "notice" .}}
+{{if not .Open.Gate}}{{if .Remote}}<p class="notice bad">To give agents more power from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Stopping things works without it.</p>{{else}}<p class="notice bad">This computer cannot show a system confirmation, so this page is read-only. Anything that gives an agent more power cannot be done here; stopping things still can.</p>{{end}}{{end}}
 
 <h2>Open sending</h2>
 {{if .Open.On}}
@@ -461,31 +461,31 @@ var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{temp
 {{if .Open.Gate}}<form method="post" action="/ui/agents"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="openon"><button>Turn on for 1 hour…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}.</span></form>{{end}}
 {{end}}
 {{if .Open.Recent}}<h3>Recent open sends</h3>
-<table class="sent"><thead><tr><th>Time</th><th>By</th><th>To</th><th>Outcome</th></tr></thead><tbody>
+<div class="table-wrap"><table class="table"><thead><tr><th>Time</th><th>By</th><th>To</th><th>Outcome</th></tr></thead><tbody>
 {{range .Open.Recent}}<tr{{if .Problem}} class="problem"{{end}}><td>{{.Time}}</td><td>🤖 {{.Who}}</td><td>{{.To}}</td><td>{{.Outcome}}</td></tr>{{end}}
-</tbody></table>{{end}}
+</tbody></table></div>{{end}}
 
 <h2>Approved numbers</h2>
 <p>An agent may message the numbers you approve for it here, and no others: as many new numbers an hour as you choose, spaced at random, one message each until they reply. A number that replies STOP is removed.</p>
-{{if .Lists.Rows}}<table class="sent"><thead><tr><th>Agent</th><th>Numbers</th><th>New an hour</th><th>Ends</th><th></th></tr></thead><tbody>
+{{if .Lists.Rows}}<div class="table-wrap"><table class="table"><thead><tr><th>Agent</th><th>Numbers</th><th>New an hour</th><th>Ends</th><th></th></tr></thead><tbody>
 {{range .Lists.Rows}}<tr><td>🤖 {{.Agent}}{{if .Gone}} <span class="mut">(no longer active)</span>{{end}}{{if .Paused}} <strong class="bad">Paused</strong>{{end}}</td><td>{{.Numbers}} <span class="mut">({{.NotMessaged}} not messaged yet{{if .Stopped}}, {{.Stopped}} removed after STOP{{end}})</span></td><td>{{.PerHour}}</td><td>{{.Until}}</td>
-<td><form method="post" action="/ui/agents" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Agent}}">{{if .Ended}}{{else if not .Paused}}<button name="action" value="listpause">Pause</button>{{else if $.Open.Gate}}<button name="action" value="listresume">Resume…</button>{{end}}<button name="action" value="listoff">Remove list</button></form></td></tr>
-{{end}}</tbody></table>{{end}}
+<td><form method="post" action="/ui/agents" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Agent}}">{{if .Ended}}{{else if not .Paused}}<button name="action" value="listpause">Pause</button>{{else if $.Open.Gate}}<button name="action" value="listresume">Resume…</button>{{end}}<button name="action" value="listoff">Remove list</button></form></td></tr>
+{{end}}</tbody></table></div>{{end}}
 {{if .Open.Gate}}{{if .Lists.Senders}}<form method="post" action="/ui/agents" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="liston">
 <p><label>Agent <select name="agent">{{range .Lists.Senders}}<option>{{.}}</option>{{end}}</select></label></p>
 <p><label>Numbers, one per line, with country code<br><textarea name="numbers" rows="4" cols="40" placeholder="+15551230000"></textarea></label></p>
 <p><label>Or a file (.txt or .csv) <input type="file" name="file" accept=".txt,.csv,text/plain,text/csv"></label></p>
 <p><label>New numbers an hour <select name="rate">{{range .Lists.Paces}}<option>{{.}}</option>{{end}}</select></label> <span class="mut">Spaced at random through the hour.</span></p>
 <p><label>Ends <select name="ends"><option value="1d">in 1 day</option><option value="7d" selected>in 7 days</option><option value="30d">in 30 days</option><option value="none">never (until removed)</option></select></label></p>
-<p><button>Approve list…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}. Approving again replaces the agent's list and keeps who was messaged.</span></p></form>
+<p class="btn-row"><button class="go">Approve list…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}. Approving again replaces the agent's list and keeps who was messaged.</span></p></form>
 {{else}}<p class="mut">Allow sending for an agent first.</p>{{end}}{{end}}
 
 <h2>Agents</h2>
-{{if .Agents}}<table class="sent"><thead><tr><th>Name</th><th>Allowed to</th><th>Sending</th></tr></thead><tbody>
+{{if .Agents}}<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Allowed to</th><th>Sending</th></tr></thead><tbody>
 {{range .Agents}}<tr><td>🤖 {{.Name}}{{if .Expires}} <span class="mut">expires {{.Expires}}</span>{{end}}</td><td>{{.Scopes}}{{if .ReadsAll}} <span class="mut">(reads every chat)</span>{{else}} <span class="mut">({{.Chats}} chat(s) so far)</span>{{end}}</td>
-<td>{{if .CanSend}}On <form method="post" action="/ui/agents" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="stopsend"><input type="hidden" name="agent" value="{{.Name}}"><button>Stop sending</button></form>
-{{else}}Off{{if $.Open.Gate}}{{if not .ReadsAll}} <form method="post" action="/ui/agents" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="allowsend"><input type="hidden" name="agent" value="{{.Name}}"><button>Allow sending…</button></form>{{else}} <span class="mut">reads every chat, so set it up again in a terminal to allow sending</span>{{end}}{{end}}{{end}}</td></tr>
-{{end}}</tbody></table>
+<td>{{if .CanSend}}On <form method="post" action="/ui/agents" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="stopsend"><input type="hidden" name="agent" value="{{.Name}}"><button>Stop sending</button></form>
+{{else}}Off{{if $.Open.Gate}}{{if not .ReadsAll}} <form method="post" action="/ui/agents" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="allowsend"><input type="hidden" name="agent" value="{{.Name}}"><button>Allow sending…</button></form>{{else}} <span class="mut">reads every chat, so set it up again in a terminal to allow sending</span>{{end}}{{end}}{{end}}</td></tr>
+{{end}}</tbody></table></div>
 {{else}}<p class="mut">No agents yet. Add one from <a href="/ui/setup">Set up</a>.</p>{{end}}
 </main></body></html>
 `))

@@ -121,11 +121,11 @@ func (h *handler) setupView(w http.ResponseWriter, r *http.Request, sess uiSessi
 	if tweak != nil {
 		tweak(d)
 	}
-	h.setupRender(w, d)
+	h.setupRender(w, r, d)
 }
 
-func (h *handler) setupRender(w http.ResponseWriter, d *setupData) {
-	h.warnBackground(d)
+func (h *handler) setupRender(w http.ResponseWriter, r *http.Request, d *setupData) {
+	h.frameFor(r, d)
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := setupTemplate.Execute(w, d); err != nil {
 		http.Error(w, "page error", http.StatusInternalServerError)
@@ -241,17 +241,17 @@ func (h *handler) setupService(w http.ResponseWriter, r *http.Request, sess uiSe
 	}
 }
 
-var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{template "head" .}}
+var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
 <h1>Set up wasync</h1>
-{{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
+{{template "notice" .}}
 
 <h2>1. Link WhatsApp</h2>
 <section class="card">
 {{if .Paired}}<p class="ok"><strong>Linked.</strong> wasync is connected to your WhatsApp.</p>
 {{else if .Pairing}}<p>On your phone open <strong>WhatsApp → Linked devices → Link a device</strong> and scan this code. It refreshes by itself.</p>
-<div style="max-width:18rem;margin:.5rem 0">{{.QR}}</div>
+<div class="qr">{{.QR}}</div>
 {{else if .Failure}}<p class="bad">{{.Failure}}</p>
-<form method="post" action="/ui/setup/link"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="go">Get a new code</button></form>
+<form method="post" action="/ui/setup/link" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="go">Get a new code</button></form>
 {{else}}<p class="mut">Waiting for WhatsApp to offer a code… If nothing appears, run <code>wasync setup</code> in a terminal.</p>{{end}}
 </section>
 
@@ -259,9 +259,9 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 <h2>2. Choose chats to sync</h2>
 <section class="card">
 {{if .Syncing}}<p><strong>{{.Syncing}} of {{.Total}} chats are syncing.</strong> They may be left over from before you linked this phone. <a href="/ui/chats/pick">Review them</a>, or start fresh.</p>
-<form method="post" action="/ui/chats/pick"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="action" value="clearall">Start fresh: stop syncing all</button> <a href="/ui/chats/pick">Choose chats…</a></form>
+<form method="post" action="/ui/chats/pick" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="action" value="clearall">Start fresh: stop syncing all</button> <a class="btn" href="/ui/chats/pick">Choose chats…</a></form>
 {{else}}<p>Nothing is syncing yet. wasync keeps only the chats you tick, on this computer. Agents see none of them until you connect one in step 3 and approve what it may read.</p>
-<p><a href="/ui/chats/pick"><strong>Choose chats…</strong></a> {{if .Total}}<span class="mut">{{.Total}} chats found.</span>{{else}}<span class="mut">Chats appear a moment after linking; refresh if none are listed.</span>{{end}}</p>{{end}}
+<p class="btn-row"><a class="btn go" href="/ui/chats/pick">Choose chats…</a> {{if .Total}}<span class="mut">{{.Total}} chats found.</span>{{else}}<span class="mut">Chats appear a moment after linking; refresh if none are listed.</span>{{end}}</p>{{end}}
 </section>
 
 <h2>3. Connect an agent</h2>
@@ -270,9 +270,9 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 {{if .Gate}}
 <form method="post" action="/ui/setup/agent"><input type="hidden" name="csrf" value="{{.CSRF}}">
 <p class="mut">The agent may read only chats you approve, and starts with none. When it asks for one, the request appears under Approvals and you decide. The secret is saved straight to where wasync-axi reads it ({{.AxiPath}}) and is never shown.</p>
-<label>Name <input name="name" value="wasync-axi" maxlength="32" pattern="[a-z0-9-]{1,32}"></label>
+<label>Name <input type="text" name="name" value="wasync-axi" maxlength="32" pattern="[a-z0-9-]{1,32}"></label>
 {{if .HasSavedCred}}<label><input type="checkbox" name="replace" value="yes"> Replace the credential wasync-axi already has saved</label>{{end}}
-<button class="go">Connect…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span>
+<div class="btn-row"><button class="go">Connect…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></div>
 </form>
 {{else if .Remote}}<p class="bad">Connect agents on the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page. Run <code>wasync agents grant wasync-axi --on-demand</code> in a terminal.</p>{{end}}
@@ -285,7 +285,7 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 <p class="mut">Keeps wasync running without a terminal. It is {{.Service}} for your account only.</p>
 <form method="post" action="/ui/setup/service"><input type="hidden" name="csrf" value="{{.CSRF}}">
 {{if .ServiceInstalled}}<p class="ok"><strong>On.</strong>{{if .Warn}} <span class="mut">To move this copy to the background, run <code>wasync service restart</code>.</span>{{end}}</p><button name="action" value="remove">Turn off</button>
-{{else}}{{if .Gate}}<button class="go" name="action" value="install">Turn on…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span>
+{{else}}{{if .Gate}}<div class="btn-row"><button class="go" name="action" value="install">Turn on…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></div>
 {{else if .Remote}}<p class="bad">Turn this on from the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so run <code>wasync service install</code> in a terminal.</p>{{end}}{{end}}
 </form></section>
@@ -295,16 +295,16 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 <h2 id="devices">{{if .Remote}}Approve from this device{{else}}Approve from your other devices{{end}}</h2>
 <section class="card">
 <p class="mut">wasync opens at <code>https://{{.TailnetHost}}/ui/</code> for {{.TailnetLogin}} on your tailnet. A device set up here can approve agents' requests and give agents more power: each time, it shows what you are approving and asks for its passkey (Touch ID, Face ID, Windows Hello or the device's PIN). Only the computer running wasync can add a device.</p>
-{{if .Devices}}<table class="sent"><thead><tr><th>Device</th><th>Added</th><th>Last approved</th><th></th></tr></thead><tbody>
-{{range .Devices}}<tr><td>{{.Name}}</td><td>{{.Added}}</td><td>{{.Used}}</td><td><form method="post" action="/ui/setup/devices" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="{{.ID}}"><button>Remove</button></form></td></tr>
-{{end}}</tbody></table>{{else}}<p>No device is set up yet.</p>{{end}}
+{{if .Devices}}<div class="table-wrap"><table class="table"><thead><tr><th>Device</th><th>Added</th><th>Last approved</th><th></th></tr></thead><tbody>
+{{range .Devices}}<tr><td>{{.Name}}</td><td>{{.Added}}</td><td>{{.Used}}</td><td><form method="post" action="/ui/setup/devices" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="{{.ID}}"><button>Remove</button></form></td></tr>
+{{end}}</tbody></table></div>{{else}}<p>No device is set up yet.</p>{{end}}
 {{if .Remote}}<form method="post" action="/ui/passkey/begin"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<p><label>Code from the computer running wasync <input name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" size="16" maxlength="20" required></label></p>
-<p><label>Name this device <input name="name" maxlength="40" placeholder="My laptop"></label></p>
-<p><button class="go">Set up this device…</button> <span class="mut">Get a code there: open the web app, Set up, Add a device. A device that already has a passkey for wasync (one synced from another device too) needs no setting up.</span></p></form>
+<p><label>Code from the computer running wasync <input type="text" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" size="16" maxlength="20" required></label></p>
+<p><label>Name this device <input type="text" name="name" maxlength="40" placeholder="My laptop"></label></p>
+<p class="btn-row"><button class="go">Set up this device…</button> <span class="mut">Get a code there: open the web app, Set up, Add a device. A device that already has a passkey for wasync (one synced from another device too) needs no setting up.</span></p></form>
 {{else if .DeviceCode}}<p class="ok" role="status">On the other device, open <code>https://{{.TailnetHost}}/ui/setup</code> and enter this code within 10 minutes. It works once.</p>
-<p style="font-size:1.6rem;letter-spacing:.12em"><strong>{{.DeviceCode}}</strong></p>
-{{else if .CanAddDevice}}<form method="post" action="/ui/setup/devices#devices"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="add"><button class="go">Add a device…</button> <span class="mut">Asks you to confirm with {{.Gate}}, then shows a one-time code to enter on the other device.</span></form>
+<p class="code-big"><strong>{{.DeviceCode}}</strong></p>
+{{else if .CanAddDevice}}<form method="post" action="/ui/setup/devices#devices"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="add"><div class="btn-row"><button class="go">Add a device…</button> <span class="mut">Asks you to confirm with {{.Gate}}, then shows a one-time code to enter on the other device.</span></div></form>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so devices cannot be added.</p>{{end}}
 </section>
 {{end}}
