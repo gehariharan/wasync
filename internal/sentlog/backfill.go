@@ -42,11 +42,7 @@ func Backfill(ctx context.Context, dir string, store *storage.Store) (int, error
 			continue
 		}
 		seen[key] = true
-		by := e.Actor
-		if by == Owner {
-			by = ""
-		}
-		missing = append(missing, storage.Message{GroupID: e.Chat, MessageID: e.MessageID, SenderID: account.JID, Timestamp: e.Time, Type: "unknown", FromMe: true, Source: storage.SourceSentLog, SentBy: by})
+		missing = append(missing, storage.Message{GroupID: e.Chat, MessageID: e.MessageID, SenderID: account.JID, Timestamp: e.Time, Type: "unknown", FromMe: true, Source: storage.SourceSentLog, SentBy: e.Actor})
 	}
 	// Apply keeps whatever the archive already has for a message ID and skips
 	// chats that are not captured.

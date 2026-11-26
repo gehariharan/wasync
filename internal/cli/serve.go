@@ -153,11 +153,11 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 				return err
 			}
 		}
-		// Messages earlier releases sent but did not keep go into their chats, once.
+		// List messages earlier releases sent but did not keep go into their chats, once.
 		if n, err := sentlog.Backfill(ctx, cfg.DataDir, store); err != nil {
-			log.Warn("sent messages were not added to their chats; this is tried again at the next start", "error", err)
+			log.Warn("earlier list messages were not added to their chats; this is tried again at the next start", "error", err)
 		} else if n > 0 {
-			log.Info("added earlier sent messages to their chats", "messages", n)
+			log.Info("added earlier list messages to their chats", "messages", n)
 		}
 		var status func() whatsapp.CaptureStatus
 		if live != nil {
