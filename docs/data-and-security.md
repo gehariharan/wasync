@@ -38,14 +38,14 @@ encrypt data at rest.
 | `agents.json` | Agent credentials (hashes only), their scopes and approved chats |
 | `access-mode.json` | Whether agents' chat requests are asked each time or synced all |
 | `pending-approvals.json` | Requests waiting for a person, so a restart does not lose them |
-| `send-lists.json` | Approved phone-number lists for agents, their pacing, and for up to 30 days who a removed list already messaged |
+| `send-lists.json` | Approved phone-number lists for agents, their pacing, the numbers each list dropped after a STOP, and for up to 30 days who a removed list already messaged |
 | `send-record.json` | Kept for good: when each number first and last got a list message, and the numbers that replied STOP (numbers and times only, never message text) |
 | `open-sending.json` | Whether open sending is on, and until when |
 | `tailnet.json` | The tailnet name and Tailscale login allowed to open the web app from other devices ([Tailscale](tailscale.md)); absent when off |
 | `tailnet-devices.json` | Devices set up to approve from the tailnet: each passkey's public key, name and when it was added and last used ([Tailscale](tailscale.md)); never a secret; removed by `wasync tailnet off` |
 | `sent-log.jsonl` | Every send by you or an agent: who, which chat, when, message ID and outcome, never the text |
 | `sent-log-backfill.done` | Empty; says earlier list messages were already added to their chats from the sent log, so that runs only once |
-| `agent-audit.log` | Agent requests, grants, approvals and webhook deliveries: identifiers and outcomes only |
+| `agent-audit.log` | Agent requests, grants, approvals, reads that only an approved list allowed, and webhook deliveries: identifiers and outcomes only |
 | `webhooks.json` | Webhook endpoints and their signing secrets; keep private |
 | `webhook-state.json` | Per-endpoint delivery position (journal sequence and retry timing) |
 | `webhook-deadletter.jsonl` | Events webhooks gave up on: identifiers and outcomes only |

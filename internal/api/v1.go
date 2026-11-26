@@ -116,10 +116,22 @@ func v1Client(r *http.Request) *agentauth.Client {
 // itself. Only scoped agent credentials are accepted; legacy tokens never are.
 // Reads are audited on denial, mutations always; the authenticated client is
 // stored on r.
+//
+// A restricted agent with an approved recipient list may also read, with the
+// read scopes it holds, the chats of the numbers its list messaged (see
+// listReads): those chats are added to the client for this request, and a read
+// of one that only the list allows is authorized and audited as a list read.
 func (h *handler) v1Authorize(w http.ResponseWriter, r *http.Request, id, scope, chat string, mutation bool) bool {
 	var check func(*agentauth.Client) error
 	if scope != "" {
 		check = func(c *agentauth.Client) error {
+			if agentauth.ListReadable(scope) && c.Restricted() && c.HasScope(scope) {
+				allowed := chat == "" || c.AllowsChatScope(scope, chat)
+				c.ListChats = h.listReads(r.Context(), c.ID)
+				if !allowed && c.AllowsChatScope(scope, chat) {
+					return h.agents.AuthorizeListRead(c, scope, chat, r.PathValue("ref"), id)
+				}
+			}
 			return h.agents.AuthorizeAndAudit(c, scope, chat, r.PathValue("ref"), id, mutation)
 		}
 	}

@@ -109,8 +109,18 @@ func (a *Authorizer) AuthorizeListSend(c *Client, chatJID, requestID string) err
 }
 
 func (a *Authorizer) authorizeWideSend(c *Client, chatJID, requestID, event string) error {
-	err := a.checkOpenSend(c, chatJID)
-	entry := AuditEntry{Event: event, Scope: ScopeSend, Chat: chatJID, RequestID: requestID, Outcome: OutcomeAllowed}
+	entry := AuditEntry{Event: event, Scope: ScopeSend, Chat: chatJID, RequestID: requestID}
+	return a.authorizeWide(c, entry, "send", "Ask the person to allow sending for this agent on the Agents page of the wasync web app (wasync web).")
+}
+
+// authorizeWide checks a request the caller allowed by something other than
+// the agent's chat allowlist (open sending, or its approved recipient list):
+// the credential must still be active and hold entry.Scope, and the request
+// consumes one rate-limit token. The attempt is audited either way, and an
+// allowed one is refused when the audit log cannot be written.
+func (a *Authorizer) authorizeWide(c *Client, entry AuditEntry, what, missingHelp string) error {
+	err := a.checkWide(c, entry.Scope, entry.Chat, missingHelp)
+	entry.Outcome = OutcomeAllowed
 	if c != nil {
 		entry.ClientID, entry.ClientName = c.ID, c.Name
 	}
@@ -124,12 +134,12 @@ func (a *Authorizer) authorizeWideSend(c *Client, chatJID, requestID, event stri
 		if err != nil {
 			return err
 		}
-		return fmt.Errorf("audit log unavailable; send refused: %w", auditErr)
+		return fmt.Errorf("audit log unavailable; %s refused: %w", what, auditErr)
 	}
 	return err
 }
 
-func (a *Authorizer) checkOpenSend(c *Client, chatJID string) error {
+func (a *Authorizer) checkWide(c *Client, scope, chatJID, missingHelp string) error {
 	if c == nil {
 		return unauthorized("agent credential required")
 	}
@@ -144,12 +154,12 @@ func (a *Authorizer) checkOpenSend(c *Client, chatJID string) error {
 		return unauthorized("agent credential is no longer valid")
 	}
 	current := r.Client
-	if !current.HasScope(ScopeSend) {
-		return &Error{Code: CodeForbidden, Status: 403, Scope: ScopeSend, Chat: chatJID, Message: fmt.Sprintf("client %s lacks scope %s", current.Name, ScopeSend), Help: "Ask the person to allow sending for this agent on the Agents page of the wasync web app (wasync web)."}
+	if !current.HasScope(scope) {
+		return &Error{Code: CodeForbidden, Status: 403, Scope: scope, Chat: chatJID, Message: fmt.Sprintf("client %s lacks scope %s", current.Name, scope), Help: missingHelp}
 	}
 	if wait := a.take(current, now); wait > 0 {
 		seconds := int(wait.Seconds()) + 1
-		return &Error{Code: CodeRateLimited, Status: 429, Scope: ScopeSend, Chat: chatJID, RetryAfter: wait, Message: fmt.Sprintf("client %s exceeded %d requests per minute", current.Name, current.RatePerMinute), Help: fmt.Sprintf("Retry after %ds.", seconds)}
+		return &Error{Code: CodeRateLimited, Status: 429, Scope: scope, Chat: chatJID, RetryAfter: wait, Message: fmt.Sprintf("client %s exceeded %d requests per minute", current.Name, current.RatePerMinute), Help: fmt.Sprintf("Retry after %ds.", seconds)}
 	}
 	return nil
 }

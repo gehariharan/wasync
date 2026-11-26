@@ -640,3 +640,43 @@ func mustActive(t *testing.T, dir, name string) *Client {
 	}
 	return c
 }
+
+func TestListChatsAllowOnlyTheReadScopesTheCredentialHolds(t *testing.T) {
+	dir := privateDir(t)
+	cred, _ := grant(t, dir, GrantRequest{Name: "lister", Scopes: []string{"read.messages,read.media,send"}, OnDemand: true})
+	a := NewAuthorizer(dir)
+	c, err := a.Authenticate("Bearer " + cred)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.ListChats = []string{chatA}
+	if !c.AllowsChat(chatA) || c.AllowsChat(chatB) || strings.Join(c.AllowedChats(), ",") != chatA {
+		t.Fatalf("list chat visibility: %+v", c)
+	}
+	for scope, want := range map[string]bool{ScopeReadMessages: true, ScopeReadChats: true, ScopeReadMedia: false, ScopeSend: false, ScopeObserve: false} {
+		if c.AllowsChatScope(scope, chatA) != want {
+			t.Fatalf("%s on a list chat: want %v", scope, want)
+		}
+	}
+	if err = a.AuthorizeListRead(c, ScopeReadMessages, chatA, "ref1", "req1"); err != nil {
+		t.Fatalf("list read: %v", err)
+	}
+	// It holds no read.chats, and media is never a list read.
+	if code(a.AuthorizeListRead(c, ScopeReadChats, chatA, "", "req2")) != CodeForbidden || code(a.AuthorizeListRead(c, ScopeReadMedia, chatA, "", "req3")) != CodeForbidden {
+		t.Fatal("a list read went beyond the read scopes the credential holds")
+	}
+	entries := readAudit(t, filepath.Join(dir, AuditFileName))
+	if len(entries) != 3 || entries[0]["event"] != "read_list" || entries[0]["outcome"] != OutcomeAllowed || entries[0]["chat"] != chatA || entries[0]["ref"] != "ref1" || entries[1]["outcome"] != OutcomeDenied || entries[2]["outcome"] != OutcomeDenied {
+		t.Fatalf("audit: %+v", entries)
+	}
+	// ListChats are never stored with the client.
+	if got := mustActive(t, dir, "lister"); len(got.ListChats) != 0 {
+		t.Fatalf("stored list chats: %+v", got)
+	}
+	if _, err = Revoke(dir, "lister", time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if code(a.AuthorizeListRead(c, ScopeReadMessages, chatA, "", "req4")) != CodeUnauthorized {
+		t.Fatal("a revoked agent read its list chat")
+	}
+}

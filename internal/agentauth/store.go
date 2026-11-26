@@ -55,6 +55,13 @@ type Client struct {
 	CreatedAt     time.Time   `json:"created_at"`
 	ExpiresAt     *time.Time  `json:"expires_at,omitempty"`
 	RevokedAt     *time.Time  `json:"revoked_at,omitempty"`
+
+	// ListChats are the chats this agent may read, with the read scopes
+	// ListReadable allows and it holds, because of the approved recipient
+	// list the person gave it: the numbers the list messaged and the
+	// hidden-address chats linked to them. The server works them out afresh
+	// for each read request and sets them only there; they are never stored.
+	ListChats []string `json:"-"`
 }
 
 // HasScope reports whether the client was granted scope.
@@ -91,18 +98,18 @@ func contains(list []string, item string) bool {
 }
 
 // AllowsChat reports whether chat is visible to this client: true for every
-// chat when the client is not restricted, otherwise for pre-approved and
-// granted chats. List handlers use it to filter rows.
+// chat when the client is not restricted, otherwise for pre-approved, granted
+// and list chats. List handlers use it to filter rows.
 func (c *Client) AllowsChat(chat string) bool {
 	if !c.Restricted() {
 		return true
 	}
-	return contains(c.Chats, chat) || c.grantFor(chat) != nil
+	return contains(c.Chats, chat) || c.grantFor(chat) != nil || contains(c.ListChats, chat)
 }
 
 // AllowsChatScope reports whether scope may be used on chat. A pre-approved
 // chat allows every scope the client holds; a granted chat only the scopes the
-// human approved for it. Unrestricted clients may use scopes that need no allowlist.
+// human approved for it; a list chat only the read scopes ListReadable allows. Unrestricted clients may use scopes that need no allowlist.
 func (c *Client) AllowsChatScope(scope, chat string) bool {
 	if contains(c.Chats, chat) {
 		return true
@@ -110,10 +117,13 @@ func (c *Client) AllowsChatScope(scope, chat string) bool {
 	if g := c.grantFor(chat); g != nil && contains(g.Scopes, scope) {
 		return true
 	}
+	if ListReadable(scope) && contains(c.ListChats, chat) {
+		return true
+	}
 	return !c.Restricted() && !RequiresAllowlist(scope)
 }
 
-// AllowedChats lists every pre-approved and granted chat, sorted. Together with
+// AllowedChats lists every pre-approved, granted and list chat, sorted. Together with
 // Restricted it tells list queries which chats to include: an empty result for a
 // restricted client means no chats, not all of them.
 func (c *Client) AllowedChats() []string {
@@ -129,6 +139,12 @@ func (c *Client) AllowedChats() []string {
 		if !seen[g.Chat] {
 			seen[g.Chat] = true
 			out = append(out, g.Chat)
+		}
+	}
+	for _, chat := range c.ListChats {
+		if !seen[chat] {
+			seen[chat] = true
+			out = append(out, chat)
 		}
 	}
 	sort.Strings(out)

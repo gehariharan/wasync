@@ -160,6 +160,32 @@ func (h *handler) dropStopped(ctx context.Context, now time.Time, agentID string
 	return sendlist.OptOut(h.dataDir, stops)
 }
 
+// listReads returns the chats agentID may read because of its approved
+// recipient list in force: the numbers on it that a list messaged, those
+// dropped after they replied STOP, and the hidden-address chats the archive
+// links to those numbers. A paused list still counts, so replies can be read;
+// a removed or expired one does not. A problem reading the list gives no
+// chats, and one reading the archive leaves out the hidden-address chats, so
+// an error never widens access.
+func (h *handler) listReads(ctx context.Context, agentID string) []string {
+	list, ok := sendlist.For(h.dataDir, agentID, time.Now())
+	if !ok {
+		return nil
+	}
+	chats := list.Messaged()
+	if len(chats) == 0 || h.store == nil {
+		return chats
+	}
+	account, err := h.store.Account(ctx)
+	if err != nil || account == nil {
+		return chats
+	}
+	if linked, err := h.store.PersonChats(ctx, account.ID, chats); err == nil {
+		return linked
+	}
+	return chats
+}
+
 // retryLater answers 429 with a Retry-After when the time is known.
 func retryLater(w http.ResponseWriter, id string, at time.Time, message, help string) {
 	if wait := time.Until(at); wait > 0 {

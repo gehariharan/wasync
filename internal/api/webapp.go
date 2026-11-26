@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -147,13 +148,17 @@ func shortTime(t time.Time) string {
 	return t.Format("2 Jan 15:04")
 }
 
-// readingAgents lists the active agents that may read message text.
-func (h *handler) readingAgents() []agentauth.Client {
+// readingAgents lists the active agents that may read message text, with
+// the chats their approved recipient lists let them read.
+func (h *handler) readingAgents(ctx context.Context) []agentauth.Client {
 	clients, _ := agentauth.List(h.dataDir)
 	now := time.Now()
 	var out []agentauth.Client
 	for _, c := range clients {
 		if c.Status(now) == "active" && c.HasScope(agentauth.ScopeReadMessages) {
+			if c.Restricted() {
+				c.ListChats = h.listReads(ctx, c.ID)
+			}
 			out = append(out, c)
 		}
 	}
@@ -214,7 +219,7 @@ func (h *handler) chatsView(w http.ResponseWriter, r *http.Request, sess uiSessi
 		}
 		return a.LastMessage.After(*b.LastMessage)
 	})
-	agents := h.readingAgents()
+	agents := h.readingAgents(r.Context())
 	d.All = r.URL.Query().Get("all") == "1"
 	want := r.URL.Query().Get("c")
 	d.New = newMessage
