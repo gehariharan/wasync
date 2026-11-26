@@ -310,8 +310,12 @@ func TestConnectRefusesASettingsFileItCannotEdit(t *testing.T) {
 	if !strings.Contains(page, "cannot change") || strings.Contains(page, `name="digest"`) {
 		t.Fatalf("preview:\n%s", page)
 	}
-	if _, _, hd := c.post("/ui/setup/connect", url.Values{"csrf": {csrf}, "agent": {"claude-code"}, "digest": {"x"}}); !strings.Contains(hd.Get("Location"), "n=connectfail") {
+	_, _, hd := c.post("/ui/setup/connect", url.Values{"csrf": {csrf}, "agent": {"claude-code"}, "digest": {"x"}})
+	if !strings.Contains(hd.Get("Location"), "n=connectfail") {
 		t.Fatalf("connect: %v", hd)
+	}
+	if _, page, _ := c.get(hd.Get("Location")); !strings.Contains(page, "cannot change") {
+		t.Fatalf("the page the failure returns to does not show the preview's reason:\n%s", page)
 	}
 	if len(f.stub.seen()) != 0 {
 		t.Fatal("asked the person to approve a change that cannot be made")

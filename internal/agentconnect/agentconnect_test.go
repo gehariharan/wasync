@@ -262,19 +262,31 @@ func TestWriteBacksUpAndRefusesAChangedFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	write(t, path, `{"a": 2}`)
+	write(t, path, `{"a": 1, "mcpServers": {"whatsapp": {"command": "other"}}}`)
 	if _, err := e.Write(p); !errors.Is(err, ErrChanged) {
 		t.Fatalf("err = %v, want ErrChanged", err)
 	}
+	if got := read(t, path); got != `{"a": 1, "mcpServers": {"whatsapp": {"command": "other"}}}` {
+		t.Fatalf("refused write changed the file: %s", got)
+	}
+	write(t, path, `{"a": 1}`)
 	if p, err = e.PlanConnect(agent(ClaudeDesktop), testEntry); err != nil {
 		t.Fatal(err)
 	}
+	write(t, path, `{"a": 2}`)
 	bak, err := e.Write(p)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bak != path+".wasync-backup-20261126-100000" || read(t, bak) != `{"a": 2}` {
 		t.Fatalf("backup %s = %q", bak, read(t, bak))
+	}
+	var got struct {
+		A          int                       `json:"a"`
+		MCPServers map[string]map[string]any `json:"mcpServers"`
+	}
+	if err := json.Unmarshal([]byte(read(t, path)), &got); err != nil || got.A != 2 || !testEntry.matches(got.MCPServers[ServerName]) {
+		t.Fatalf("after a change elsewhere, file = %s (err %v)", read(t, path), err)
 	}
 	if info, _ := os.Stat(path); runtime.GOOS != "windows" && info.Mode().Perm() != 0o644 {
 		t.Fatalf("mode = %v, want the file's own 0644", info.Mode())

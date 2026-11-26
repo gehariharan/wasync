@@ -87,31 +87,38 @@ type Plan struct {
 	Removed string
 	// Added is the exact text put in.
 	Added string
-	// Digest identifies the file and the change, so what is written is what
-	// was shown.
+	// Digest identifies the file and the entry change, so what is written
+	// is what was shown. The rest of the file is not part of it: the app may
+	// rewrite its other settings in the meantime, and those bytes are kept.
 	Digest string
 
-	file  file
-	after []byte
+	file    file
+	after   []byte
+	set     *Entry
+	restore string
 }
 
 // Changes reports whether writing the plan would change the file.
 func (p Plan) Changes() bool { return string(p.after) != string(p.file.Data) }
 
-func digest(f file, after []byte) string {
+func (p Plan) digest() string {
 	h := sha256.New()
-	h.Write([]byte(f.Target))
-	h.Write([]byte{0})
-	h.Write(f.Data)
-	h.Write([]byte{0})
-	h.Write(after)
+	for _, s := range []string{p.file.Target, fmt.Sprint(p.Exists), p.Removed, p.Added} {
+		h.Write([]byte(s))
+		h.Write([]byte{0})
+	}
 	return hex.EncodeToString(h.Sum(nil))[:24]
+}
+
+// sameChange reports whether q makes the change p showed.
+func (p Plan) sameChange(q Plan) bool {
+	return p.file.Target == q.file.Target && p.Exists == q.Exists && p.Removed == q.Removed && p.Added == q.Added
 }
 
 // edit applies set (nil only removes wasync's entry, restore puts back an
 // entry text that was there before) to agent a's settings file at path.
 func (e Env) edit(a Agent, path string, set *Entry, restore string) (Plan, error) {
-	p := Plan{Agent: a, Path: path}
+	p := Plan{Agent: a, Path: path, set: set, restore: restore}
 	f, err := readFile(p.Path)
 	if err != nil {
 		return p, fmt.Errorf("wasync cannot read %s: %w", p.Path, err)
@@ -164,7 +171,7 @@ func (e Env) edit(a Agent, path string, set *Entry, restore string) (Plan, error
 	default:
 		return p, fmt.Errorf("unknown agent %q", a.Kind)
 	}
-	p.Digest = digest(f, p.after)
+	p.Digest = p.digest()
 	return p, nil
 }
 
@@ -226,24 +233,30 @@ func Wrote(c Connection) bool {
 	return err == nil && c.Entry.matches(cur)
 }
 
-// Write makes the change p describes, after backing up the file. It refuses
-// when the file changed since the plan was made. It returns the backup's
-// path ("" when the file did not exist).
+// Write makes the change p describes, after backing up the file. It plans
+// the change again against the file as it is now, keeping whatever else
+// changed in it, and refuses when the entry it would take out or put in is
+// not exactly what p showed. It returns the backup's path ("" when the file
+// did not exist).
 func (e Env) Write(p Plan) (backupPath string, err error) {
-	f, err := readFile(p.Path)
-	if err != nil {
-		return "", err
-	}
-	if f.Target != p.file.Target || string(f.Data) != string(p.file.Data) || f.Exists != p.file.Exists {
-		return "", ErrChanged
-	}
 	if !p.Changes() {
 		return "", nil
 	}
+	q, err := e.edit(p.Agent, p.Path, p.set, p.restore)
+	if err != nil {
+		return "", err
+	}
+	if !p.sameChange(q) {
+		return "", ErrChanged
+	}
+	if !q.Changes() {
+		return "", nil
+	}
+	f := q.file
 	if backupPath, err = backup(f, e.now().UTC().Format("20060102-150405")); err != nil {
 		return "", err
 	}
-	if err := writeAtomic(f.Target, p.after, f.Mode); err != nil {
+	if err := writeAtomic(f.Target, q.after, f.Mode); err != nil {
 		return backupPath, fmt.Errorf("write %s: %w", p.Path, err)
 	}
 	return backupPath, nil

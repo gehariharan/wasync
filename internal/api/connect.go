@@ -274,7 +274,7 @@ func (h *handler) setupConnections(w http.ResponseWriter, r *http.Request, sess 
 func (h *handler) connectBack(w http.ResponseWriter, r *http.Request, notice, kind string) {
 	to := "/ui/setup?n=" + url.QueryEscape(notice)
 	if kind != "" {
-		to += "&agent=" + url.QueryEscape(kind)
+		to += "&connect=" + url.QueryEscape(kind)
 	}
 	http.Redirect(w, r, to+"#connect", http.StatusSeeOther)
 }
@@ -367,17 +367,7 @@ func (h *handler) connect(ctx context.Context, p *connectPlan, req agentauth.Gra
 	undoPlugin := func() {
 		_ = env.RemoveCodexPlugin(ctx, h.dataDir, conn.CodexMarketplace, conn.CodexPlugin)
 	}
-	// Codex rewrites its config.toml while adding the plugin, so the entry is
-	// planned again; it is the same entry the person confirmed.
-	file := p.file
-	if conn.CodexMarketplace || conn.CodexPlugin {
-		if file, err = env.PlanConnect(p.agent, p.entry); err != nil {
-			undoPlugin()
-			undoCredential()
-			return "connectfail", err
-		}
-	}
-	if conn.Backup, err = env.Write(file); err != nil {
+	if conn.Backup, err = env.Write(p.file); err != nil {
 		undoPlugin()
 		undoCredential()
 		if errors.Is(err, agentconnect.ErrChanged) {
@@ -385,7 +375,7 @@ func (h *handler) connect(ctx context.Context, p *connectPlan, req agentauth.Gra
 		}
 		return "connectfail", err
 	}
-	conn.Previous = file.Previous()
+	conn.Previous = p.file.Previous()
 	if err := agentconnect.Save(h.dataDir, conn); err != nil {
 		if undo, _, perr := env.PlanDisconnect(conn); perr == nil {
 			_, _ = env.Write(undo)
