@@ -52,16 +52,48 @@ lasts 30 minutes after the page you last opened; after that, opening any page si
 ## What works remotely
 
 Reading chats, sending as yourself, the Sent page, choosing which chats sync, downloads and
-anything that narrows access (stopping an agent's sending, removing a list, turning open sending
-off, rejecting a request) work as they do locally.
+anything that narrows access (stopping an agent's sending, pausing or removing a list, turning
+open sending off, rejecting a request) work as they do locally.
 
-Anything that needs the operating system's confirmation prompt does not: approving an agent's
-request, sync all chats, letting an agent send, open sending, approving a list, connecting an
-agent and start at login. That prompt appears on the computer running wasync, where nobody at
-the other computer can answer it, so the remote page says to do it there instead.
+Anything that asks for the operating system's confirmation on the computer running wasync needs
+a passkey on the device you are using instead: approving an agent's request, sync all chats,
+letting an agent send, open sending, approving or resuming a list, connecting an agent and start
+at login. Until you set the device up (below), the remote pages show these as read-only and say
+how to set it up; you can still do them on the computer running wasync.
 
 Only the web app is served on the tailnet name. The API, `/api/v1` and everything agents and
 the CLI use stay on the loopback address, and agent credentials work there exactly as before.
+
+## Approve from another device
+
+Set each device up once. You need the computer running wasync for it, so that nobody who only
+reaches your tailnet, and no program on that computer, can add a device:
+
+1. On the computer running wasync, open the web app (`wasync web`), go to **Set up** and choose
+   **Add a device** under *Approve from your other devices*. Confirm the system prompt (Touch ID
+   or your password). The page shows a one-time code, such as `K7QP-M2XD-9HTA`. It works once,
+   for 10 minutes.
+2. On the other device, open `https://machine.example.ts.net/ui/setup`, enter the code and a
+   name for the device, and choose **Set up this device**. Your browser makes a passkey for
+   wasync and asks you to confirm with Touch ID, Face ID, Windows Hello or the device's PIN.
+
+From then on, an approval on that device opens a page that shows the same sentence the system
+prompt on the computer would, and **Confirm with passkey** asks for the passkey. Nothing changes
+until you confirm, and a page you leave expires after 5 minutes.
+
+A passkey your password manager syncs (for example iCloud Keychain to your iPhone) works on
+those devices too, since each of them still asks for your face, fingerprint or PIN. A phone
+nearby can also answer for a computer through the browser's "use a phone" option.
+
+The Set up page on either computer lists the devices, when each was added and last used, with a
+**Remove** button that takes effect at once and needs no confirmation. `wasync tailnet status`
+lists them too. Allowing another tailnet name or login forgets the devices set up for the old
+one, and `wasync tailnet off` forgets them all.
+
+Adding a device needs the system prompt, so on a computer that cannot show one (Linux, or a
+session with no screen) devices cannot be added. The terminal commands (`wasync agents grant`
+and `revoke`, `wasync tailnet allow`, `wasync actions approve` and the rest) are unchanged and
+work only on the computer running wasync.
 
 ## Who counts as you
 
@@ -87,6 +119,10 @@ same header. Programs running as you can already read your archive, but other ac
 computer could use that to open the web app. Turn this on only on a computer where you are the
 only user.
 
+That is also why the login alone never approves anything. Approvals from another device need a
+passkey that only that device holds, set up with a code that only the computer running wasync
+shows after its own system prompt. A program that sends the header itself has neither.
+
 ## Turn it off
 
 ```sh
@@ -94,6 +130,6 @@ wasync tailnet off
 tailscale serve --https=443 off
 ```
 
-`wasync tailnet off` takes effect at once: the tailnet name is refused again and existing remote
-sessions stop working. The second command stops sharing the port (`tailscale serve reset`
+`wasync tailnet off` takes effect at once: the tailnet name is refused again, existing remote
+sessions stop working and every device set up to approve is forgotten. The second command stops sharing the port (`tailscale serve reset`
 removes everything `tailscale serve` shares). `wasync tailnet status` shows the setting.

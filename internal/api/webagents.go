@@ -22,10 +22,11 @@ import (
 // sending switch and the approved recipient lists. Widening what an agent may
 // do (letting it send, turning open sending on, approving a list) ends in the
 // operating system's confirmation prompt, like every other approval in the web
-// app, and is read-only on a computer that cannot show one. Resuming a paused
-// list widens it again, so it asks too. Narrowing (stopping sending, turning
-// open sending off, pausing or removing a list) needs no prompt: stopping is
-// always safe.
+// app (or, from another device on the tailnet, in that device's passkey), and
+// is read-only where neither is available. Resuming a paused list widens it
+// again, so it asks too. Narrowing (stopping sending, turning open sending
+// off, pausing or removing a list) needs no confirmation: stopping is always
+// safe.
 
 type agentRow struct {
 	Name, Scopes string
@@ -121,10 +122,8 @@ func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSess
 			d.Lists.Rows = append(d.Lists.Rows, row)
 		}
 	}
-	d.Open = openView{Gate: h.gate(r).Enabled(), MaxMessages: opensend.MaxMessages, MaxNew: opensend.MaxNewNumbers, Cap: opensend.MaxMessages, NewCap: opensend.MaxNewNumbers}
-	if d.Open.Gate {
-		d.Open.GateName = h.human.Name()
-	}
+	d.Open = openView{GateName: h.confirmName(r), MaxMessages: opensend.MaxMessages, MaxNew: opensend.MaxNewNumbers, Cap: opensend.MaxMessages, NewCap: opensend.MaxNewNumbers}
+	d.Open.Gate = d.Open.GateName != ""
 	if state, on := opensend.ActiveNow(h.dataDir, now); on {
 		d.Open.On = true
 		d.Open.Until = state.Until.Local().Format("15:04")
@@ -230,7 +229,7 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 			back("sendoff")
 			return
 		}
-		if !h.gate(r).Enabled() {
+		if !h.canConfirm(r) {
 			back(noGate(r))
 			return
 		}
@@ -259,7 +258,7 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 			where = fmt.Sprintf("the %d chat(s) it can already reach, and any you approve later", len(target.Chats))
 		}
 		if err := h.confirmError(r.Context(), "Approve: let the agent "+agentauth.QuotedName(name)+" send messages in "+where); err != nil {
-			back(noticeFor(err))
+			h.uiRefused(w, r, err, back)
 			return
 		}
 		if _, err := agentauth.AddScope(h.dataDir, name, agentauth.ScopeSend, time.Now()); err != nil {
@@ -269,12 +268,12 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 		audit("scope_add", name)
 		back("sendon")
 	case "openon":
-		if !h.gate(r).Enabled() {
+		if !h.canConfirm(r) {
 			back(noGate(r))
 			return
 		}
 		if err := h.confirmError(r.Context(), "Approve: "+opensend.Effect()); err != nil {
-			back(noticeFor(err))
+			h.uiRefused(w, r, err, back)
 			return
 		}
 		if _, err := opensend.Start(h.dataDir, time.Now()); err != nil {
@@ -314,7 +313,7 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 		audit("send_list_off", name)
 		back("listoff")
 	case "listresume":
-		h.listResume(name, r, back, audit)
+		h.listResume(w, r, name, back, audit)
 	case "openoff":
 		if err := opensend.Stop(h.dataDir); err != nil {
 			back("failed")
@@ -329,7 +328,7 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 
 // listOn approves a recipient list for one agent after the system confirmation.
 func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, back func(string), audit func(string, string)) {
-	if !h.gate(r).Enabled() {
+	if !h.canConfirm(r) {
 		back(noGate(r))
 		return
 	}
@@ -354,6 +353,9 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 		}
 		text += "\n" + string(data)
 	}
+	// A confirmation from another device runs this form again from what is
+	// kept here, with the file's numbers already in it.
+	r.PostForm.Set("numbers", text)
 	chats, bad := sendlist.Parse(text)
 	switch {
 	case bad != "":
@@ -379,7 +381,7 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 	list := sendlist.List{AgentID: target.ID, Agent: target.Name, GrantedAt: now.UTC(), PerHour: perHour}
 	ends := "until you remove it"
 	if end > 0 {
-		until := now.Add(end).UTC().Truncate(time.Second)
+		until := askedAt(r).Add(end).UTC().Truncate(time.Second)
 		list.Until = &until
 		ends = "until " + until.Local().Format("2 Jan 15:04")
 	}
@@ -396,7 +398,7 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 	}
 	prompt := fmt.Sprintf("Approve: let the agent %s message these %d number(s), and no others, %s: %s. At most %d new numbers an hour, spaced at random, one message each until they reply.", agentauth.QuotedName(name), len(chats), ends, examples, perHour)
 	if err = h.confirmError(r.Context(), prompt); err != nil {
-		back(noticeFor(err))
+		h.uiRefused(w, r, err, back)
 		return
 	}
 	for _, c := range chats {
@@ -411,8 +413,8 @@ func (h *handler) listOn(w http.ResponseWriter, r *http.Request, name string, ba
 }
 
 // listResume lets a paused list send again after the system confirmation.
-func (h *handler) listResume(name string, r *http.Request, back func(string), audit func(string, string)) {
-	if !h.gate(r).Enabled() {
+func (h *handler) listResume(w http.ResponseWriter, r *http.Request, name string, back func(string), audit func(string, string)) {
+	if !h.canConfirm(r) {
 		back(noGate(r))
 		return
 	}
@@ -434,7 +436,7 @@ func (h *handler) listResume(name string, r *http.Request, back func(string), au
 	}
 	prompt := fmt.Sprintf("Approve: let the agent %s message the %d number(s) on its list again (%d not messaged yet), at most %d new numbers an hour.", agentauth.QuotedName(name), len(list.Numbers), list.NotMessaged(), list.NewPerHour())
 	if err = h.confirmError(r.Context(), prompt); err != nil {
-		back(noticeFor(err))
+		h.uiRefused(w, r, err, back)
 		return
 	}
 	if err = sendlist.Pause(h.dataDir, list.AgentID, false, now); err != nil {
@@ -448,7 +450,7 @@ func (h *handler) listResume(name string, r *http.Request, back func(string), au
 var agentsTemplate = template.Must(template.New("agents").Parse(uiHead + `{{template "head" .}}
 <h1>Agents</h1>
 {{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
-{{if not .Open.Gate}}{{if .Remote}}<p class="bad">Read-only from another computer. Stopping things still works.</p>{{else}}<p class="bad">This computer cannot show a system confirmation, so this page is read-only. Anything that gives an agent more power cannot be done here; stopping things still can.</p>{{end}}{{end}}
+{{if not .Open.Gate}}{{if .Remote}}<p class="bad">To give agents more power from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Stopping things works without it.</p>{{else}}<p class="bad">This computer cannot show a system confirmation, so this page is read-only. Anything that gives an agent more power cannot be done here; stopping things still can.</p>{{end}}{{end}}
 
 <h2>Open sending</h2>
 {{if .Open.On}}

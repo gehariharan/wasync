@@ -22,8 +22,9 @@ Open the web app from your other computers on your Tailscale network, through
           that counts as you (for example you@example.com). Give each once.
           Human only: needs an interactive terminal, typing ALLOW and, where
           available, the system prompt; there is no --yes.
-  off     Stop answering on the tailnet name at once.
-  status  Show the setting.
+  off     Stop answering on the tailnet name at once, and forget every
+          device set up to approve from there.
+  status  Show the setting and the devices set up to approve.
 
 Then share the loopback address with your tailnet over HTTPS (never use
 tailscale funnel, which would make it public):
@@ -31,8 +32,10 @@ tailscale funnel, which would make it public):
   tailscale serve --bg http://127.0.0.1:8787
 
 and open https://NAME/ui/ on the other computer. Approvals, giving an agent
-more power and start at login still need the computer running wasync. To stop
-sharing, run wasync tailnet off and tailscale serve --https=443 off.
+more power and start at login need a passkey on that device: set it up once
+with a one-time code from the web app's Set up page on this computer (Add a
+device). Until then they need this computer. To stop sharing, run wasync
+tailnet off and tailscale serve --https=443 off.
 `
 
 func (a *App) runTailnet(ctx context.Context, cfg config.Config, args []string) error {
@@ -57,8 +60,24 @@ func (a *App) runTailnet(ctx context.Context, cfg config.Config, args []string) 
 			_, err = fmt.Fprintln(a.Out, "tailnet access: off")
 			return err
 		}
-		_, err = fmt.Fprintf(a.Out, "tailnet access: on\nhost: %s\nlogin: %s\n", s.Host, s.Login)
-		return err
+		all, err := tailnet.LoadDevices(cfg.DataDir)
+		if err != nil {
+			return err
+		}
+		devices := s.For(all)
+		if _, err = fmt.Fprintf(a.Out, "tailnet access: on\nhost: %s\nlogin: %s\ndevices that approve with a passkey: %d\n", s.Host, s.Login, len(devices)); err != nil {
+			return err
+		}
+		for _, d := range devices {
+			used := "never used"
+			if d.UsedAt != nil {
+				used = "last used " + d.UsedAt.Local().Format("2 Jan 2006 15:04")
+			}
+			if _, err = fmt.Fprintf(a.Out, "  %s (added %s, %s)\n", d.Name, d.AddedAt.Local().Format("2 Jan 2006"), used); err != nil {
+				return err
+			}
+		}
+		return nil
 	case "off":
 		if len(args) != 1 {
 			break
@@ -67,7 +86,10 @@ func (a *App) runTailnet(ctx context.Context, cfg config.Config, args []string) 
 			return err
 		}
 		_ = agentauth.NewAuditLog(cfg.DataDir).Append(agentauth.AuditEntry{Event: "tailnet_off", Outcome: agentauth.OutcomeAllowed})
-		_, err := fmt.Fprintln(a.Out, "tailnet access: off. Also stop sharing with: tailscale serve --https=443 off")
+		if err := tailnet.RemoveDevices(cfg.DataDir); err != nil {
+			return fmt.Errorf("tailnet access is off, but the devices set up to approve could not be forgotten: %w", err)
+		}
+		_, err := fmt.Fprintln(a.Out, "tailnet access: off, and devices set up to approve are forgotten. Also stop sharing with: tailscale serve --https=443 off")
 		return err
 	case "allow":
 		return a.tailnetAllow(ctx, cfg, args[1:])
@@ -110,6 +132,10 @@ func (a *App) tailnetAllow(ctx context.Context, cfg config.Config, args []string
 		return err
 	}
 	_ = agentauth.NewAuditLog(cfg.DataDir).Append(agentauth.AuditEntry{Event: "tailnet_allow", Outcome: agentauth.OutcomeAllowed})
+	// Devices set up for an earlier name or login do not come back with it.
+	if err = tailnet.KeepDevices(cfg.DataDir, s); err != nil {
+		return fmt.Errorf("tailnet access is on, but devices set up for an earlier name or login could not be forgotten (run wasync tailnet off to forget them all): %w", err)
+	}
 	_, err = fmt.Fprintf(a.Out, "tailnet access: on. Now run: tailscale serve --bg http://%s\nThen open https://%s/ui/ on your other computer.\n", cfg.APIAddr, s.Host)
 	return err
 }

@@ -42,6 +42,7 @@ encrypt data at rest.
 | `send-record.json` | Kept for good: when each number first and last got a list message, and the numbers that replied STOP (numbers and times only, never message text) |
 | `open-sending.json` | Whether open sending is on, and until when |
 | `tailnet.json` | The tailnet name and Tailscale login allowed to open the web app from other devices ([Tailscale](tailscale.md)); absent when off |
+| `tailnet-devices.json` | Devices set up to approve from the tailnet: each passkey's public key, name and when it was added and last used ([Tailscale](tailscale.md)); never a secret; removed by `wasync tailnet off` |
 | `sent-log.jsonl` | Every send by you or an agent: who, which chat, when, message ID and outcome, never the text |
 | `agent-audit.log` | Agent requests, grants, approvals and webhook deliveries: identifiers and outcomes only |
 | `webhooks.json` | Webhook endpoints and their signing secrets; keep private |

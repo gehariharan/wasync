@@ -141,7 +141,7 @@ func (h *handler) approveRequest(ctx context.Context, account int64, id string, 
 		if choice != nil {
 			preview, err := h.approvals.Preview(account, id, choice.Chat, choice.History)
 			if err != nil {
-				return statusError{http.StatusConflict, err.Error()}
+				return statusError{code: http.StatusConflict, msg: err.Error()}
 			}
 			request = &preview
 		}
@@ -151,11 +151,11 @@ func (h *handler) approveRequest(ctx context.Context, account int64, id string, 
 	}
 	if choice != nil {
 		if err := h.approvals.Decide(account, id, choice.Chat, choice.History); err != nil {
-			return statusError{http.StatusConflict, err.Error()}
+			return statusError{code: http.StatusConflict, msg: err.Error()}
 		}
 	}
 	if err := h.approve(account, id); err != nil {
-		return statusError{http.StatusConflict, err.Error()}
+		return statusError{code: http.StatusConflict, msg: err.Error()}
 	}
 	return nil
 }

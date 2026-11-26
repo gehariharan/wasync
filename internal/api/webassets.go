@@ -7,9 +7,10 @@ import (
 )
 
 // The web app's manifest and icons, so a browser can pin it as an app (Add to
-// Dock in Safari, Install in Chrome). They hold nothing private and are served
-// without a session: browsers fetch a manifest without cookies. There is no
-// service worker: the app is only useful while this computer is reachable.
+// Dock in Safari, Install in Chrome), and the one script the passkey pages
+// run. They hold nothing private and are served without a session: browsers
+// fetch a manifest without cookies. There is no service worker: the app is
+// only useful while this computer is reachable.
 
 //go:embed webassets
 var webAssetFiles embed.FS
@@ -22,6 +23,7 @@ var webAssets = map[string]struct{ file, kind string }{
 	"/ui/icon-512.png":         {"icon-512.png", "image/png"},
 	"/ui/apple-touch-icon.png": {"apple-touch-icon.png", "image/png"},
 	"/ui/favicon.ico":          {"favicon.ico", "image/x-icon"},
+	"/ui/passkey.js":           {"passkey.js", "text/javascript; charset=utf-8"},
 }
 
 func isWebAsset(p string) bool { _, ok := webAssets[p]; return ok }

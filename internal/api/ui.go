@@ -213,7 +213,16 @@ var notices = map[string]struct {
 	"invalid":    {"That choice is not valid for this request, so nothing changed.", false},
 	"failed":     {"That did not work and nothing changed. The request may have expired.", false},
 	"nogate":     {"This computer cannot show a system confirmation, so this cannot be done on this page.", false},
-	"remote":     {"Do this on the computer running wasync.", false},
+	"remote":     {"Set up this device with a passkey first (Set up, Approve from this device), or do this on the computer running wasync.", false},
+	"pkfail":     {"Not confirmed with your passkey, so nothing changed.", false},
+	"pkexpired":  {"That page waited too long or was already used, so nothing changed. Try again.", false},
+	"pkchanged":  {"What you were confirming changed in the meantime, so nothing changed. Try again.", false},
+	"badcode":    {"That code is not valid. Codes work once, for 10 minutes; get a new one on the computer running wasync.", false},
+	"deviceon":   {"This device is set up. Approvals here now ask for its passkey.", true},
+	"deviceoff":  {"That device can no longer approve anything.", true},
+	"devicehere": {"Add devices on the computer running wasync.", false},
+	"toomany":    {"Too many devices are set up. Remove one first.", false},
+	"notailnet":  {"Opening wasync from your tailnet is off. Turn it on with wasync tailnet allow.", false},
 	"saved":      {"Saved.", true},
 	"sentok":     {"Sent: WhatsApp accepted it. It shows in the chat once WhatsApp passes it back.", true},
 	"sendfail":   {"That was not sent, or WhatsApp did not confirm it. Check WhatsApp before sending it again.", false},
@@ -281,6 +290,25 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	setSessionCookie(w, cookie, sess)
+	if login != "" {
+		r = h.withRemoteAsk(r, cookie, sess)
+		switch {
+		case r.Method == http.MethodPost && r.URL.Path == passkeyConfirmPath:
+			h.passkeyAnswer(w, r, sess)
+			return
+		case r.Method == http.MethodPost && r.URL.Path == passkeyBeginPath:
+			h.passkeyBegin(w, r, sess)
+			return
+		case r.Method == http.MethodPost && r.URL.Path == passkeyRegisterPath:
+			h.passkeyRegister(w, r, sess)
+			return
+		}
+	}
+	h.uiDispatch(w, r, sess)
+}
+
+// uiDispatch runs the page or form a signed-in request names.
+func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == uiApprovalsPath:
 		h.uiHome(w, r, sess)
@@ -316,6 +344,8 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 		h.setupAgent(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/service":
 		h.setupService(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/devices":
+		h.setupDevices(w, r, sess)
 	default:
 		http.NotFound(w, r)
 	}
@@ -328,7 +358,7 @@ var signInPages = map[string]bool{"/ui/": true, uiApprovalsPath: true, "/ui/chat
 // again, and on this computer offers to do it with the system confirmation.
 func (h *handler) signedOut(w http.ResponseWriter, r *http.Request, notice string) {
 	d := &uiData{Signedout: true, Title: "wasync", Remote: remoteLogin(r) != "", Next: "/ui/"}
-	if !d.Remote && h.gate(r).Enabled() {
+	if !d.Remote && h.human.Enabled() {
 		d.Gate = h.human.Name()
 	}
 	if signInPages[r.URL.Path] {
@@ -356,7 +386,7 @@ func (h *handler) uiSignIn(w http.ResponseWriter, r *http.Request) {
 		next = "/ui/"
 	}
 	r.URL.Path = next // the signed-out page returns to it
-	if !h.gate(r).Enabled() {
+	if !h.human.Enabled() {
 		h.signedOut(w, r, "nogate")
 		return
 	}
@@ -412,6 +442,8 @@ func (h *handler) uiBack(w http.ResponseWriter, r *http.Request, notice string) 
 func noticeFor(err error) string {
 	var se statusError
 	switch {
+	case errors.As(err, &se) && se.notice != "":
+		return se.notice
 	case errors.As(err, &se) && se.code == http.StatusTooManyRequests:
 		if strings.Contains(se.msg, "already open") {
 			return "busy"
@@ -443,7 +475,7 @@ func (h *handler) uiDecide(w http.ResponseWriter, r *http.Request, sess uiSessio
 		}
 		h.uiBack(w, r, "rejected")
 	case "approve":
-		if !h.gate(r).Enabled() || h.approve == nil {
+		if !h.canConfirm(r) || h.approve == nil {
 			h.uiBack(w, r, noGate(r))
 			return
 		}
@@ -452,7 +484,7 @@ func (h *handler) uiDecide(w http.ResponseWriter, r *http.Request, sess uiSessio
 			choice = &accessChoice{Chat: r.PostForm.Get("chat"), History: r.PostForm.Get("history")}
 		}
 		if err := h.approveRequest(r.Context(), account.ID, id, choice); err != nil {
-			h.uiBack(w, r, noticeFor(err))
+			h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
 			return
 		}
 		h.uiBack(w, r, "approved")
@@ -479,12 +511,12 @@ func (h *handler) uiMode(w http.ResponseWriter, r *http.Request, sess uiSession)
 		return
 	}
 	if mode.Mode == accessmode.All {
-		if !h.gate(r).Enabled() {
+		if !h.canConfirm(r) {
 			h.uiBack(w, r, noGate(r))
 			return
 		}
 		if err := h.confirmError(r.Context(), "Approve: "+mode.Effect()); err != nil {
-			h.uiBack(w, r, noticeFor(err))
+			h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
 			return
 		}
 	}
@@ -521,6 +553,7 @@ type uiData struct {
 	Next         string // where signing in again returns to
 	Remote       bool   // opened from another computer through the tailnet
 	Title        string
+	Script       bool // the page runs wasync's passkey script
 	Refresh      int
 	Wide         bool // use the wide two-pane frame
 	Full         bool // with Wide, fill the whole browser window
@@ -555,10 +588,7 @@ func (h *handler) warnBackground(data any) {
 }
 
 func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	data := &uiData{CSRF: sess.csrf, Gate: h.human.Name(), Title: "wasync approvals", Remote: remoteLogin(r) != ""}
-	if !h.gate(r).Enabled() {
-		data.Gate = ""
-	}
+	data := &uiData{CSRF: sess.csrf, Gate: h.confirmName(r), Title: "wasync approvals", Remote: remoteLogin(r) != ""}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		data.Notice, data.NoticeOK = n.text, n.ok
 	}
@@ -619,6 +649,7 @@ const uiHeadBase = `{{define "head"}}<!doctype html>
 <link rel="manifest" href="/ui/manifest.webmanifest"><link rel="icon" href="/ui/favicon.ico" sizes="48x48"><link rel="icon" href="/ui/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/ui/apple-touch-icon.png">
 <meta name="application-name" content="wasync"><meta name="apple-mobile-web-app-title" content="wasync">
 <meta name="theme-color" content="#fafaf7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#141716" media="(prefers-color-scheme: dark)">
+{{if .Script}}<script src="/ui/passkey.js" defer></script>{{end}}
 <style>
 :root{color-scheme:light dark;--bg:#fafaf7;--fg:#1c1f1d;--mut:#5d6660;--card:#fff;--line:#d9ddd8;--acc:#0f7a4a;--bad:#a4262c}
 @media (prefers-color-scheme:dark){:root{--bg:#141716;--fg:#e7ebe8;--mut:#9aa59e;--card:#1c201e;--line:#2c3330;--acc:#4cc38a;--bad:#ff8a8f}}
@@ -631,6 +662,7 @@ h1{font-size:1.4rem;margin:.2rem 0 .6rem}h2{font-size:1.05rem;margin:1.8rem 0 .5
 label{display:block;margin:.25rem 0}fieldset{border:0;padding:0;margin:.6rem 0}legend{font-weight:600}
 button{font:inherit;padding:.5rem 1rem;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer;margin-right:.5rem}
 button.go{background:var(--acc);border-color:var(--acc);color:#fff}
+button:disabled{opacity:.55;cursor:default}
 code{background:var(--line);padding:.05rem .3rem;border-radius:4px}
 </style>{{if .Wide}}{{template "widecss"}}{{end}}</head><body><main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
 <nav><a href="/ui/chats">Chats</a> · <a href="/ui/sent">Sent</a> · <a href="/ui/agents">Agents</a> · <a href="/ui/approvals">Approvals</a> · <a href="/ui/setup">Set up</a></nav>
@@ -646,8 +678,8 @@ var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "he
 <p>Run <code>wasync web</code> in a terminal to sign in.</p>{{end}}{{end}}
 {{else}}
 {{if .Notice}}<p role="status" class="{{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}
-{{if .Gate}}<p class="mut">Every approval here asks you for {{.Gate}} on this computer, showing exactly what you are approving. This page cannot approve anything by itself.</p>
-{{else if .Remote}}<p class="bad">Approve on the computer running wasync.</p>
+{{if .Gate}}<p class="mut">Every approval here asks you for {{.Gate}} on this {{if .Remote}}device{{else}}computer{{end}}, showing exactly what you are approving. This page cannot approve anything by itself.</p>
+{{else if .Remote}}<p class="bad">To approve from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Or approve on the computer running wasync.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so this page only shows requests. Approve in a terminal with <code>wasync actions approve REQUEST_ID</code>.</p>{{end}}
 <h2>Waiting for you</h2>
 {{range .Pending}}<section class="card">
@@ -679,7 +711,7 @@ var uiTemplate = template.Must(template.New("ui").Parse(uiHead + `{{template "he
 <fieldset><legend>If syncing all chats</legend>
 <label><input type="radio" name="history" value="now" checked> From now on only</label>
 <label><input type="radio" name="history" value="full"> Full history</label></fieldset>
-<button>Save…</button> <span class="mut">Choosing sync all asks you to confirm on this computer.</span>
+<button>Save…</button> <span class="mut">Choosing sync all asks you to confirm{{if .Gate}} with {{.Gate}}{{else if .Remote}} on the computer running wasync{{else}} on this computer{{end}}.</span>
 </form></section>
 {{end}}
 </main></body></html>

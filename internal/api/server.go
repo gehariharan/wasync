@@ -211,6 +211,7 @@ type handler struct {
 	reject           func(int64, string) error
 	human            *humancheck.Gate
 	ui               uiState
+	passkeys         passkeyState
 	setup            *linking.State
 	service          service.Manager
 	serviceSpec      service.Spec

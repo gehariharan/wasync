@@ -130,7 +130,9 @@ shows message text, so open it only on a computer you trust. Details:
 [docs/agents.md](docs/agents.md).
 
 To open it from your other computers on your Tailscale network, turn on `wasync tailnet allow`
-and share it with `tailscale serve`: see [docs/tailscale.md](docs/tailscale.md).
+and share it with `tailscale serve`. A device you set up once with a passkey can approve there
+too, confirming each time with Touch ID, Face ID or Windows Hello: see
+[docs/tailscale.md](docs/tailscale.md).
 
 ## Running in the background
 

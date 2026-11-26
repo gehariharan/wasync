@@ -17,8 +17,11 @@ import (
 // link WhatsApp by QR code, choose chats, connect an agent, and start wasync
 // at login. Like the approval page it has no script and is not a security
 // boundary. Choices that widen what an agent can do or start a background
-// program at login still end in the operating system's confirmation prompt, and
-// where the computer has none the page only shows the command to run instead.
+// program at login still end in the operating system's confirmation prompt (or
+// a passkey, from another device on the tailnet), and where neither is
+// available the page only shows the command to run instead. With the tailnet
+// opt-in on it also lists the devices set up to approve with a passkey; only
+// this computer can add one.
 
 type setupAgent struct{ Name, Status string }
 
@@ -35,6 +38,15 @@ type setupData struct {
 	ServiceInstalled  bool
 	ServiceAvailable  bool
 	ServiceNeedsHuman bool
+	// Tailnet is on when the web app opens from other devices on the tailnet.
+	Tailnet      bool
+	TailnetHost  string
+	TailnetLogin string
+	Devices      []deviceRow
+	// CanAddDevice is set on this computer when it can show the system prompt.
+	CanAddDevice bool
+	// DeviceCode is a code just made for setting up a device.
+	DeviceCode string
 }
 
 func (h *handler) axiCredentialPath() (string, error) {
@@ -45,10 +57,12 @@ func (h *handler) axiCredentialPath() (string, error) {
 }
 
 func (h *handler) setupHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	d := &setupData{uiData: uiData{CSRF: sess.csrf, Gate: h.human.Name(), Title: "wasync setup", Remote: remoteLogin(r) != ""}}
-	if !h.gate(r).Enabled() {
-		d.Gate = ""
-	}
+	h.setupView(w, r, sess, nil)
+}
+
+// setupView renders the setup page; tweak, when set, adds to what it shows.
+func (h *handler) setupView(w http.ResponseWriter, r *http.Request, sess uiSession, tweak func(*setupData)) {
+	d := &setupData{uiData: uiData{CSRF: sess.csrf, Gate: h.confirmName(r), Title: "wasync setup", Remote: remoteLogin(r) != ""}}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		d.Notice, d.NoticeOK = n.text, n.ok
 	}
@@ -99,6 +113,14 @@ func (h *handler) setupHome(w http.ResponseWriter, r *http.Request, sess uiSessi
 		d.ServiceAvailable, d.Service = true, h.service.Where()
 		d.ServiceInstalled, _ = h.service.Installed()
 	}
+	if s, devices := h.remoteDevices(); s.Host != "" {
+		d.Tailnet, d.TailnetHost, d.TailnetLogin = true, s.Host, s.Login
+		d.Devices = deviceRows(devices)
+		d.CanAddDevice = !d.Remote && h.human.Enabled()
+	}
+	if tweak != nil {
+		tweak(d)
+	}
 	h.setupRender(w, d)
 }
 
@@ -121,7 +143,7 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.uiBack(w, r, "unpaired")
 		return
 	}
-	if !h.gate(r).Enabled() {
+	if !h.canConfirm(r) {
 		h.uiBack(w, r, noGate(r))
 		return
 	}
@@ -157,7 +179,7 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 		return
 	}
 	if err := h.confirmError(r.Context(), agentauth.GrantEffect(name, scopes, nil, true, 0)); err != nil {
-		h.uiBack(w, r, noticeFor(err))
+		h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
 		return
 	}
 	credential, client, err := agentauth.Grant(h.dataDir, req, time.Now())
@@ -195,12 +217,12 @@ func (h *handler) setupService(w http.ResponseWriter, r *http.Request, sess uiSe
 	}
 	switch r.PostForm.Get("action") {
 	case "install":
-		if !h.gate(r).Enabled() {
+		if !h.canConfirm(r) {
 			h.uiBack(w, r, noGate(r))
 			return
 		}
 		if err := h.confirmError(r.Context(), "Approve: start wasync by itself every time you log in, and keep it running in the background"); err != nil {
-			h.uiBack(w, r, noticeFor(err))
+			h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
 			return
 		}
 		if err := h.service.Install(h.serviceSpec); err != nil {
@@ -250,9 +272,9 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 <p class="mut">The agent may read only chats you approve, and starts with none. When it asks for one, the request appears under Approvals and you decide. The secret is saved straight to where wasync-axi reads it ({{.AxiPath}}) and is never shown.</p>
 <label>Name <input name="name" value="wasync-axi" maxlength="32" pattern="[a-z0-9-]{1,32}"></label>
 {{if .HasSavedCred}}<label><input type="checkbox" name="replace" value="yes"> Replace the credential wasync-axi already has saved</label>{{end}}
-<button class="go">Connect…</button> <span class="mut">Asks you to confirm on this computer.</span>
+<button class="go">Connect…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span>
 </form>
-{{else if .Remote}}<p class="bad">Connect agents on the computer running wasync.</p>
+{{else if .Remote}}<p class="bad">Connect agents on the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page. Run <code>wasync agents grant wasync-axi --on-demand</code> in a terminal.</p>{{end}}
 </section>
 {{end}}
@@ -263,10 +285,28 @@ var setupTemplate = template.Must(template.New("setup").Parse(uiHead + `{{templa
 <p class="mut">Keeps wasync running without a terminal. It is {{.Service}} for your account only.</p>
 <form method="post" action="/ui/setup/service"><input type="hidden" name="csrf" value="{{.CSRF}}">
 {{if .ServiceInstalled}}<p class="ok"><strong>On.</strong>{{if .Warn}} <span class="mut">To move this copy to the background, run <code>wasync service restart</code>.</span>{{end}}</p><button name="action" value="remove">Turn off</button>
-{{else}}{{if .Gate}}<button class="go" name="action" value="install">Turn on…</button> <span class="mut">Asks you to confirm on this computer.</span>
-{{else if .Remote}}<p class="bad">Turn this on from the computer running wasync.</p>
+{{else}}{{if .Gate}}<button class="go" name="action" value="install">Turn on…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span>
+{{else if .Remote}}<p class="bad">Turn this on from the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
 {{else}}<p class="bad">This computer cannot show a system confirmation, so run <code>wasync service install</code> in a terminal.</p>{{end}}{{end}}
 </form></section>
+{{end}}
+
+{{if .Tailnet}}
+<h2 id="devices">{{if .Remote}}Approve from this device{{else}}Approve from your other devices{{end}}</h2>
+<section class="card">
+<p class="mut">wasync opens at <code>https://{{.TailnetHost}}/ui/</code> for {{.TailnetLogin}} on your tailnet. A device set up here can approve agents' requests and give agents more power: each time, it shows what you are approving and asks for its passkey (Touch ID, Face ID, Windows Hello or the device's PIN). Only the computer running wasync can add a device.</p>
+{{if .Devices}}<table class="sent"><thead><tr><th>Device</th><th>Added</th><th>Last approved</th><th></th></tr></thead><tbody>
+{{range .Devices}}<tr><td>{{.Name}}</td><td>{{.Added}}</td><td>{{.Used}}</td><td><form method="post" action="/ui/setup/devices" style="display:inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="{{.ID}}"><button>Remove</button></form></td></tr>
+{{end}}</tbody></table>{{else}}<p>No device is set up yet.</p>{{end}}
+{{if .Remote}}<form method="post" action="/ui/passkey/begin"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<p><label>Code from the computer running wasync <input name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" size="16" maxlength="20" required></label></p>
+<p><label>Name this device <input name="name" maxlength="40" placeholder="My laptop"></label></p>
+<p><button class="go">Set up this device…</button> <span class="mut">Get a code there: open the web app, Set up, Add a device. A device that already has a passkey for wasync (one synced from another device too) needs no setting up.</span></p></form>
+{{else if .DeviceCode}}<p class="ok" role="status">On the other device, open <code>https://{{.TailnetHost}}/ui/setup</code> and enter this code within 10 minutes. It works once.</p>
+<p style="font-size:1.6rem;letter-spacing:.12em"><strong>{{.DeviceCode}}</strong></p>
+{{else if .CanAddDevice}}<form method="post" action="/ui/setup/devices#devices"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="add"><button class="go">Add a device…</button> <span class="mut">Asks you to confirm with {{.Gate}}, then shows a one-time code to enter on the other device.</span></form>
+{{else}}<p class="bad">This computer cannot show a system confirmation, so devices cannot be added.</p>{{end}}
+</section>
 {{end}}
 <p><a href="/ui/setup">Refresh</a></p>
 </main></body></html>

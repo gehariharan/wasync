@@ -197,7 +197,8 @@ func TestTurningTheTailnetSettingOffStopsItAtOnce(t *testing.T) {
 }
 
 // The system prompt shows on the computer running wasync, which a person at
-// another computer cannot answer, so remote pages never raise it.
+// another computer cannot answer, so remote pages never raise it. Without a
+// passkey set up there, they cannot approve anything either.
 func TestRemotePagesNeverRaiseTheSystemPrompt(t *testing.T) {
 	stub := &promptStub{confirm: true}
 	f := setupAccessWith(t, humancheck.NewGate(stub))
@@ -208,7 +209,7 @@ func TestRemotePagesNeverRaiseTheSystemPrompt(t *testing.T) {
 	}
 	c := newTailnetClient(t, f, tailnetLogin)
 	code, page, _ := c.get("/ui/approvals")
-	if code != 200 || !strings.Contains(page, "Approve on the computer running wasync.") || strings.Contains(page, `value="approve"`) {
+	if code != 200 || !strings.Contains(page, "set it up with a passkey") || strings.Contains(page, `value="approve"`) {
 		t.Fatalf("remote approvals page: %d\n%s", code, page)
 	}
 	csrf := csrfOf(t, page)
@@ -224,7 +225,7 @@ func TestRemotePagesNeverRaiseTheSystemPrompt(t *testing.T) {
 	if !strings.Contains(hd.Get("Location"), "n=remote") {
 		t.Fatalf("remote open sending: %q", hd.Get("Location"))
 	}
-	if _, notice, _ := c.get("/ui/approvals?n=remote"); !strings.Contains(notice, "Do this on the computer running wasync.") {
+	if _, notice, _ := c.get("/ui/approvals?n=remote"); !strings.Contains(notice, "or do this on the computer running wasync.") {
 		t.Fatalf("notice:\n%s", notice)
 	}
 	if len(stub.seen()) != 0 {

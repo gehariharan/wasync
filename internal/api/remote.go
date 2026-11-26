@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/tailnet"
 )
 
@@ -25,12 +24,12 @@ import (
 //
 // A request that passes gets the web app only: never the archive API, /api/v1
 // or anything an agent or the CLI uses. Its session is bound to that login.
-// The operating system's confirmation prompt appears on the computer running
-// wasync, which a person at another computer cannot answer, so remote sessions
-// treat it as unavailable: anything that needs it (approving a request, giving
-// an agent more power, start at login) is refused there and done on the
-// computer itself. Everything else, including reading and sending as the
-// owner, works as it does locally.
+// Reading and sending as the owner work as they do locally. The operating
+// system's confirmation prompt appears on the computer running wasync, which a
+// person at another computer cannot answer, so anything that needs it
+// (approving a request, giving an agent more power, start at login) needs a
+// passkey on the remote device instead (passkeys.go), and is refused there
+// until the owner sets one up.
 
 type remoteKey struct{}
 
@@ -81,17 +80,8 @@ func sameHTTPSOrigin(r *http.Request) bool {
 	return strings.ToLower(u.Host) == strings.TrimSuffix(strings.ToLower(r.Host), ":443")
 }
 
-// gate is the confirmation prompt for this request: none for a remote browser,
-// which cannot answer a prompt shown on this computer.
-func (h *handler) gate(r *http.Request) *humancheck.Gate {
-	if remoteLogin(r) != "" {
-		return nil
-	}
-	return h.human
-}
-
-// noGate is the notice for an action that needs the confirmation prompt when
-// there is none for this request.
+// noGate is the notice for an action that needs a confirmation when there is
+// none for this request.
 func noGate(r *http.Request) string {
 	if remoteLogin(r) != "" {
 		return "remote"
