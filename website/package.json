@@ -10,7 +10,7 @@
     "dev": "npm run design && cf dev",
     "check": "npm run design && cf deploy --dry-run",
     "deploy": "npm run design && cf deploy",
-    "test": "node --test test/"
+    "test": "node --test \"test/*.test.mjs\""
   },
   "devDependencies": {
     "cf": "1.0.0-rc.6",
