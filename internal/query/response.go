@@ -23,10 +23,13 @@ type Group struct {
 	// has been on for this chat, so it differs between chats enabled at
 	// different times. potential_account_gaps is the same for every chat.
 	PotentialChatGaps int64 `json:"potential_chat_gaps"`
+	// ListCapture marks a chat archived only for an agent's approved list,
+	// not one the person chose to sync; sync_enabled stays the capture state.
+	ListCapture bool `json:"list_capture,omitempty"`
 }
 
 func FormatGroup(g storage.Group) Group {
-	return Group{storage.ChatKind(g.ID), g.ID, g.Name, g.MediaPolicy, g.Enabled, g.MessageCount, g.LastMessage, g.HistoryState, g.HistoryRequest, g.HistoryBatchMessages, g.AccountGapCount, g.GapCount}
+	return Group{storage.ChatKind(g.ID), g.ID, g.Name, g.MediaPolicy, g.Enabled, g.MessageCount, g.LastMessage, g.HistoryState, g.HistoryRequest, g.HistoryBatchMessages, g.AccountGapCount, g.GapCount, g.ListCapture}
 }
 
 type Message struct {

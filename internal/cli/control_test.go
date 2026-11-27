@@ -220,3 +220,33 @@ func TestChatsCommandsAreForwardedToTheOwnerHoldingTheDeviceLock(t *testing.T) {
 		}
 	}
 }
+
+// A chat archived only for an agent's approved list is not one the person
+// synced. `chats list` must say so the same way whether it reads the archive
+// itself or asks the running owner (review round 4, R4-1).
+func TestChatsListThroughOwnerMarksListOnlyChats(t *testing.T) {
+	app, output, store, account, dir := queryFixture(t)
+	if err := store.EnableListCapture(context.Background(), account, "two@g.us"); err != nil {
+		t.Fatal(err)
+	}
+	server, err := api.StartControlled("127.0.0.1:0", dir, store, nil, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
+	if err = app.Run(context.Background(), []string{"--data-dir", dir, "--api-addr", strings.TrimPrefix(server.URL, "http://"), "chats", "list"}); err != nil {
+		t.Fatal(err)
+	}
+	rows := map[string][]string{}
+	for _, line := range strings.Split(output.String(), "\n") {
+		if fields := strings.Fields(line); len(fields) >= 3 {
+			rows[fields[1]] = fields
+		}
+	}
+	if row := rows["one@g.us"]; row == nil || row[2] != "true" || strings.Contains(strings.Join(row, " "), "agent's list") {
+		t.Fatalf("person-synced chat row: %q\n%s", row, output.String())
+	}
+	if row := rows["two@g.us"]; row == nil || row[2] != "false" || !strings.Contains(strings.Join(row, " "), "(archived for an agent's list)") {
+		t.Fatalf("list-only chat must show as not synced, with the note: %q\n%s", row, output.String())
+	}
+}
