@@ -496,7 +496,7 @@ var agentsTemplate = template.Must(template.New("agents").Funcs(uiFuncs).Parse(u
 {{else}}<div class="item"><div class="grow mut">No agent is connected yet.</div></div>{{end}}</div>
 <p class="btn-row"><a class="btn go" href="/ui/agents/connect">Connect another agent</a> <a class="btn" href="/ui/sent">What was sent</a></p>
 {{range .Cards}}{{if and .Waiting .Next}}<p class="notice warn">{{.Title}} has never called wasync. {{.Next}}</p>{{end}}{{end}}
-{{if not .Open.Gate}}{{if .Remote}}<p class="notice bad">To give agents more power from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Stopping things works without it.</p>{{else}}<p class="notice bad">This computer cannot show a system confirmation, so this page is read-only. Anything that gives an agent more power cannot be done here; stopping things still can.</p>{{end}}{{end}}
+{{if not .Open.Gate}}{{if .Remote}}<p class="notice bad">To give agents more power from this device, <a href="/ui/settings#devices">set it up with a passkey</a> once. Turning off an agent's sending or open sending, and pausing or removing a list, work without it; removing an agent does not.</p>{{else}}<p class="notice bad">This computer cannot show a system confirmation, so this page is read-only for anything that gives an agent more power or removes an agent. Turning off an agent's sending or open sending, and pausing or removing a list, still can.</p>{{end}}{{end}}
 
 <h2>Open sending</h2>
 {{if .Open.On}}

@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"net/url"
+	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -316,5 +318,61 @@ func TestAgentsPageCannotRemoveAnAgentWithoutAConfirmation(t *testing.T) {
 	}
 	if got, _ := agentauth.ActiveByName(sf.dir, "jit"); got == nil {
 		t.Fatal("the agent was removed with no confirmation")
+	}
+}
+
+// readOnly makes dir unwritable until the test ends, so writing agents.json
+// fails while reading it still works.
+func readOnly(t *testing.T, dir string) {
+	t.Helper()
+	if runtime.GOOS == "windows" || os.Geteuid() == 0 {
+		t.Skip("needs a folder this user cannot write")
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+}
+
+func TestRemoveWasyncWaitsWhenAnAgentCouldNotBeRevoked(t *testing.T) {
+	spy := &removeSpy{}
+	f, c, csrf := newConnectFixture(t, false, spy.owner)
+	f.stub.set(true)
+	readOnly(t, f.dir)
+	code, page, _ := c.post(removePath, url.Values{"csrf": {csrf}, "action": {"remove"}})
+	if code != 200 || !strings.Contains(page, `wasync could not revoke the agent &#34;jit&#34;`) || !strings.Contains(page, `value="finish"`) {
+		t.Fatalf("a failed revoke was not reported: %d\n%s", code, page)
+	}
+	if _, started := spy.counts(); started != 0 {
+		t.Fatal("the helper started although an agent still works")
+	}
+	if got, _ := agentauth.ActiveByName(f.dir, "jit"); got == nil {
+		t.Fatal("the agent was revoked after all; the test did not make revoking fail")
+	}
+}
+
+func TestDisconnectSaysSoWhenTheCredentialCouldNotBeRevoked(t *testing.T) {
+	f, c, csrf := newConnectFixture(t, false)
+	f.stub.set(true)
+	_, digest := preview(t, c, "claude-code")
+	c.post("/ui/setup/connect", url.Values{"csrf": {csrf}, "agent": {"claude-code"}, "digest": {digest}})
+	conn, _ := agentconnect.Find(f.dir, agentconnect.ClaudeCode)
+	if conn == nil {
+		t.Fatal("not connected")
+	}
+	readOnly(t, f.dir)
+	for path, form := range map[string]url.Values{
+		"/ui/setup/disconnect": {"csrf": {csrf}, "agent": {"claude-code"}},
+		"/ui/agents":           {"csrf": {csrf}, "action": {"revoke"}, "agent": {conn.Client}},
+	} {
+		if _, _, hd := c.post(path, form); !strings.Contains(hd.Get("Location"), "n=revokefailed") {
+			t.Fatalf("%s with a failed revoke: %v", path, hd)
+		}
+	}
+	if got, _ := agentauth.ActiveByName(f.dir, conn.Client); got == nil {
+		t.Fatal("the credential was revoked after all")
+	}
+	if again, _ := agentconnect.Find(f.dir, agentconnect.ClaudeCode); again == nil {
+		t.Fatal("the record was dropped, so Disconnect cannot be tried again")
 	}
 }

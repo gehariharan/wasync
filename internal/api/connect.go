@@ -42,6 +42,7 @@ func init() {
 		"pluginleft":        {"Disconnected, but the WhatsApp plugin could not be removed from Codex. Remove it there if you no longer want it.", true},
 		"disconnectleft":    {"Its credential no longer works, but wasync could not take its entry out of the app's settings file. Fix or restore that file, then press Disconnect again.", false},
 		"notconnected":      {"That app is not connected.", false},
+		"revokefailed":      {"wasync could not revoke that agent's credential, so it still works and nothing else changed. Try again.", false},
 		"agentremoved":      {"Removed. That agent's credential no longer works.", true},
 	} {
 		notices[k] = v
@@ -424,10 +425,15 @@ func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess u
 func (h *handler) disconnect(ctx context.Context, c agentconnect.Connection) string {
 	env := h.connectEnv()
 	audit := agentauth.NewAuditLog(h.dataDir)
-	if active, err := agentauth.ActiveByName(h.dataDir, c.Client); err == nil && active != nil && active.ID == c.ClientID {
-		if _, err := agentauth.Revoke(h.dataDir, c.Client, time.Now()); err == nil {
-			_ = audit.Append(agentauth.AuditEntry{Event: "revoke", ClientID: c.ClientID, ClientName: c.Client, Outcome: agentauth.OutcomeAllowed})
+	active, err := agentauth.ActiveByName(h.dataDir, c.Client)
+	if err != nil {
+		return "revokefailed"
+	}
+	if active != nil && active.ID == c.ClientID {
+		if _, err := agentauth.Revoke(h.dataDir, c.Client, time.Now()); err != nil {
+			return "revokefailed"
 		}
+		_ = audit.Append(agentauth.AuditEntry{Event: "revoke", ClientID: c.ClientID, ClientName: c.Client, Outcome: agentauth.OutcomeAllowed})
 	}
 	if c.CredentialDir != "" {
 		_ = os.Remove(filepath.Join(c.CredentialDir, axicred.FileName))

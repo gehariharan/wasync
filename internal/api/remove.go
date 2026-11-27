@@ -12,6 +12,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/agentconnect"
+	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/uninstall"
 )
 
@@ -208,6 +209,8 @@ func (h *handler) takeAwayAccess(ctx context.Context) []string {
 	for _, c := range conns {
 		title := agentTitle(string(c.Agent), c.Client)
 		switch h.disconnect(ctx, c) {
+		case "revokefailed":
+			problems = append(problems, revokeProblem(c.Client))
 		case "disconnectleft", "failed":
 			problems = append(problems, "wasync could not take its entry out of "+title+"'s settings ("+c.ConfigPath+"). Remove the \"whatsapp\" tool server there; a copy from before wasync changed it is at "+backupOr(c.Backup)+".")
 		case "pluginleft":
@@ -216,15 +219,19 @@ func (h *handler) takeAwayAccess(ctx context.Context) []string {
 	}
 	h.connectMu.Unlock()
 	now := time.Now()
-	if clients, err := agentauth.List(h.dataDir); err == nil {
-		for _, c := range clients {
-			if c.Status(now) != "active" {
-				continue
-			}
-			if _, err := agentauth.Revoke(h.dataDir, c.Name, now); err == nil {
-				_ = agentauth.NewAuditLog(h.dataDir).Append(agentauth.AuditEntry{Event: "revoke", ClientID: c.ID, ClientName: c.Name, Outcome: agentauth.OutcomeAllowed})
-			}
+	clients, err := agentauth.List(h.dataDir)
+	if err != nil {
+		problems = append(problems, "wasync could not read its agents, so some may still work. In a terminal, run `wasync agents list` and revoke each one with `wasync agents revoke NAME`.")
+	}
+	for _, c := range clients {
+		if c.Status(now) != "active" {
+			continue
 		}
+		if _, err := agentauth.Revoke(h.dataDir, c.Name, now); err != nil {
+			problems = append(problems, revokeProblem(c.Name))
+			continue
+		}
+		_ = agentauth.NewAuditLog(h.dataDir).Append(agentauth.AuditEntry{Event: "revoke", ClientID: c.ID, ClientName: c.Name, Outcome: agentauth.OutcomeAllowed})
 	}
 	linked := h.paired != nil && h.paired()
 	if account, err := h.store.Account(ctx); err == nil && account != nil && h.paired == nil {
@@ -242,6 +249,10 @@ func (h *handler) takeAwayAccess(ctx context.Context) []string {
 		}
 	}
 	return problems
+}
+
+func revokeProblem(name string) string {
+	return "wasync could not revoke the agent " + agentauth.QuotedName(name) + ", so its credential still works. In a terminal, run `wasync agents revoke " + humancheck.Clean(name, 40) + "`."
 }
 
 func backupOr(path string) string {
@@ -281,7 +292,7 @@ func init() {
 	}{
 		"removehere":    {"Remove wasync on the computer running it.", false},
 		"removeexpired": {"That page waited too long, so nothing more was removed. Start again.", false},
-		"removefail":    {"wasync could not start removing itself, so it keeps running. Your agents stay disconnected.", false},
+		"removefail":    {"wasync could not start removing itself, so it keeps running. The agents it revoked stay revoked.", false},
 	} {
 		notices[k] = v
 	}
@@ -298,7 +309,7 @@ var removeTemplate = template.Must(template.New("remove").Funcs(uiFuncs).Parse(u
 <p class="mut">You can close this window.</p>
 </section>
 {{else if .Finishing}}<section class="card">
-<p>Your agents are disconnected. A few things need you before wasync goes:</p>
+<p>A few things need you before wasync goes:</p>
 {{range .Problems}}<p class="notice warn">{{.}}</p>{{end}}
 <form method="post" action="/ui/settings/remove" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="danger" name="action" value="finish">Finish removing</button> <a class="btn ghost" href="/ui/settings">Keep wasync</a></form>
 </section>

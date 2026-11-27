@@ -136,8 +136,8 @@ agent, every synced chat and how many there are now. From there you can:
 - Approve a list of **approved numbers** for one agent (below).
 - Switch **open sending** on for an hour (below).
 
-On a computer with no system confirmation the page is read-only for anything that gives an agent
-more power; stopping things still works.
+On a computer with no system confirmation the page cannot give an agent more power or remove an
+agent; turning off sending or open sending, and pausing or removing a list, still work.
 
 ### Approved numbers
 
