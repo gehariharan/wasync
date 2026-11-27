@@ -23,8 +23,9 @@ import (
 //     and data" is ticked (it is not by default); declining changes nothing
 //     at all.
 //  2. Every app wasync connected is disconnected (wasync's entry comes out of
-//     its settings and any entry it replaced goes back), and every other agent
-//     credential is revoked.
+//     its settings and any entry it replaced goes back), every other agent
+//     credential is revoked, and the hooks and skill `wasync-axi setup` may
+//     have put in agents' settings are taken out.
 //  3. The phone is unlinked from WhatsApp.
 //  4. If anything in 2 or 3 could not be done, the page says what and how to
 //     finish it by hand, and waits for "Finish removing".
@@ -206,11 +207,13 @@ func (h *handler) takeAwayAccess(ctx context.Context) []string {
 	if err != nil {
 		problems = append(problems, "wasync could not read which apps it connected. Check your AI apps' settings for a \"whatsapp\" tool server and remove it.")
 	}
+	unrevoked := map[string]bool{}
 	for _, c := range conns {
 		title := agentTitle(string(c.Agent), c.Client)
 		switch h.disconnect(ctx, c) {
 		case "revokefailed":
-			problems = append(problems, revokeProblem(c.Client))
+			unrevoked[c.Client] = true
+			problems = append(problems, revokeProblem(c.Client)+" Then remove the \"whatsapp\" tool server from "+title+"'s settings ("+c.ConfigPath+").")
 		case "disconnectleft", "failed":
 			problems = append(problems, "wasync could not take its entry out of "+title+"'s settings ("+c.ConfigPath+"). Remove the \"whatsapp\" tool server there; a copy from before wasync changed it is at "+backupOr(c.Backup)+".")
 		case "pluginleft":
@@ -224,7 +227,7 @@ func (h *handler) takeAwayAccess(ctx context.Context) []string {
 		problems = append(problems, "wasync could not read its agents, so some may still work. In a terminal, run `wasync agents list` and revoke each one with `wasync agents revoke NAME`.")
 	}
 	for _, c := range clients {
-		if c.Status(now) != "active" {
+		if c.Status(now) != "active" || unrevoked[c.Name] {
 			continue
 		}
 		if _, err := agentauth.Revoke(h.dataDir, c.Name, now); err != nil {
@@ -233,6 +236,7 @@ func (h *handler) takeAwayAccess(ctx context.Context) []string {
 		}
 		_ = agentauth.NewAuditLog(h.dataDir).Append(agentauth.AuditEntry{Event: "revoke", ClientID: c.ID, ClientName: c.Name, Outcome: agentauth.OutcomeAllowed})
 	}
+	problems = append(problems, h.removeAxiSetup(ctx)...)
 	linked := h.paired != nil && h.paired()
 	if account, err := h.store.Account(ctx); err == nil && account != nil && h.paired == nil {
 		linked = true // no live connection to ask: assume the phone still lists it
@@ -246,6 +250,24 @@ func (h *handler) takeAwayAccess(ctx context.Context) []string {
 		}
 		if err != nil && !errors.Is(err, ErrNotLinked) {
 			problems = append(problems, "wasync could not unlink this computer from WhatsApp. On your phone, open WhatsApp, Settings, Linked devices, and log out this computer.")
+		}
+	}
+	return problems
+}
+
+// removeAxiSetup takes out what `wasync-axi setup hooks` and `setup skill`
+// wrote into agents' settings, before the program they point at goes. Each is
+// harmless when nothing was set up.
+func (h *handler) removeAxiSetup(ctx context.Context) []string {
+	env := h.connectEnv()
+	axi := env.AxiCommand()
+	if axi == "" || env.Run == nil {
+		return nil
+	}
+	var problems []string
+	for _, what := range []string{"hooks", "skill"} {
+		if _, err := env.Run(ctx, nil, axi, "setup", what, "--remove"); err != nil {
+			problems = append(problems, "wasync could not take wasync-axi's "+what+" out of your agents' settings. In a terminal, run `wasync-axi setup "+what+" --remove`.")
 		}
 	}
 	return problems
@@ -318,7 +340,7 @@ var removeTemplate = template.Must(template.New("remove").Funcs(uiFuncs).Parse(u
 {{else}}<section class="card">
 <p>wasync will:</p>
 <ol class="remove-steps">
-<li>Disconnect {{if .Apps}}{{range $i, $a := .Apps}}{{if $i}}, {{end}}{{$a}}{{end}}{{else if .Agents}}your agents{{else}}any agent{{end}}, and take wasync out of each app's settings.</li>
+<li>Disconnect {{if .Apps}}{{range $i, $a := .Apps}}{{if $i}}, {{end}}{{$a}}{{end}}{{else if .Agents}}your agents{{else}}any agent{{end}}, and take wasync, and any hooks or skill wasync-axi set up, out of each app's settings.</li>
 <li>Stop starting when you log in.</li>
 <li>{{if .Linked}}Unlink this computer from WhatsApp on your phone.{{else}}No phone is linked, so there is nothing to unlink.{{end}}</li>
 <li>{{if eq .Handoff.Kind "mac-app"}}Quit and move wasync to the Bin.{{else if eq .Handoff.Kind "windows-setup"}}Open the Windows uninstaller, the same one Settings, Apps runs.{{else}}Stop. {{.Handoff.Note}}{{end}}</li>

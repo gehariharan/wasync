@@ -153,7 +153,9 @@ terminal. It first asks you to confirm with Touch ID, your password or Windows H
 changes nothing. Then, in order, it:
 
 1. disconnects every agent: it takes wasync's entry out of each app's settings file (putting
-   back any entry wasync replaced) and revokes every agent credential;
+   back any entry wasync replaced), revokes every agent credential, and runs
+   `wasync-axi setup hooks --remove` and `wasync-axi setup skill --remove` for you, so no
+   agent is left with hooks or a skill pointing at a removed program;
 2. unlinks this computer from WhatsApp. If it cannot do 1 or 2 (for example, the phone is
    offline), the page says what is left and how to finish it, and waits for **Finish removing**;
 3. stops wasync and quits the wasync app, then removes both start-at-login items: the app's own

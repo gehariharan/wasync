@@ -6,6 +6,7 @@ import (
 	"net/url"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -126,6 +127,11 @@ func TestRemoveWasyncDisconnectsUnlinksAndHandsOverKeepingTheData(t *testing.T) 
 	}
 	if code, _ := f.do(t, "GET", "/api/v1/chats", f.jit, nil); code != 401 {
 		t.Fatalf("a revoked agent still reads: %d", code)
+	}
+	for _, want := range []string{"wasync-axi setup hooks --remove", "wasync-axi setup skill --remove"} {
+		if !slices.Contains(*f.ran, want) {
+			t.Fatalf("the removal did not run %q: %q", want, *f.ran)
+		}
 	}
 }
 
@@ -374,5 +380,50 @@ func TestDisconnectSaysSoWhenTheCredentialCouldNotBeRevoked(t *testing.T) {
 	}
 	if again, _ := agentconnect.Find(f.dir, agentconnect.ClaudeCode); again == nil {
 		t.Fatal("the record was dropped, so Disconnect cannot be tried again")
+	}
+}
+
+func TestRemoveWasyncListsAWasyncAxiCleanupThatFailed(t *testing.T) {
+	spy := &removeSpy{}
+	f, c, csrf := newConnectFixture(t, false, spy.owner, func(o *Owner) {
+		env := *o.AgentConnect
+		env.Run = func(_ context.Context, _ []string, name string, args ...string) ([]byte, error) {
+			if strings.Join(args, " ") == "setup hooks --remove" {
+				return nil, errors.New("exit status 1")
+			}
+			return nil, nil
+		}
+		o.AgentConnect = &env
+	})
+	f.stub.set(true)
+	code, page, _ := c.post(removePath, url.Values{"csrf": {csrf}, "action": {"remove"}})
+	if code != 200 || !strings.Contains(page, "run `wasync-axi setup hooks --remove`") || !strings.Contains(page, `value="finish"`) {
+		t.Fatalf("a failed hooks removal was not listed: %d\n%s", code, page)
+	}
+	if strings.Contains(page, "setup skill --remove") {
+		t.Fatalf("a skill removal that worked was listed as left:\n%s", page)
+	}
+	if _, started := spy.counts(); started != 0 {
+		t.Fatal("the helper started before the person saw what was left")
+	}
+}
+
+func TestRemoveWasyncReportsAConnectedAppItCouldNotRevokeOnce(t *testing.T) {
+	spy := &removeSpy{}
+	f, c, csrf := newConnectFixture(t, false, spy.owner)
+	f.stub.set(true)
+	_, digest := preview(t, c, "claude-code")
+	c.post("/ui/setup/connect", url.Values{"csrf": {csrf}, "agent": {"claude-code"}, "digest": {digest}})
+	conn, _ := agentconnect.Find(f.dir, agentconnect.ClaudeCode)
+	if conn == nil {
+		t.Fatal("not connected")
+	}
+	readOnly(t, f.dir)
+	_, page, _ := c.post(removePath, url.Values{"csrf": {csrf}, "action": {"remove"}})
+	if n := strings.Count(page, "could not revoke the agent &#34;"+conn.Client+"&#34;"); n != 1 {
+		t.Fatalf("the failed revoke is reported %d times:\n%s", n, page)
+	}
+	if !strings.Contains(page, "tool server from Claude Code") {
+		t.Fatalf("the page does not say to take the entry out of the app's settings:\n%s", page)
 	}
 }
