@@ -148,16 +148,18 @@ func (h *handler) v1RequestSend(w http.ResponseWriter, r *http.Request, id strin
 }
 
 // mayAlreadySend reports whether POST /api/v1/messages would let c send to
-// chat without asking: a chat it may use, a number on its approved list, or
-// any chat open sending has room for right now.
+// chat without asking right now: a chat it may use, or a number its approved
+// list or open sending has room for.
 func (h *handler) mayAlreadySend(ctx context.Context, c *agentauth.Client, chat string) bool {
 	if c.AllowsChatScope(agentauth.ScopeSend, chat) {
 		return true
 	}
+	var no *sendRefusal
 	if list, on := sendlist.For(h.dataDir, c.ID, time.Now()); on && list.Find(chat) != nil {
-		return true
+		_, no = h.listSendCheck(ctx, c, chat)
+	} else {
+		_, no = h.openSendCheck(ctx, chat)
 	}
-	_, no := h.openSendCheck(ctx, chat)
 	return no == nil
 }
 

@@ -488,3 +488,59 @@ func TestAgentRequestsShowTheMessageWithoutDirectionOverrides(t *testing.T) {
 		t.Fatalf("approve: %d %s %+v", code, out, *f.sent)
 	}
 }
+
+// A number on the agent's approved list counts as already allowed only while
+// the list would really take the message; otherwise the agent may ask the
+// person, so it is never told to send what the list then refuses.
+func TestAnAgentMayAskToSendWhenItsApprovedListWouldRefuse(t *testing.T) {
+	f := setupAccessWith(t, humancheck.NewGate(&promptStub{}))
+	codex := f.connect(t, "codex")
+	c := mustClient(t, f.dir, "codex")
+	fresh := "15550003333@s.whatsapp.net"
+	l := sendlist.List{AgentID: c.ID, Agent: c.Name, GrantedAt: time.Now(), Numbers: []sendlist.Number{{Chat: fresh}, {Chat: otherChat}}}
+	if err := sendlist.Put(f.dir, l); err != nil {
+		t.Fatal(err)
+	}
+	ask := func(chat string, want int) sendRequestData {
+		t.Helper()
+		return f.askToSend(t, codex, map[string]string{"chat": chat, "text": "Hello"}, want)
+	}
+	if got := ask(fresh, 200); got.Data.Status != "already_allowed" {
+		t.Fatalf("a listed number the list would take: %+v", got)
+	}
+
+	if err := sendlist.Pause(f.dir, c.ID, true, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	if got := ask(fresh, 202); got.Data.Status != "pending" {
+		t.Fatalf("a paused list: %+v", got)
+	}
+	if err := sendlist.Pause(f.dir, c.ID, false, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+
+	sent := time.Now().Add(-time.Minute)
+	if err := sendlist.Update(f.dir, c.ID, time.Now(), func(l *sendlist.List) error {
+		n := l.Find(otherChat)
+		n.FirstSentAt, n.LastSentAt = &sent, &sent
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := ask(otherChat, 202); got.Data.Status != "pending" {
+		t.Fatalf("a listed number that has not replied: %+v", got)
+	}
+	if err := f.store.EnableListCapture(context.Background(), f.account, otherChat); err != nil {
+		t.Fatal(err)
+	}
+	reply := storage.Message{GroupID: otherChat, MessageID: "r1", SenderID: otherChat, Timestamp: time.Now(), Type: "text", Text: "Hi back", Source: "live"}
+	if res, err := f.store.Apply(context.Background(), f.account, []storage.Message{reply}); err != nil || res.Stored != 1 {
+		t.Fatalf("store reply: %+v %v", res, err)
+	}
+	if got := ask(otherChat, 200); got.Data.Status != "already_allowed" {
+		t.Fatalf("a listed number that replied: %+v", got)
+	}
+	if n := len(f.queue.PendingList(f.account)); n != 2 {
+		t.Fatalf("requests waiting for the person: %d, want 2", n)
+	}
+}
