@@ -58,6 +58,24 @@ main.landing { max-width: 68rem; flex: 1; padding: 0 var(--s4) var(--s6); }
 .value h2 { font-size: var(--fs); margin: var(--s2) 0 var(--s1); }
 .value p { margin: 0; font-size: var(--fs-sm); color: var(--mut); }
 
+/* Laptop and desktop windows: the whole hero and the four values fit in one
+   view from 1280x720 up. Phones keep the roomier layout above. */
+@media (min-width: 761px) {
+  .hero-c { padding: var(--s5) 0 var(--s6); }
+  .hero-logo { width: 3rem; height: 3rem; margin-bottom: var(--s3); }
+  .hero-c h1 { font-size: 2.5rem; line-height: 1.1; margin-bottom: var(--s2); text-wrap: balance; }
+  .hero-c h1 br { display: none; }
+  .tagline { font-size: var(--fs-lg); max-width: 40rem; margin-bottom: var(--s5); }
+  .notice.slim { padding: var(--s1) var(--s3); margin-bottom: var(--s3); border-radius: var(--r-pill); font-size: var(--fs-xs); }
+  .tile { gap: var(--s1); padding: var(--s3) var(--s2) var(--s2); }
+  .tile svg.logo { width: 1.75rem; height: 1.75rem; }
+  .panel { margin-top: var(--s4); }
+  .btn.big { padding: .7rem 1.5rem; }
+  .meta { margin-top: var(--s2); }
+  .free { margin: var(--s4) 0 0; }
+  .values { padding-top: var(--s5); }
+}
+
 /* install page */
 main.install { max-width: 68rem; flex: 1; padding: var(--s4) var(--s4) var(--s6); }
 .crumb { font-size: var(--fs-sm); color: var(--mut); margin: 0; }
