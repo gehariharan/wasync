@@ -40,7 +40,9 @@ differences:
 
 A wasync that fails is started again after a pause that grows to a minute. One that
 stops cleanly (`wasync stop`, or a phone that was unlinked) stays stopped until the
-app is opened again.
+app is opened again. One that stops to install an update (**Update and restart…**)
+makes the app quit too; once the update is in place, the helper opens the new app,
+which starts its own wasync as usual.
 
 If another wasync already holds the data directory (a `wasync serve` login item, or
 `wasync tui` in a terminal), the app shows that one's pages instead of starting its

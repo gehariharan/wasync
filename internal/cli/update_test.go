@@ -44,6 +44,24 @@ func TestAnUpdateStartsWasyncAgainTheWayItWasStarted(t *testing.T) {
 	}
 }
 
+// A wasync the app started has no standard input after an update, so the
+// update opens the app again instead, and the app starts its own wasync.
+func TestAnUpdateOpensTheAppAgainForAWasyncTheAppStarted(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "data")
+	exe := filepath.Join(t.TempDir(), "wasync")
+	desktop := filepath.Join(t.TempDir(), "wasync-desktop.exe")
+	app := &App{Service: noLoginItem{}, Getenv: func(k string) string { return map[string]string{DesktopAppEnv: desktop}[k] },
+		runArgs: []string{"--data-dir", dir, "setup", "--app"}, ownerRec: processlock.Owner{Kind: "setup", StartedBy: startedByApp}}
+	mac := update.Channel{Kind: update.KindMacApp, OneClick: true, Target: "/Applications/wasync.app"}
+	if r := app.relaunchFor(config.Config{DataDir: dir}, exe, mac); r.How != update.RelaunchApp || r.App != mac.Target {
+		t.Fatalf("macOS app: %+v", r)
+	}
+	windows := update.Channel{Kind: update.KindWindowsSetup, OneClick: true, Target: exe}
+	if r := app.relaunchFor(config.Config{DataDir: dir}, exe, windows); r.How != update.RelaunchCommand || r.Exe != desktop || len(r.Args) != 0 {
+		t.Fatalf("Windows app: %+v", r)
+	}
+}
+
 func TestTheHelperRefusesToRunWithoutAPlan(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "data")
 	app := &App{}

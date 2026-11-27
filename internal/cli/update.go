@@ -51,10 +51,17 @@ func (a *App) updater(ctx context.Context, cfg config.Config, stop func()) *upda
 	})
 }
 
-// relaunchFor decides how wasync starts again after an update: through the
-// login item that started it, as the same background command, by opening the
-// macOS app, or not at all for a terminal UI, which needs its terminal.
+// relaunchFor decides how wasync starts again after an update: by opening the
+// wasync app that started it, through the login item that started it, as the
+// same background command, by opening the macOS app, or not at all for a
+// terminal UI, which needs its terminal.
 func (a *App) relaunchFor(cfg config.Config, exe string, ch update.Channel) update.Relaunch {
+	if desktop := a.desktopApp(); a.ownerRec.StartedBy == startedByApp && desktop != "" {
+		if ch.Kind == update.KindMacApp && ch.Target != "" {
+			return update.Relaunch{How: update.RelaunchApp, App: ch.Target}
+		}
+		return update.Relaunch{How: update.RelaunchCommand, Exe: desktop}
+	}
 	if a.ownerRec.StartedBy == "login item" && a.Service != nil {
 		if spec, err := a.serviceSpec(cfg); err == nil {
 			return update.Relaunch{How: update.RelaunchLoginItem, ServiceExe: spec.Exe, DataDir: spec.DataDir}

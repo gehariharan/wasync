@@ -27,6 +27,10 @@ const (
 // Folder is the update folder of a data directory.
 func Folder(dataDir string) string { return filepath.Join(dataDir, folderName) }
 
+// PlanPath is the update plan the helper installs; it exists from the moment
+// wasync stops for an update until the helper has finished.
+func PlanPath(dataDir string) string { return filepath.Join(Folder(dataDir), planFile) }
+
 // Relaunch says how the helper starts wasync again after installing.
 type Relaunch struct {
 	// How is one of the Relaunch* values.

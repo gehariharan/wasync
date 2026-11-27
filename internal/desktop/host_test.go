@@ -22,6 +22,7 @@ import (
 	"github.com/gehariharan/wasync/internal/firstopen"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/processlock"
+	"github.com/gehariharan/wasync/internal/update"
 )
 
 // The test binary stands in for wasync: started with WASYNC_FAKE set, it
@@ -298,6 +299,43 @@ func TestHostUsesAWasyncThatTookTheDataDirectoryWhileItsOwnWasStarting(t *testin
 	if got := h.Status(context.Background()); got != "wasync is not running" {
 		t.Fatalf("once the other wasync stops, the app's own lost start is no problem to report: %q", got)
 	}
+}
+
+func TestTheAppQuitsWhenItsWasyncStopsToInstallAnUpdate(t *testing.T) {
+	h, _, _ := testHost(t, "serve")
+	quit := make(chan struct{}, 1)
+	h.OnUpdate = func() { quit <- struct{}{} }
+	if _, err := h.Ensure(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := localfs.EnsureDir(update.Folder(h.Config.DataDir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(update.PlanPath(h.Config.DataDir), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	h.mu.Lock()
+	c := h.child
+	h.mu.Unlock()
+	_ = c.stdin.Close() // wasync stops cleanly, as it does for an update
+	select {
+	case <-quit:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the app must quit so the update can open the new app")
+	}
+}
+
+func TestAWasyncThatStopsCleanlyWithoutAnUpdateLeavesTheAppRunning(t *testing.T) {
+	h, _, _ := testHost(t, "serve")
+	h.OnUpdate = func() { t.Error("no update is waiting") }
+	if _, err := h.Ensure(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	h.mu.Lock()
+	c := h.child
+	h.mu.Unlock()
+	_ = c.stdin.Close()
+	<-c.done
 }
 
 func TestDescribe(t *testing.T) {

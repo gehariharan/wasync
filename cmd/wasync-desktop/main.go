@@ -106,6 +106,10 @@ func run() error {
 
 	host := &desktop.Host{Wasync: *wasync, App: self, Config: cfg, Log: logFile, CLI: &cli.App{Out: io.Discard, Err: logFile}, Command: wasyncCommand}
 	d := &desktopApp{host: host, log: log}
+	host.OnUpdate = func() {
+		log.Info("wasync stopped to install an update; the update opens the app again")
+		d.app.Quit()
+	}
 	return d.run(*background)
 }
 

@@ -20,6 +20,7 @@ import (
 	"github.com/gehariharan/wasync/internal/cli"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/firstopen"
+	"github.com/gehariharan/wasync/internal/update"
 )
 
 // ErrStopped means wasync is not running and the app is quitting, so nothing
@@ -43,6 +44,9 @@ type Host struct {
 	Command func(name string, args ...string) *exec.Cmd
 	// ReadyWait is how long a started wasync has to answer; zero means a minute.
 	ReadyWait time.Duration
+	// OnUpdate is called when the wasync the app started stops to install an
+	// update; the app quits then, and the update opens the new app.
+	OnUpdate func()
 
 	mu       sync.Mutex
 	child    *child
@@ -210,8 +214,12 @@ func (h *Host) exited(c *child, ran time.Duration) {
 	}
 	if c.err == nil {
 		h.lastExit, h.failures = "", 0
+		quitting := h.quitting
 		close(c.done)
 		h.mu.Unlock()
+		if _, err := os.Stat(update.PlanPath(h.Config.DataDir)); err == nil && !quitting && h.OnUpdate != nil {
+			h.OnUpdate()
+		}
 		return
 	}
 	if ran > 2*time.Minute {
