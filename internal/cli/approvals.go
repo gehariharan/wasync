@@ -14,8 +14,8 @@ import (
 
 const approvalsUsage = `Usage: wasync approvals
 
-Open the approval page in your browser: the requests agents are waiting on, and
-the choice between asking each time and syncing all chats, without a terminal.
+Open the approval page in your browser, without a terminal: the messages agents
+are asking to send, each approved on its own, and your own delete confirmations.
 It needs wasync running (the TUI or serve). The link works once and only for two
 minutes, so run this command again for a fresh one.
 

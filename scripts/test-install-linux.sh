@@ -78,12 +78,25 @@ HOME="$home" "$stage/install.sh" < /dev/null > /dev/null 2>&1
 [[ -x "$home/.local/bin/wasync" && -x "$home/.local/bin/wasync-axi" ]] || fail "default directory is not ~/.local/bin"
 pass "default install directory is ~/.local/bin"
 
-# The removed AXI options are refused, so no old flag can wire wasync-axi into an agent.
-for option in --nonsense --with-axi --without-axi --axi-skill --axi-hooks; do
-  if run "refused$option" "$option" 2> /dev/null; then fail "option $option should be refused"; fi
-  [[ ! -s "$log" ]] || fail "option $option changed agent settings"
+# Older invocations keep working: --with-axi changes nothing, and --axi-skill
+# and --axi-hooks run only the setup they name.
+run withaxi --with-axi || fail "--with-axi was refused"
+[[ -x "$bin/wasync" && -x "$bin/wasync-axi" && ! -s "$log" ]] || fail "--with-axi did not install both tools without touching agent settings"
+pass "--with-axi is accepted and changes no agent settings"
+run skill --axi-skill || fail "--axi-skill was refused"
+[[ "$(cat "$log")" == "setup skill" ]] || fail "--axi-skill ran: $(cat "$log")"
+run hooks --axi-hooks || fail "--axi-hooks was refused"
+[[ "$(cat "$log")" == "setup hooks" ]] || fail "--axi-hooks ran: $(cat "$log")"
+run both --axi-skill --axi-hooks || fail "--axi-skill --axi-hooks was refused"
+[[ "$(cat "$log")" == $'setup skill\nsetup hooks' ]] || fail "--axi-skill --axi-hooks ran: $(cat "$log")"
+pass "--axi-skill and --axi-hooks run only the setup they name"
+
+for option in --nonsense --without-axi; do
+  if run "refused$option" "$option"; then fail "option $option should be refused"; fi
+  [[ ! -s "$log" && ! -e "$bin/wasync" ]] || fail "option $option installed something or changed agent settings"
 done
-pass "unknown and removed options are refused"
+grep -q 'wasync-axi is always installed' "$work/refused--without-axi.out" || fail "--without-axi refusal does not say why"
+pass "unknown options and --without-axi are refused"
 
 # In a real terminal the script must not ask anything or change agent settings.
 python3 - "$stage/install.sh" "$work/tty-home" "$work/tty.log" <<'PY2' || fail "interactive run failed"

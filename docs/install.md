@@ -97,7 +97,10 @@ wasync version
 ```
 
 `install.sh --bin-dir DIR` installs somewhere else. It asks no questions and changes no
-agent settings. To install by hand instead, copy `wasync` and `wasync-axi` with
+agent settings unless you pass `--axi-skill` or `--axi-hooks`, which run
+`wasync-axi setup skill` or `wasync-axi setup hooks` after installing. `--with-axi` is
+still accepted and changes nothing; `--without-axi` is refused, because wasync-axi is
+always installed and stays inactive until you connect an agent. To install by hand instead, copy `wasync` and `wasync-axi` with
 `install -m 755` into a directory on your PATH.
 
 On Linux there is no system confirmation prompt (Touch ID, Windows Hello) and no

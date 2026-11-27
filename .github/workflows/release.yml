@@ -265,7 +265,7 @@ jobs:
           Prebuilt preview packages. No Go compiler is required on the user's computer.
 
           - macOS 15+: the wasync app is the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .dmg: open it and drag wasync to Applications. The .pkg installs the wasync command instead; it always installs "AXI for agents" (wasync-axi) with wasync and changes no agent settings.
-          - Linux: download the matching linux archive, extract it and run `./install.sh`. It installs wasync and wasync-axi (AXI for agents) without asking and changes no agent settings. Builds target glibc 2.35 or newer.
+          - Linux: download the matching linux archive, extract it and run `./install.sh`. It installs wasync and wasync-axi (AXI for agents) without asking and changes no agent settings unless you pass `--axi-skill` or `--axi-hooks`; `--without-axi` is no longer accepted. Builds target glibc 2.35 or newer.
           - Windows: Setup installs the wasync app (Start menu) and always installs AXI for agents (wasync-axi.exe), and changes no agent settings; the portable ZIP includes wasync-desktop.exe and wasync-axi.exe.
           - Agents are connected later, from wasync's Connect an agent step.
           - `wasync query --help` documents the agent query interface.
