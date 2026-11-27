@@ -34,9 +34,10 @@ You do not need Go or a compiler.
 
 | Platform | Download | How |
 | --- | --- | --- |
-| macOS 15+ (Apple Silicon or Intel) | `wasync_VERSION_darwin_arm64.pkg` / `_amd64.pkg` | Open the package and follow Installer |
+| macOS 15+ (Apple Silicon or Intel), the wasync app | `wasync_VERSION_darwin_arm64.dmg` / `_amd64.dmg` | Open the disk image and drag wasync to Applications ([the wasync app](docs/desktop.md)) |
+| macOS 15+ (Apple Silicon or Intel), the command only | `wasync_VERSION_darwin_arm64.pkg` / `_amd64.pkg` | Open the package and follow Installer |
 | Linux x86-64 or ARM64, glibc 2.35+ | `wasync_VERSION_linux_amd64.tar.gz` / `_arm64.tar.gz` | Extract and run `./install.sh` |
-| Windows 10/11 x64 | `wasync_VERSION_windows_amd64-setup.exe` or `.zip` | Per-user Setup or portable ZIP ([Windows](docs/windows.md)) |
+| Windows 10/11 x64 | `wasync_VERSION_windows_amd64-setup.exe` or `.zip` | Per-user Setup of the wasync app, or portable ZIP ([Windows](docs/windows.md)) |
 
 Each release has a `checksums.txt` with SHA-256 hashes. Upgrades keep your archive, chat choices
 and pairing. Platform details, signing, checksums and the Microsoft Store edition are in

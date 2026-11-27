@@ -48,10 +48,8 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 			return client.Logout(ctx)
 		}
 	}
-	if a.Service != nil {
-		if spec, err := a.serviceSpec(cfg); err == nil {
-			owner.Service, owner.ServiceSpec = a.Service, spec
-		}
+	if mgr, spec, ok := a.loginItem(cfg); ok {
+		owner.Service, owner.ServiceSpec = mgr, spec
 	}
 	if u := a.updater(runCtx, cfg, owner.Stop); u != nil {
 		owner.Update = u
@@ -115,16 +113,26 @@ func (a *App) startWebhooks(ctx context.Context, cfg config.Config, store *stora
 	}
 }
 
-func (a *App) serveAction(offline bool) action { return a.ownerAction(offline, false) }
+func (a *App) serveAction(offline bool) action { return a.ownerAction(offline, false, false) }
 
 // setupAction is serve that also links WhatsApp from a page in the browser and
-// opens that page, so a first-time person needs no terminal screen.
-func (a *App) setupAction() action { return a.ownerAction(false, true) }
+// opens that page, so a first-time person needs no terminal screen. For the
+// wasync app (appMode) it opens no browser: the app shows the pages in its own
+// window, asking for links on standard input, and this wasync stops when the
+// app closes it (see app.go).
+func (a *App) setupAction(appMode bool) action { return a.ownerAction(false, true, appMode) }
 
-func (a *App) ownerAction(offline, setupMode bool) action {
+func (a *App) ownerAction(offline, setupMode, appMode bool) action {
 	return func(ctx context.Context, cfg config.Config, store *storage.Store, log *slog.Logger) (result error) {
 		if cfg.NoAPI {
 			return fmt.Errorf("serve requires the local API; remove --no-api")
+		}
+		// Standard output belongs to the app channel; what wasync says for a
+		// person goes to standard error, which the app keeps in its log.
+		appOut := a.Out
+		if appMode {
+			a.Out = a.Err
+			defer func() { a.Out = appOut }()
 		}
 		var client Client
 		var live tui.Client
@@ -213,7 +221,13 @@ func (a *App) ownerAction(offline, setupMode bool) action {
 				}
 			}()
 			fmt.Fprintf(a.Out, "Local API: %s\nBearer token file: %s\n%s\n", url, filepath.Join(cfg.DataDir, "api.token"), a.approvalCheckLine())
-			if setupMode {
+			switch {
+			case appMode:
+				var stopApp context.CancelFunc
+				ctx, stopApp = context.WithCancel(ctx)
+				defer stopApp()
+				go serveAppChannel(ctx, a.In, appOut, url, a.ownerRec.PID, a.NewLink, stopApp)
+			case setupMode:
 				a.openSetupPage()
 			}
 			if client != nil {

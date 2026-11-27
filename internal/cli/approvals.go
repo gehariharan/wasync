@@ -67,26 +67,35 @@ func (a *App) runWeb(ctx context.Context, cfg config.Config, args []string) erro
 // in the browser. The link is never printed, so a program that ran this command
 // does not learn it.
 func (a *App) openPage(ctx context.Context, cfg config.Config, page string) error {
+	link, err := a.pageLink(ctx, cfg, page)
+	if err != nil {
+		return err
+	}
+	return a.openLink(link)
+}
+
+// pageLink asks the running owner for a one-time link to a page.
+func (a *App) pageLink(ctx context.Context, cfg config.Config, page string) (string, error) {
 	if cfg.NoAPI {
-		return fmt.Errorf("the page needs the local API; remove --no-api")
+		return "", fmt.Errorf("the page needs the local API; remove --no-api")
 	}
 	secret, err := approvecred.Read(cfg.DataDir)
 	if err != nil {
-		return fmt.Errorf("start wasync serve or the TUI first: %w", err)
+		return "", fmt.Errorf("start wasync serve or the TUI first: %w", err)
 	}
 	body, _ := json.Marshal(map[string]string{"page": page})
 	response, err := commandRequest(ctx, cfg, "POST", "/api/ui/link", body, []byte(secret))
 	if err != nil {
-		return fmt.Errorf("start wasync serve or the TUI first: %w", err)
+		return "", fmt.Errorf("start wasync serve or the TUI first: %w", err)
 	}
 	defer response.Body.Close()
 	var out struct {
 		URL string `json:"url"`
 	}
 	if err = json.NewDecoder(io.LimitReader(response.Body, 4<<10)).Decode(&out); err != nil || response.StatusCode != 200 || out.URL == "" {
-		return fmt.Errorf("the running wasync did not give a link (HTTP %d)", response.StatusCode)
+		return "", fmt.Errorf("the running wasync did not give a link (HTTP %d)", response.StatusCode)
 	}
-	return a.openLink(out.URL)
+	return out.URL, nil
 }
 
 func (a *App) openLink(link string) error {

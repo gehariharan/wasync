@@ -12,8 +12,10 @@ release workflow produces these downloads:
 
 | Platform | Download | Installation |
 | --- | --- | --- |
-| macOS 15+, Apple Silicon | `wasync_VERSION_darwin_arm64.pkg` | Open the package and follow Installer |
-| macOS 15+, Intel | `wasync_VERSION_darwin_amd64.pkg` | Open the package and follow Installer |
+| macOS 15+, Apple Silicon, the wasync app | `wasync_VERSION_darwin_arm64.dmg` | Open the disk image and drag wasync to Applications |
+| macOS 15+, Intel, the wasync app | `wasync_VERSION_darwin_amd64.dmg` | Open the disk image and drag wasync to Applications |
+| macOS 15+, Apple Silicon, the command only | `wasync_VERSION_darwin_arm64.pkg` | Open the package and follow Installer |
+| macOS 15+, Intel, the command only | `wasync_VERSION_darwin_amd64.pkg` | Open the package and follow Installer |
 | Linux x86-64, glibc 2.35+ | `wasync_VERSION_linux_amd64.tar.gz` | Extract and run `./install.sh` |
 | Linux ARM64, glibc 2.35+ | `wasync_VERSION_linux_arm64.tar.gz` | Extract and run `./install.sh` |
 | Windows 10/11 x64 | `wasync_VERSION_windows_amd64-setup.exe` or `.zip` | Per-user Setup or portable ZIP (see [Windows](windows.md)) |
@@ -24,6 +26,9 @@ Homebrew tap and runs the [installation checks](releasing.md#validation). Downlo
 versions appear on the
 [GitHub Releases page](https://github.com/gehariharan/wasync/releases).
 Source code and prebuilt downloads are public. No GitHub account is needed to install.
+
+The wasync app is wasync in its own window, with a menu-bar icon; it carries the
+`wasync` and `wasync-axi` commands inside it. See [The wasync app](desktop.md).
 
 ## AXI for agents (`wasync-axi`)
 

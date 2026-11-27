@@ -10,8 +10,15 @@ require (
 	github.com/BurntSushi/toml v1.5.0
 	github.com/charmbracelet/x/ansi v0.11.9
 	github.com/go-webauthn/webauthn v0.18.2
+	// Builds the Mac disk image (packaging/macos/mkdmg); the version Wails v3.1.0 uses.
+	github.com/leaanthony/dmg v0.0.0-20260731074841-5c28840cf819
 	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/mdp/qrterminal/v3 v3.2.1
+	// The wasync app (cmd/wasync-desktop). Pinned exactly: v3.1.0 is the first
+	// stable minor after Wails 3 left alpha and beta (v3.0.0, 2026-10-26), and
+	// its window, tray and single-instance API is what the app is built and
+	// tested against, so move it only deliberately and retest the app.
+	github.com/wailsapp/wails/v3 v3.1.0
 	go.mau.fi/libsignal v0.2.3
 	go.mau.fi/whatsmeow v0.0.0-20261126231607-ae388b0429be
 	golang.org/x/sys v0.50.0
@@ -31,10 +38,13 @@ require (
 	github.com/clipperhouse/displaywidth v0.11.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/coder/websocket v1.8.15 // indirect
+	github.com/ebitengine/purego v0.11.1 // indirect
 	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
+	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/go-webauthn/x v0.3.1 // indirect
+	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -57,4 +67,5 @@ require (
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/sync v0.25.0 // indirect
 	golang.org/x/text v0.44.0 // indirect
+	howett.net/plist v1.0.2-0.20250314012144-ee69052608d9 // indirect
 )

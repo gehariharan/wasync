@@ -196,7 +196,9 @@ func commandRequest(ctx context.Context, cfg config.Config, method, path string,
 	req.Header.Set("X-Wasync-Time", timestamp)
 	req.Header.Set("X-Wasync-Signature", api.SignCommand(strings.TrimSpace(string(token)), timestamp, nonce, req.Method, req.URL.Path, body))
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{Timeout: cfg.Timeout, Transport: &http.Transport{Proxy: nil}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	// One request per client: no idle connection is left open on the owner's
+	// listener, which matters for the wasync app's status polling.
+	client := &http.Client{Timeout: cfg.Timeout, Transport: &http.Transport{Proxy: nil, DisableKeepAlives: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	response, err := client.Do(req)
 	if err != nil {
 		return nil, err

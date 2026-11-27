@@ -10,11 +10,13 @@ The release workflow builds Windows 10/11 x64 using a native Windows runner,
 CGO SQLite with FTS5, and a statically linked MinGW runtime. Downloads:
 
 - `wasync_VERSION_windows_amd64-setup.exe`: per-user Inno Setup installer.
-- `wasync_VERSION_windows_amd64.zip`: portable `wasync.exe`, `wasync-axi.exe` and license notices.
+- `wasync_VERSION_windows_amd64.zip`: portable `wasync.exe`, `wasync-desktop.exe` (the wasync app), `wasync-axi.exe` and license notices.
 
-Run Setup, then open a new terminal and run `wasync setup` to link WhatsApp in your browser
-(see the [README](../README.md#pair-your-phone)). The **wasync** Start menu entry the installer
-adds runs `wasync.exe` with no command, which opens the [terminal UI](tui.md). The installer offers a user PATH entry and, as a separate unticked
+Setup installs the [wasync app](desktop.md) beside `wasync.exe`. Its licence page starts with
+the note that wasync is not WhatsApp, and its finish page has a ticked **Open wasync now**
+box. The **wasync** Start menu entry opens the app, which shows the setup pages to link
+WhatsApp, and keeps running in the notification area when you close its window. The
+installer offers a user PATH entry and, as a separate unticked
 task, **AXI for agents** (`wasync-axi.exe`; keep the PATH entry ticked so agents
 can find it). If you pick it, the last page offers two more unticked boxes that run
 `wasync-axi setup skill` and `wasync-axi setup hooks` as you; a silent install
@@ -24,10 +26,10 @@ AXI for agents, and omitting `installaxi` leaves it out. No administrator access
 needed.
 
 If you set up your agents, run `wasync-axi setup hooks --remove` and
-`wasync-axi setup skill --remove` before uninstalling. Stop wasync (`wasync stop`) before
-upgrading by hand or uninstalling; **Update and restart…** on the Set up page does both steps
-for you (see [Updating from the web app](install.md#updating-from-the-web-app)). Uninstall removes program files and its
-PATH entry; it preserves `%APPDATA%\wasync`, including the archive and device
+`wasync-axi setup skill --remove` before uninstalling. Quit the wasync app (or stop wasync
+with `wasync stop`) before upgrading by hand or uninstalling; **Update and restart…** on the Set up page does both steps
+for you (see [Updating from the web app](install.md#updating-from-the-web-app)). Uninstall removes program files, its
+PATH entry and the app's start-at-login item; it preserves `%APPDATA%\wasync`, including the archive and device
 session. The installer owns only the PATH entry it adds; a preexisting equivalent
 entry is preserved on uninstall. The portable ZIP uses the same data directory unless
 `--data-dir` is set. Local data uses a private Windows ACL for your user and SYSTEM;
@@ -61,7 +63,8 @@ them.
 
 ### Building the Windows packages (maintainers)
 
-Maintainers can build using Go, Python 3, MinGW GCC and Inno Setup 6:
+Maintainers can build using Go, Python 3, MinGW GCC and Inno Setup 6 (the wasync app,
+`wasync-desktop.exe`, needs no C compiler):
 
 ```powershell
 $env:CC = 'C:/msys64/ucrt64/bin/gcc.exe'

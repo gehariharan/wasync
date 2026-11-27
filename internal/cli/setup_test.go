@@ -21,6 +21,7 @@ import (
 	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/service"
 	"github.com/gehariharan/wasync/internal/storage"
+	"github.com/gehariharan/wasync/internal/whatsapp"
 )
 
 type loginItem struct {
@@ -232,7 +233,16 @@ func (c *linkingClient) EnableCapture(ctx context.Context, s *storage.Store) err
 	if !c.Paired() {
 		return nil
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.boundedSyncClient.EnableCapture(ctx, s)
+}
+
+// Status is read by the owner's API while LoginWithQR links, so it takes the lock too.
+func (c *linkingClient) Status() whatsapp.CaptureStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.boundedSyncClient.Status()
 }
 func (c *linkingClient) Paired() bool { c.mu.Lock(); defer c.mu.Unlock(); return c.linked }
 func (c *linkingClient) LoginWithQR(ctx context.Context, display func(string)) error {
