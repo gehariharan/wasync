@@ -295,7 +295,7 @@ func centred(img draw.Image, f font.Face, c color.Color, text string, y int) {
 }
 
 // DMGWidth and DMGHeight are the disk image window's size in points, and
-// DMGAppX, DMGLinkX and DMGIconY where its two icons sit; scripts/make-dmg
+// DMGAppX, DMGLinkX and DMGIconY where its two icons sit; packaging/macos/mkdmg
 // uses the same numbers.
 const (
 	DMGWidth, DMGHeight = 660, 400
