@@ -68,7 +68,7 @@ func newUpdateFixture(t *testing.T, withPrompt bool, status update.Status) updat
 	f.accessFixture = setupAccessOwner(t, gate, func(o *Owner) { o.Update = f.updater })
 	f.page = newPageClient(t, f.accessFixture)
 	f.page.get(linkPath(t, f.accessFixture))
-	_, setup, _ := f.page.get("/ui/setup")
+	_, setup, _ := f.page.get("/ui/settings")
 	f.csrf = csrfOf(t, setup)
 	return f
 }
@@ -200,8 +200,8 @@ func TestNoUpdateWithoutASystemPromptOrSomethingToInstall(t *testing.T) {
 
 func TestSetupPageOffersTheUpdate(t *testing.T) {
 	f := newUpdateFixture(t, true, availableUpdate())
-	_, page, _ := f.page.get("/ui/setup")
-	for _, want := range []string{`id="update"`, "This is wasync 0.1.0-preview.1.", "wasync 0.1.0-preview.2 is available.", `value="install"`, `value="check"`, "Asks you to confirm with the test prompt."} {
+	_, page, _ := f.page.get("/ui/settings")
+	for _, want := range []string{`id="update"`, "This is wasync 0.1.0-preview.1.", "wasync 0.1.0-preview.2 is available.", `value="install"`, `value="check"`, "Asks for the test prompt, then downloads"} {
 		if !strings.Contains(page, want) {
 			t.Errorf("setup page lacks %q", want)
 		}
@@ -210,18 +210,18 @@ func TestSetupPageOffersTheUpdate(t *testing.T) {
 		t.Error("the update notice must stay unstyled")
 	}
 	code, _, hdr := f.page.post(setupUpdatePath, url.Values{"csrf": {f.csrf}, "action": {"check"}})
-	if code != http.StatusSeeOther || !strings.HasPrefix(hdr.Get("Location"), "/ui/setup") {
+	if code != http.StatusSeeOther || !strings.HasPrefix(hdr.Get("Location"), "/ui/settings") {
 		t.Fatalf("check form: %d %v", code, hdr)
 	}
 	f.stub.set(true)
 	code, _, hdr = f.page.post(setupUpdatePath, url.Values{"csrf": {f.csrf}, "action": {"install"}})
-	if code != http.StatusSeeOther || hdr.Get("Location") != "/ui/setup?n=updstart" {
+	if code != http.StatusSeeOther || hdr.Get("Location") != "/ui/settings?n=updstart" {
 		t.Fatalf("install form: %d %v", code, hdr)
 	}
 	if checks, starts := f.updater.counts(); checks != 1 || starts != 1 {
 		t.Fatalf("checks %d, starts %d", checks, starts)
 	}
-	_, page, _ = f.page.get("/ui/setup")
+	_, page, _ = f.page.get("/ui/settings")
 	if !strings.Contains(page, "Downloading wasync 0.1.0-preview.2 (25%)") || !strings.Contains(page, `http-equiv="refresh"`) {
 		t.Fatalf("an update under way must show and refresh:\n%s", page)
 	}
@@ -230,7 +230,7 @@ func TestSetupPageOffersTheUpdate(t *testing.T) {
 func TestSetupPageWithoutAnUpdaterHasNoUpdateSection(t *testing.T) {
 	f, c, _ := newSetupFixture(t, true)
 	_ = f
-	if _, page, _ := c.get("/ui/setup"); strings.Contains(page, `id="update"`) {
+	if _, page, _ := c.get("/ui/settings"); strings.Contains(page, `id="update"`) {
 		t.Fatal("no updater, no update section")
 	}
 	if code, _, _ := c.get(updateProgressPath); code != http.StatusServiceUnavailable {

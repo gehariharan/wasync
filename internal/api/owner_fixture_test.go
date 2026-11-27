@@ -16,6 +16,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
+	"github.com/gehariharan/wasync/internal/firstopen"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/storage"
@@ -60,6 +61,10 @@ func setupAccessOwner(t *testing.T, human *humancheck.Gate, tweak func(*Owner)) 
 	ctx := context.Background()
 	dir := filepath.Join(t.TempDir(), "private")
 	if err := localfs.EnsureDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	// The First open screen was seen; firstOpenAgain shows it again.
+	if err := firstopen.Done(dir, time.Now()); err != nil {
 		t.Fatal(err)
 	}
 	store, err := storage.Open(ctx, filepath.Join(dir, "archive.db"))
@@ -246,4 +251,12 @@ func (f accessFixture) askSend(t *testing.T, chat, text string) approval.Request
 		t.Fatal(err)
 	}
 	return r
+}
+
+// firstOpenAgain makes the First open screen due again, as on a new computer.
+func firstOpenAgain(t *testing.T, f accessFixture) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(f.dir, firstopen.FileName)); err != nil {
+		t.Fatal(err)
+	}
 }

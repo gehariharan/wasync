@@ -3,60 +3,26 @@ package api
 import (
 	"html/template"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/axicred"
-	"github.com/gehariharan/wasync/internal/humancheck"
+	"github.com/gehariharan/wasync/internal/firstopen"
+	"github.com/gehariharan/wasync/internal/prefs"
 	linking "github.com/gehariharan/wasync/internal/setup"
-	"github.com/gehariharan/wasync/internal/update"
 )
 
-// The setup page walks a first-time person through what the terminal used to:
-// link WhatsApp by QR code, choose chats, connect an agent, and start wasync
-// at login. Like the approval page it has no script and is not a security
-// boundary. Choices that widen what an agent can do or start a background
-// program at login still end in the operating system's confirmation prompt (or
-// a passkey, from another device on the tailnet), and where neither is
-// available the page only shows the command to run instead. With the tailnet
-// opt-in on it also lists the devices set up to approve with a passkey; only
-// this computer can add one.
-
-type setupAgent struct{ Name, Status string }
-
-type setupData struct {
-	uiData
-	Paired, Pairing bool
-	QR              template.HTML
-	Failure         string
-	Syncing, Total  int
-	Agents          []setupAgent
-	// Apps are the apps Connect can write settings for; Preview is the
-	// change it would make for the one the person chose.
-	Apps              []connectRow
-	Preview           *connectPreview
-	AxiPath           string
-	HasSavedCred      bool
-	Service           string
-	ServiceInstalled  bool
-	ServiceAvailable  bool
-	ServiceNeedsHuman bool
-	// Tailnet is on when the web app opens from other devices on the tailnet.
-	Tailnet      bool
-	TailnetHost  string
-	TailnetLogin string
-	Devices      []deviceRow
-	// CanAddDevice is set on this computer when it can show the system prompt.
-	CanAddDevice bool
-	// DeviceCode is a code just made for setting up a device.
-	DeviceCode string
-	// Update is where updates stand; nil when this wasync cannot update.
-	Update *update.Status
-	// DataDir is the folder that holds everything wasync keeps.
-	DataDir string
-}
+// The setup steps walk a first-time person through what the terminal used to,
+// in four steps (decision D1): link WhatsApp by QR code and say how wasync
+// will be used, choose chats to sync, keep wasync running, and connect an
+// agent. Like every page here they need no script and are not a security
+// boundary: choices that widen what an agent can do still end in the
+// operating system's confirmation prompt (or a passkey, from another device
+// on the tailnet). /ui/setup itself leads to the step that is due; once setup
+// is done it opens Settings, which holds everything the steps set.
 
 func (h *handler) axiCredentialPath() (string, error) {
 	if h.axiPath != nil {
@@ -65,91 +31,158 @@ func (h *handler) axiCredentialPath() (string, error) {
 	return axicred.Path(os.Getenv)
 }
 
-func (h *handler) setupHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	h.setupView(w, r, sess, nil)
+// linkState is where linking the phone stands.
+type linkState struct {
+	Paired, Pairing bool
+	QR              template.HTML
+	Failure         string
+	// Linking is false for an owner that does not link phones (a terminal UI).
+	Linking bool
 }
 
-// setupView renders the setup page; tweak, when set, adds to what it shows.
-func (h *handler) setupView(w http.ResponseWriter, r *http.Request, sess uiSession, tweak func(*setupData)) {
-	d := &setupData{uiData: uiData{CSRF: sess.csrf, Gate: h.confirmName(r), Title: "wasync setup", Remote: remoteLogin(r) != ""}, DataDir: h.dataDir}
-	if n, ok := notices[r.URL.Query().Get("n")]; ok {
-		d.Notice, d.NoticeOK = n.text, n.ok
-	}
+func (h *handler) linkState(r *http.Request) (linkState, error) {
 	account, err := h.store.Account(r.Context())
 	if err != nil {
-		http.Error(w, "archive unavailable", http.StatusInternalServerError)
-		return
+		return linkState{}, err
 	}
 	snap := h.setup.Snapshot()
 	// While this page links WhatsApp, only the live link counts: an archive
 	// kept from an unlinked device must not hide the code to scan again.
-	d.Paired = snap.Paired || (h.setup == nil && account != nil)
-	d.Failure = snap.Failure
-	if !d.Paired && snap.QR != "" {
+	st := linkState{Paired: snap.Paired || (h.setup == nil && account != nil), Failure: snap.Failure, Linking: h.setup != nil}
+	if !st.Paired && snap.QR != "" {
 		if svg, err := linking.SVG(snap.QR); err == nil {
-			d.QR, d.Pairing = template.HTML(svg), true // the SVG is drawn here from numbers, not from page input
-			d.Refresh = 3
+			st.QR, st.Pairing = template.HTML(svg), true // the SVG is drawn here from numbers, not from page input
 		}
 	}
-	if !d.Paired && !d.Pairing && h.setup != nil && d.Failure == "" {
-		d.Refresh = 3 // waiting for WhatsApp to offer the first code
-	}
-	if account != nil {
-		groups, err := h.store.GroupSummaries(r.Context(), account.ID)
-		if err != nil {
-			http.Error(w, "archive unavailable", http.StatusInternalServerError)
-			return
-		}
-		d.Total = len(groups)
-		for _, g := range groups {
-			if g.PersonSynced() {
-				d.Syncing++
-			}
-		}
-		clients, _ := agentauth.List(h.dataDir)
-		now := time.Now()
-		for _, c := range clients {
-			d.Agents = append(d.Agents, setupAgent{Name: humancheck.Clean(c.Name, 40), Status: c.Status(now)})
-		}
-		d.Apps = h.connectRows(now)
-		if kind := r.URL.Query().Get("connect"); kind != "" {
-			d.Preview = h.previewFor(kind)
-		}
-		if p, err := h.axiCredentialPath(); err == nil {
-			d.AxiPath = p
-			if existing, err := axicred.Existing(p); err == nil && existing != "" {
-				d.HasSavedCred = true
-			}
-		}
-	}
-	if h.service != nil && h.service.Where() != "" {
-		d.ServiceAvailable, d.Service = true, h.service.Where()
-		d.ServiceInstalled, _ = h.service.Installed()
-	}
-	if s, devices := h.remoteDevices(); s.Host != "" {
-		d.Tailnet, d.TailnetHost, d.TailnetLogin = true, s.Host, s.Login
-		d.Devices = deviceRows(devices)
-		d.CanAddDevice = !d.Remote && h.human.Enabled()
-	}
-	if h.update != nil {
-		s := h.update.Status()
-		d.Update = &s
-		if updateBusy(d.Update) {
-			d.Refresh = 3
-		}
-	}
-	if tweak != nil {
-		tweak(d)
-	}
-	h.setupRender(w, r, d)
+	return st, nil
 }
 
-func (h *handler) setupRender(w http.ResponseWriter, r *http.Request, d *setupData) {
-	h.frameFor(r, d)
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if err := setupTemplate.Execute(w, d); err != nil {
-		http.Error(w, "page error", http.StatusInternalServerError)
+// setupRoute leads /ui/setup to the step that is due: the First open screen
+// once, then linking until a phone is linked, then the steps until setup is
+// done, and Settings after that.
+func (h *handler) setupRoute(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	to := "/ui/settings"
+	st, err := h.linkState(r)
+	if err != nil {
+		http.Error(w, "archive unavailable", http.StatusInternalServerError)
+		return
 	}
+	settings, _ := h.prefs.Get()
+	switch pending, _ := firstopen.Pending(h.dataDir); {
+	case remoteLogin(r) != "":
+		// Another device only sets itself up to approve, under Settings.
+	case pending:
+		to = welcomePath
+	case !st.Paired:
+		to = "/ui/setup/link"
+	case !settings.SetupDone:
+		to = "/ui/setup/link" // linked: the step asks how wasync will be used
+	}
+	if n := r.URL.Query().Get("n"); n != "" {
+		to += "?n=" + url.QueryEscape(n)
+	}
+	http.Redirect(w, r, to, http.StatusSeeOther)
+}
+
+type linkData struct {
+	uiData
+	linkState
+	Use string
+}
+
+// linkStep is step 1: the QR code to scan, and once linked, how wasync will
+// be used ("For my AI agents only" or "Also read my chats here").
+func (h *handler) linkStep(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	st, err := h.linkState(r)
+	if err != nil {
+		http.Error(w, "archive unavailable", http.StatusInternalServerError)
+		return
+	}
+	d := &linkData{uiData: uiData{CSRF: sess.csrf, Title: "Link your phone · wasync", Setup: h.setupFrameFor(stepLink, st.Paired)}, linkState: st}
+	h.noticeFrom(r, &d.uiData)
+	if !st.Paired && h.setup != nil && (st.Pairing || st.Failure == "") {
+		d.Refresh = 3 // the code changes, and the scan moves this page on
+	}
+	s, _ := h.prefs.Get()
+	switch d.Use = s.Use; d.Use {
+	case prefs.UseAgents, prefs.UseChats:
+	default:
+		d.Use = prefs.UseAgents // the mock's first choice; nothing is saved until Next
+	}
+	h.webRender(w, r, linkTemplate, d)
+}
+
+// setupUse saves how wasync will be used and moves on to choosing chats.
+func (h *handler) setupUse(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	if !h.uiForm(w, r, sess) {
+		return
+	}
+	use := r.PostForm.Get("use")
+	if use != prefs.UseAgents && use != prefs.UseChats {
+		http.Redirect(w, r, "/ui/setup/link?n=invalid", http.StatusSeeOther)
+		return
+	}
+	if _, err := h.prefs.Update(func(s *prefs.Settings) { s.Use = use }); err != nil {
+		http.Redirect(w, r, "/ui/setup/link?n=failed", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, "/ui/setup/chats", http.StatusSeeOther)
+}
+
+type runningData struct {
+	uiData
+	Available, On, Remote bool
+	Where, Quietly        string
+}
+
+// quietly says where wasync waits once its window is closed.
+func quietly(where string) string {
+	if strings.Contains(where, "Windows") {
+		return "Runs quietly in the notification area."
+	}
+	return "Runs quietly in the menu bar."
+}
+
+// runningStep is step 3: start wasync when the person logs in.
+func (h *handler) runningStep(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	d := &runningData{uiData: uiData{CSRF: sess.csrf, Title: "Keep running · wasync", Setup: h.setupFrameFor(stepRunning, true)}, Remote: remoteLogin(r) != ""}
+	h.noticeFrom(r, &d.uiData)
+	if h.service != nil && h.service.Where() != "" {
+		d.Available, d.Where = true, h.service.Where()
+		d.On, _ = h.service.Installed()
+		d.Quietly = quietly(d.Where)
+	}
+	h.webRender(w, r, runningTemplate, d)
+}
+
+// setupFinish marks setup done and opens the app's first page.
+func (h *handler) setupFinish(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	if !h.uiForm(w, r, sess) {
+		return
+	}
+	if _, err := h.prefs.Update(func(s *prefs.Settings) { s.SetupDone = true }); err != nil {
+		http.Redirect(w, r, "/ui/setup/agent?n=failed", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, h.homePath(), http.StatusSeeOther)
+}
+
+// noticeFrom shows the notice a redirect named.
+func (h *handler) noticeFrom(r *http.Request, d *uiData) {
+	if n, ok := notices[r.URL.Query().Get("n")]; ok {
+		d.Notice, d.NoticeOK = n.text, n.ok
+	}
+}
+
+// backPages are the pages a form may name in its "back" field to return to.
+var backPages = map[string]bool{"/ui/settings": true, "/ui/setup/running": true, "/ui/setup/agent": true, "/ui/agents/connect": true}
+
+// formBack is where a setup or settings form returns: the page it names, or Settings.
+func formBack(r *http.Request) string {
+	if b := r.PostForm.Get("back"); backPages[b] {
+		return b
+	}
+	return "/ui/settings"
 }
 
 // setupAgent creates an agent credential and saves it where wasync-axi reads
@@ -246,11 +279,11 @@ func (h *handler) setupLink(w http.ResponseWriter, r *http.Request, sess uiSessi
 	if !h.uiForm(w, r, sess) {
 		return
 	}
-	if !h.setup.Retry() {
-		h.uiBack(w, r, "")
-		return
+	to := "/ui/setup/link"
+	if h.setup.Retry() {
+		to += "?n=newcode"
 	}
-	h.uiBack(w, r, "newcode")
+	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
 // setupService turns start-at-login on or off. Turning it on needs the system
@@ -279,97 +312,45 @@ func (h *handler) setupService(w http.ResponseWriter, r *http.Request, sess uiSe
 	}
 }
 
-var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiHead + uiUpdateSection + `{{template "head" .}}
-<h1>Set up wasync</h1>
+var linkTemplate = template.Must(template.New("link").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
+<div class="stage">
 {{template "notice" .}}
-
-<h2>1. Link WhatsApp</h2>
-<section class="card">
-{{if .Paired}}<p class="ok"><strong>Linked.</strong> wasync is connected to your WhatsApp.</p>
-{{else if .Pairing}}<p>On your phone open <strong>WhatsApp → Linked devices → Link a device</strong> and scan this code. It refreshes by itself.</p>
-<div class="qr">{{.QR}}</div>
-{{else if .Failure}}<p class="bad">{{.Failure}}</p>
-<form method="post" action="/ui/setup/link" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="go">Get a new code</button></form>
-{{else}}<p class="mut">Waiting for WhatsApp to offer a code… If nothing appears, run <code>wasync setup</code> in a terminal.</p>{{end}}
-</section>
-
-{{if .Paired}}
-<h2>2. Choose chats to sync</h2>
-<section class="card">
-{{if .Syncing}}<p><strong>{{.Syncing}} of {{.Total}} chats are syncing.</strong> They may be left over from before you linked this phone. <a href="/ui/chats/pick">Review them</a>, or start fresh.</p>
-<form method="post" action="/ui/chats/pick" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="action" value="clearall">Start fresh: stop syncing all</button> <a class="btn" href="/ui/chats/pick">Choose chats…</a></form>
-{{else}}<p>Nothing is syncing yet. wasync keeps only the chats you tick, on this computer. Agents see none of them until you connect one in step 3.</p>
-<p class="btn-row"><a class="btn go" href="/ui/chats/pick">Choose chats…</a> {{if .Total}}<span class="mut">{{.Total}} chats found.</span>{{else}}<span class="mut">Chats appear a moment after linking; refresh if none are listed.</span>{{end}}</p>{{end}}
-</section>
-
-<h2 id="connect">3. Connect an agent</h2>
-<section class="card">
-<p class="mut">Connect writes the WhatsApp tools into the app's own settings file after you confirm, keeps a copy of that file first, and gives the app its own credential, which is never shown. Disconnect takes them out again.</p>
-<table class="sent"><thead><tr><th>App</th><th>Status</th><th></th></tr></thead><tbody>
-{{range .Apps}}<tr><td>{{.Title}}{{if not .Connected}} <span class="mut">{{if .Found}}found on this computer{{else}}not found{{end}}</span>{{end}}</td>
-<td>{{.Status}}{{if .Connected}}<br><span class="mut">{{.Next}}</span>{{end}}</td>
-<td>{{if .Connected}}<form method="post" action="/ui/setup/disconnect"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Agent}}"><button>Disconnect</button></form>{{else}}<a href="/ui/setup?connect={{.Agent}}#connect">Connect…</a>{{end}}</td></tr>
-{{end}}</tbody></table>
-{{with .Preview}}<h3>Connect {{.Title}}</h3>
-{{if .Error}}<p class="bad">{{.Error}}</p>
-{{else}}<p>wasync will give {{.Title}} the credential <strong>{{.Name}}</strong>: it may read, reply and react in every chat you sync, now and later; editing stays off. To message a chat you don't sync, or a new number, it asks under Approvals.</p>
-<p>{{if .Exists}}It changes <code>{{.Path}}</code> and keeps a copy of it next to it first.{{else}}It creates <code>{{.Path}}</code>.{{end}}</p>
-{{if .Removed}}<p>It replaces this entry:</p><pre>{{.Removed}}</pre>{{end}}
-<p>It adds:</p><pre>{{.Added}}</pre>
-{{if .Steps}}<p>It also adds the WhatsApp plugin to Codex by running:</p><pre>{{range .Steps}}{{.}}
-{{end}}</pre>{{end}}
-{{if $.Gate}}<form method="post" action="/ui/setup/connect#connect"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Kind}}"><input type="hidden" name="digest" value="{{.Digest}}"><button class="go">Connect {{.Title}}…</button> <span class="mut">Asks you to confirm with {{$.Gate}}.</span></form>
-{{else if $.Remote}}<p class="bad">Connect agents on the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
-{{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page.</p>{{end}}{{end}}
-{{end}}
-<h3>Another agent</h3>
-{{if .Agents}}<p>Connected agents:</p><ul>{{range .Agents}}<li>{{.Name}} <span class="mut">{{.Status}}</span></li>{{end}}</ul>{{end}}
-{{if .Gate}}
-<form method="post" action="/ui/setup/agent"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<p class="mut">The agent may read, reply and react in every chat you sync, now and later; editing stays off. To message a chat you don't sync, or a new number, it asks under Approvals and you approve each message. The secret is saved straight to where wasync-axi reads it ({{.AxiPath}}) and is never shown.</p>
-<label>Name <input type="text" name="name" value="wasync-axi" maxlength="32" pattern="[a-z0-9-]{1,32}"></label>
-{{if .HasSavedCred}}<label><input type="checkbox" name="replace" value="yes"> Replace the credential wasync-axi already has saved</label>{{end}}
-<div class="btn-row"><button class="go">Connect…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></div>
+{{if .Paired}}<p class="linked">✓ Linked.</p>
+<h1>How will you use wasync?</h1>
+<form method="post" action="/ui/setup/use"><input type="hidden" name="csrf" value="{{.CSRF}}">
+<div class="choices">
+<label class="choice"><input type="radio" name="use" value="agents"{{if eq .Use "agents"}} checked{{end}}><span><strong>For my AI agents only</strong></span><span class="mut">Your agents can use the chats you approve. You keep reading WhatsApp on your phone.</span></label>
+<label class="choice"><input type="radio" name="use" value="chats"{{if eq .Use "chats"}} checked{{end}}><span><strong>Also read my chats here</strong></span><span class="mut">Your synced chats also show up in wasync, with search and replies.</span></label>
+</div>
+<p class="mut">You can change this later in Settings.</p>
+<div class="step-foot"><span></span><button class="go">Next →</button></div>
 </form>
-{{else if .Remote}}<p class="bad">Connect agents on the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
-{{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page. Run <code>wasync agents grant wasync-axi --scope read.chats,read.messages,send,react --synced-chats</code> in a terminal.</p>{{end}}
-</section>
+{{else}}<h1>Link your phone</h1>
+{{if .Pairing}}<div class="link-grid"><div class="qr">{{.QR}}</div>
+<div><ol class="howto"><li>Open WhatsApp on your phone</li><li>Settings → Linked devices</li><li>Link a device, then scan this code</li></ol>
+<p class="waiting">Waiting for your phone…</p><p class="sub">The code refreshes by itself.</p></div></div>
+{{else if .Failure}}<p class="notice bad">{{.Failure}}</p>
+<form method="post" action="/ui/setup/link" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="go">Get a new code</button></form>
+{{else if .Linking}}<p class="waiting">Getting a code from WhatsApp…</p>
+{{else}}<p class="notice bad">This wasync is not linking a phone. Quit it and open the wasync app to link one.</p>{{end}}
 {{end}}
+</div>
+</main></body></html>
+`))
 
-{{if .ServiceAvailable}}
-<h2 id="login">{{if .Paired}}4{{else}}2{{end}}. Start wasync when you log in</h2>
+var runningTemplate = template.Must(template.New("running").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
+<div class="stage">
+<h1>Keep wasync running</h1>
+{{template "notice" .}}
+<p class="lead">wasync syncs your chats and answers your agents only while it runs.</p>
 <section class="card">
-<p class="mut">Keeps wasync running without a terminal. It is {{.Service}} for your account only.</p>
-<form method="post" action="/ui/setup/service"><input type="hidden" name="csrf" value="{{.CSRF}}">
-{{if .ServiceInstalled}}<p class="ok"><strong>On.</strong>{{if .Warn}} <span class="mut">To move this copy to the background, run <code>wasync service restart</code>.</span>{{end}}</p><button name="action" value="remove">Turn off</button>
-{{else}}{{if .Gate}}<div class="btn-row"><button class="go" name="action" value="install">Turn on…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></div>
-{{else if .Remote}}<p class="bad">Turn this on from the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
-{{else}}<p class="bad">This computer cannot show a system confirmation, so run <code>wasync service install</code> in a terminal.</p>{{end}}{{end}}
-</form></section>
-{{end}}
-
-{{if .Tailnet}}
-<h2 id="devices">{{if .Remote}}Approve from this device{{else}}Approve from your other devices{{end}}</h2>
-<section class="card">
-<p class="mut">wasync opens at <code>https://{{.TailnetHost}}/ui/</code> for {{.TailnetLogin}} on your tailnet. A device set up here can approve agents' requests and give agents more power: each time, it shows what you are approving and asks for its passkey (Touch ID, Face ID, Windows Hello or the device's PIN). Only the computer running wasync can add a device.</p>
-{{if .Devices}}<div class="table-wrap"><table class="table"><thead><tr><th>Device</th><th>Added</th><th>Last approved</th><th></th></tr></thead><tbody>
-{{range .Devices}}<tr><td>{{.Name}}</td><td>{{.Added}}</td><td>{{.Used}}</td><td><form method="post" action="/ui/setup/devices" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="{{.ID}}"><button>Remove</button></form></td></tr>
-{{end}}</tbody></table></div>{{else}}<p>No device is set up yet.</p>{{end}}
-{{if .Remote}}<form method="post" action="/ui/passkey/begin"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<p><label>Code from the computer running wasync <input type="text" name="code" autocomplete="one-time-code" autocapitalize="characters" spellcheck="false" size="16" maxlength="20" required></label></p>
-<p><label>Name this device <input type="text" name="name" maxlength="40" placeholder="My laptop"></label></p>
-<p class="btn-row"><button class="go">Set up this device…</button> <span class="mut">Get a code there: open the web app, Set up, Add a device. A device that already has a passkey for wasync (one synced from another device too) needs no setting up.</span></p></form>
-{{else if .DeviceCode}}<p class="ok" role="status">On the other device, open <code>https://{{.TailnetHost}}/ui/setup</code> and enter this code within 10 minutes. It works once.</p>
-<p class="code-big"><strong>{{.DeviceCode}}</strong></p>
-{{else if .CanAddDevice}}<form method="post" action="/ui/setup/devices#devices"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="action" value="add"><div class="btn-row"><button class="go">Add a device…</button> <span class="mut">Asks you to confirm with {{.Gate}}, then shows a one-time code to enter on the other device.</span></div></form>
-{{else}}<p class="bad">This computer cannot show a system confirmation, so devices cannot be added.</p>{{end}}
+{{if not .Available}}<p>On this computer wasync runs while its window or terminal is open.</p>
+{{else if .Remote}}<p><strong>Start wasync when I log in</strong> is {{if .On}}on{{else}}off{{end}}. Change it on the computer running wasync.</p>
+{{else}}<form method="post" action="/ui/setup/service" class="switch-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="back" value="/ui/setup/running">
+<button class="switch" role="switch" aria-checked="{{.On}}" aria-labelledby="login-label" name="action" value="{{if .On}}remove{{else}}install{{end}}"></button>
+<span class="switch-text"><strong id="login-label">Start wasync when I log in</strong><span class="mut">{{.Quietly}}</span></span></form>{{end}}
 </section>
-{{end}}
-<h2 id="data">Storage</h2>
-<section class="card">
-<form method="post" action="/ui/setup/folder" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><span>Your data is stored in <code>{{.DataDir}}</code></span>{{if not .Remote}} <button>Show folder</button>{{end}}</form>
-</section>
-{{template "update" .}}
-<p><a href="/ui/setup">Refresh</a></p>
+<div class="step-foot"><a class="btn ghost" href="/ui/setup/chats">← Back</a><a class="btn go" href="/ui/setup/agent">Next →</a></div>
+</div>
 </main></body></html>
 `))

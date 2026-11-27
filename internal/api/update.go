@@ -163,21 +163,20 @@ func (h *handler) setupUpdate(w http.ResponseWriter, r *http.Request, sess uiSes
 	}
 }
 
-// uiUpdateSection is the setup page's short, unstyled update notice; the
-// setup screens built on the design system replace it.
+// uiUpdateSection is Settings' Updates section. Nothing checks by itself:
+// each check is a request to GitHub the person asked for.
 const uiUpdateSection = `{{define "update"}}{{with .Update}}
-<h2 id="update">Updates</h2>
+<p class="label" id="update">Updates</p>
 <section class="card">
-<p>This is wasync {{.Current}}.{{if .CheckedAt}} <span class="mut">Last checked {{.CheckedAt.Local.Format "2 Jan 15:04"}}.</span>{{end}}</p>
-{{with .LastResult}}{{if .OK}}<p class="ok">Updated from {{.From}} to {{.To}}. {{.Restart}}</p>{{else}}<p class="bad">The update to {{.To}} was not installed: {{.Error}} {{.Restart}}</p>{{end}}{{end}}
-{{if eq .State "downloading" "verifying" "installing"}}<p role="status"><strong>{{if eq .State "downloading"}}Downloading wasync {{.Latest.Version}}{{with .Progress}}{{if .Total}} ({{.Percent}}%){{end}}{{end}}…{{else if eq .State "verifying"}}Checking the download…{{else}}Installing. wasync restarts in a moment, and this page stops answering until it is back.{{end}}</strong></p>
+<div class="settings-row"><span class="grow"><strong>This is wasync {{.Current}}.</strong>{{if .CheckedAt}} <span class="sub">Last checked {{.CheckedAt.Local.Format "2 Jan 15:04"}}.</span>{{end}}</span>
+<form method="post" action="/ui/setup/update"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button name="action" value="check">Check for updates</button></form></div>
+{{with .LastResult}}{{if .OK}}<p class="notice ok">Updated from {{.From}} to {{.To}}. {{.Restart}}</p>{{else}}<p class="notice bad">The update to {{.To}} was not installed: {{.Error}} {{.Restart}}</p>{{end}}{{end}}
+{{if eq .State "downloading" "verifying" "installing"}}<p class="waiting" role="status">{{if eq .State "downloading"}}Downloading wasync {{.Latest.Version}}{{with .Progress}}{{if .Total}} ({{.Percent}}%){{end}}{{end}}…{{else if eq .State "verifying"}}Checking the download…{{else}}Installing. wasync restarts in a moment, and this page stops answering until it is back.{{end}}</p>
 {{else}}{{if eq .State "up-to-date"}}<p class="ok">You have the newest version.</p>{{else if eq .State "failed"}}<p class="bad">{{.Error}}</p>{{end}}
-{{if and .Latest (eq .State "available")}}<p><strong>wasync {{.Latest.Version}} is available.</strong>{{if .Latest.Page}} <a href="{{.Latest.Page}}">What is new</a>{{end}}</p>{{end}}
-{{if .Note}}<p class="mut">{{.Note}}</p>{{end}}
-<form method="post" action="/ui/setup/update#update"><input type="hidden" name="csrf" value="{{$.CSRF}}">
-{{if .CanInstall}}{{if $.Remote}}<p class="mut">Update wasync on the computer running it.</p>{{else if $.Gate}}<button class="go" name="action" value="install">Update and restart…</button> <span class="mut">Asks you to confirm with {{$.Gate}}.</span>{{else}}<p class="bad">This computer cannot show a system confirmation, so wasync cannot update itself from this page.</p>{{end}}{{end}}
-<button name="action" value="check">Check for updates</button> <span class="mut">Asks GitHub for the newest release.</span>
-</form>{{end}}
+{{if and .Latest (eq .State "available")}}<div class="settings-row"><span class="grow"><strong>wasync {{.Latest.Version}} is available.</strong>{{if .Latest.Page}} <a href="{{.Latest.Page}}" target="_blank" rel="noopener">What is new</a>{{end}}</span>
+{{if .CanInstall}}{{if $.Remote}}<span class="mut">Update wasync on the computer running it.</span>{{else if $.Gate}}<form method="post" action="/ui/setup/update"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button class="go" name="action" value="install">Update and restart</button></form>{{else}}<span class="bad">This computer cannot show a system confirmation, so wasync cannot update itself here.</span>{{end}}{{end}}</div>
+{{if and .CanInstall $.Gate (not $.Remote)}}<p class="sub">Asks for {{$.Gate}}, then downloads, checks and installs it and restarts wasync.</p>{{end}}{{end}}
+{{if .Note}}<p class="mut">{{.Note}}</p>{{end}}{{end}}
 </section>{{end}}{{end}}`
 
 // updateBusy reports whether an update is under way, so the page refreshes.

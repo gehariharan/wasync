@@ -20,6 +20,7 @@ import (
 	"github.com/gehariharan/wasync/internal/cli"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/firstopen"
+	"github.com/gehariharan/wasync/internal/uninstall"
 	"github.com/gehariharan/wasync/internal/update"
 )
 
@@ -47,6 +48,10 @@ type Host struct {
 	// OnUpdate is called when the wasync the app started stops to install an
 	// update; the app quits then, and the update opens the new app.
 	OnUpdate func()
+	// OnRemove is called when the wasync the app started stops because the
+	// person is removing wasync; the app quits then, so the removal can move
+	// or uninstall it.
+	OnRemove func()
 
 	mu       sync.Mutex
 	child    *child
@@ -216,6 +221,7 @@ func restartAfter(failures int) time.Duration {
 // exited notes how a wasync the app started stopped. One that failed is
 // started again after a pause; one that stopped cleanly (wasync stop, or the
 // phone was unlinked) stays stopped until the person opens the app again.
+// One that stopped to be updated or removed quits the app instead.
 // It closes c.done only once the exit is recorded and an update handed over,
 // so whoever sees wasync stopped also sees why and what came of it.
 func (h *Host) exited(c *child, ran time.Duration) {
@@ -227,8 +233,12 @@ func (h *Host) exited(c *child, ran time.Duration) {
 		h.lastExit, h.failures = "", 0
 		quitting := h.quitting
 		h.mu.Unlock()
-		if !quitting && h.OnUpdate != nil && update.Pending(h.DataDir()) {
+		switch {
+		case quitting:
+		case h.OnUpdate != nil && update.Pending(h.DataDir()):
 			h.OnUpdate()
+		case h.removing():
+			h.OnRemove()
 		}
 		close(c.done)
 		return
@@ -244,7 +254,17 @@ func (h *Host) exited(c *child, ran time.Duration) {
 	if quitting {
 		return
 	}
+	// Starting wasync again would hold the data directory the removal waits for.
+	if h.removing() {
+		h.OnRemove()
+		return
+	}
 	time.AfterFunc(wait, func() { _, _ = h.Ensure(context.Background()) })
+}
+
+// removing reports whether the app should quit because wasync is being removed.
+func (h *Host) removing() bool {
+	return h.OnRemove != nil && uninstall.Pending(h.DataDir())
 }
 
 // LastExit says why the last wasync the app started failed, or "".

@@ -20,15 +20,15 @@ func TestTheWebAppOpensOnChatsAndApprovalsKeepTheirPage(t *testing.T) {
 		}
 	}
 	code, page, _ := c.get("/ui/approvals")
-	if code != 200 || !strings.Contains(page, "<h1>wasync approvals</h1>") {
+	if code != 200 || !strings.Contains(page, "<h1>Approvals</h1>") {
 		t.Fatalf("approvals page: %d\n%s", code, page)
 	}
 	if !strings.Contains(page, `<a class="rail-i" href="/ui/approvals" title="Approvals"`) {
 		t.Fatalf("nav does not reach approvals:\n%s", page)
 	}
-	// Signed out, the bare address still lands on Chats, which then signs in.
-	if code, _, hd := newPageClient(t, f).get("/ui/"); code != 303 || hd.Get("Location") != "/ui/chats" {
-		t.Fatalf("signed out: %d %q", code, hd.Get("Location"))
+	// Signed out, the bare address signs in and then opens the right first page.
+	if code, page, _ := newPageClient(t, f).get("/ui/"); code != 401 || !strings.Contains(page, "Signed out.") {
+		t.Fatalf("signed out: %d\n%s", code, page)
 	}
 }
 
@@ -37,7 +37,7 @@ func TestEveryPageLinksTheManifestAndIcons(t *testing.T) {
 	c := newPageClient(t, f)
 	_, signedOut, _ := c.get("/ui/chats")
 	c.get(linkPath(t, f))
-	for _, path := range []string{"/ui/approvals", "/ui/chats", "/ui/sent", "/ui/agents", "/ui/setup"} {
+	for _, path := range []string{"/ui/approvals", "/ui/chats", "/ui/sent", "/ui/agents", "/ui/settings", "/ui/home", "/ui/setup/link", "/ui/setup/chats", "/ui/setup/running", "/ui/setup/agent", "/ui/agents/connect", "/ui/settings/remove"} {
 		_, page, hd := c.get(path)
 		if path == "/ui/chats" {
 			page += signedOut

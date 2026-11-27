@@ -22,12 +22,16 @@ agent** step. Setup offers a user PATH entry (keep it ticked so agents can find
 `wasync-axi`) and never changes any agent's settings. For a silent install, run
 `wasync_VERSION_windows_amd64-setup.exe /VERYSILENT`. No administrator access is needed.
 
-If you set up your agents, run `wasync-axi setup hooks --remove` and
-`wasync-axi setup skill --remove` before uninstalling. Quit the wasync app (or stop wasync
-with `wasync stop`) before upgrading by hand or uninstalling; **Update and restart…** on the Set up page does both steps
-for you (see [Updating from the web app](install.md#updating-from-the-web-app)). Uninstall removes program files, its
-PATH entry and the app's start-at-login item; it preserves `%LOCALAPPDATA%\wasync`, including the archive and device
-session (older versions used `%APPDATA%\wasync`; see
+To uninstall, use **Settings > Remove wasync** in the wasync app; no terminal is needed (see
+[Removing wasync](install.md#removing-wasync)). It disconnects every connected agent and takes wasync out of
+its settings, unlinks the phone from WhatsApp, removes both start-at-login items, deletes your
+chats and data only if you tick **Also delete my chats and data** and confirm with Windows Hello,
+and then opens Setup's own uninstaller, the one Settings > Apps runs. Quit the wasync app (or stop
+wasync with `wasync stop`) before upgrading by hand; **Update and restart…** in Settings does
+that for you (see [Updating from the web app](install.md#updating-from-the-web-app)). The uninstaller
+removes program files, its PATH entry and the app's start-at-login item; it preserves
+`%LOCALAPPDATA%\wasync`, including the archive and device session, unless you chose to delete it
+(older versions used `%APPDATA%\wasync`; see
 [Moving from an older version's folder](data-and-security.md#moving-from-an-older-versions-folder)). The installer owns only the PATH entry it adds; a preexisting equivalent
 entry is preserved on uninstall. The portable ZIP uses the same data directory unless
 `--data-dir` is set. Local data uses a private Windows ACL for your user and SYSTEM;

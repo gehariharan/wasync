@@ -40,6 +40,9 @@ type Settings struct {
 	// SaveMedia is the "Also save photos, videos and files" box; nil means
 	// the default, which is on.
 	SaveMedia *bool `json:"save_media,omitempty"`
+	// SetupDone is set once the person finished, or skipped, the last setup
+	// step; until then the setup pages lead through the steps.
+	SetupDone bool `json:"setup_done,omitempty"`
 }
 
 // AgentOnly reports whether wasync is used for AI agents only.
@@ -199,6 +202,7 @@ func (s *Store) Update(change func(*Settings)) (Settings, error) {
 	} else {
 		setKey(raw, "save_media", *next.SaveMedia, false)
 	}
+	setKey(raw, "setup_done", next.SetupDone, !next.SetupDone)
 	if err = s.write(raw); err != nil {
 		return current, err
 	}

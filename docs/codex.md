@@ -65,8 +65,8 @@ a terminal and that the Codex app was started after the install.
 
 ## Connect from the setup page
 
-On the setup page, **Connect an agent**, then **ChatGPT & Codex**, does the wiring with no
-terminal. The ChatGPT desktop app, the Codex CLI and the IDE extension share Codex's
+On setup's last step, **Agent** (or later **Agents > Connect another agent**), **ChatGPT & Codex**
+then **Connect** does the wiring with no terminal. The ChatGPT desktop app, the Codex CLI and the IDE extension share Codex's
 `config.toml` (`$CODEX_HOME/config.toml`, by default `~/.codex/config.toml`), so one connection
 covers all of them. After you confirm, wasync:
 
@@ -78,7 +78,7 @@ covers all of them. After you confirm, wasync:
    `wasync-axi mcp` by its full path, with that credential folder. It takes the place of the
    plugin's own `whatsapp-axi mcp` server, so the app needs no PATH change.
 
-Quit and reopen the app; the setup page shows when Codex last called wasync. **Disconnect** removes
+Quit and reopen the app; the Connect page shows when Codex last called wasync. **Disconnect** removes
 the table (putting back a `whatsapp` table it replaced), the plugin if wasync added it, and the
 credential.
 

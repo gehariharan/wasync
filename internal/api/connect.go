@@ -42,6 +42,7 @@ func init() {
 		"pluginleft":        {"Disconnected, but the WhatsApp plugin could not be removed from Codex. Remove it there if you no longer want it.", true},
 		"disconnectleft":    {"Its credential no longer works, but wasync could not take its entry out of the app's settings file. Fix or restore that file, then press Disconnect again.", false},
 		"notconnected":      {"That app is not connected.", false},
+		"agentremoved":      {"Removed. That agent's credential no longer works.", true},
 	} {
 		notices[k] = v
 	}
@@ -259,11 +260,11 @@ func (h *handler) setupConnections(w http.ResponseWriter, r *http.Request, sess 
 }
 
 func (h *handler) connectBack(w http.ResponseWriter, r *http.Request, notice, kind string) {
-	to := "/ui/setup?n=" + url.QueryEscape(notice)
+	v := url.Values{"n": {notice}}
 	if kind != "" {
-		to += "&connect=" + url.QueryEscape(kind)
+		v.Set("app", kind)
 	}
-	http.Redirect(w, r, to+"#connect", http.StatusSeeOther)
+	http.Redirect(w, r, connectBackTo(r)+"?"+v.Encode(), http.StatusSeeOther)
 }
 
 // setupConnect connects an app after the person confirms it.
@@ -399,14 +400,14 @@ func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess u
 	defer h.connectMu.Unlock()
 	c, err := agentconnect.Find(h.dataDir, a.Kind)
 	if err != nil {
-		h.connectBack(w, r, "failed", "")
+		h.connectBack(w, r, "failed", kind)
 		return
 	}
 	if c == nil {
-		h.connectBack(w, r, "notconnected", "")
+		h.connectBack(w, r, "notconnected", kind)
 		return
 	}
-	h.connectBack(w, r, h.disconnect(r.Context(), *c), "")
+	h.connectBack(w, r, h.disconnect(r.Context(), *c), kind)
 }
 
 // disconnect undoes a connection as far as it can and returns the notice.

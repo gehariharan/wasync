@@ -61,7 +61,7 @@ func newDeviceCode(t *testing.T, f accessFixture) string {
 	t.Helper()
 	local := newPageClient(t, f)
 	local.get(linkPath(t, f))
-	_, page, _ := local.get("/ui/setup")
+	_, page, _ := local.get("/ui/settings")
 	code, page, _ := local.post("/ui/setup/devices", url.Values{"csrf": {csrfOf(t, page)}, "action": {"add"}})
 	m := regexp.MustCompile(`<strong>([A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4})</strong>`).FindStringSubmatch(page)
 	if code != 200 || m == nil {
@@ -73,7 +73,7 @@ func newDeviceCode(t *testing.T, f accessFixture) string {
 // beginEnroll enters a code on the remote device's Set up page.
 func beginEnroll(t *testing.T, c *tailnetClient, code string) (int, string, http.Header) {
 	t.Helper()
-	_, page, _ := c.get("/ui/setup")
+	_, page, _ := c.get("/ui/settings")
 	return c.post(passkeyBeginPath, url.Values{"csrf": {csrfOf(t, page)}, "code": {code}, "name": {"Laptop"}})
 }
 
@@ -86,7 +86,7 @@ func enroll(t *testing.T, f accessFixture, c *tailnetClient, a *passkeytest.Auth
 	}
 	reg := a.Register(tailnetHost, unb64Test(t, attrOf(t, page, "data-challenge")))
 	_, _, hd := c.post(passkeyRegisterPath, url.Values{"csrf": {csrfOf(t, page)}, "ask": {fieldOf(t, page, "ask")}, "credential": {b64(reg.ID)}, "client": {b64(reg.ClientDataJSON)}, "attestation": {b64(reg.AttestationObject)}})
-	if notice(hd) != "deviceon" || !strings.HasPrefix(hd.Get("Location"), "/ui/setup?") {
+	if notice(hd) != "deviceon" || !strings.HasPrefix(hd.Get("Location"), "/ui/settings?") {
 		t.Fatalf("registering: %q", hd.Get("Location"))
 	}
 }
@@ -156,7 +156,7 @@ func TestATailnetDeviceWithAPasskeyCanDoOwnerActions(t *testing.T) {
 	// An agent's request to send a message.
 	r := f.askSend(t, familyChat, "see you at 6")
 	_, page, _ = c.get("/ui/approvals")
-	if !strings.Contains(page, `value="approve"`) || !strings.Contains(page, "asks you for your passkey on this device") {
+	if !strings.Contains(page, `value="approve"`) || !strings.Contains(page, "asks for your passkey on this device") {
 		t.Fatalf("approvals page with a passkey:\n%s", page)
 	}
 	_, ask, _ = c.post("/ui/decide", url.Values{"csrf": {csrf}, "id": {r.ID}, "action": {"approve"}})
@@ -329,7 +329,7 @@ func TestPasskeyAnswersAreOneTimeAndBoundToTheirPage(t *testing.T) {
 
 func TestOnlyTheComputerRunningWasyncHandsOutDeviceCodes(t *testing.T) {
 	f, stub, c := remoteOwner(t)
-	_, page, _ := c.get("/ui/setup")
+	_, page, _ := c.get("/ui/settings")
 	if !strings.Contains(page, `id="devices"`) || strings.Contains(page, "Add a device…") || !strings.Contains(page, "Set up this device…") {
 		t.Fatalf("remote set-up page:\n%s", page)
 	}
@@ -341,7 +341,7 @@ func TestOnlyTheComputerRunningWasyncHandsOutDeviceCodes(t *testing.T) {
 	stub.set(false)
 	local := newPageClient(t, f)
 	local.get(linkPath(t, f))
-	_, page, _ = local.get("/ui/setup")
+	_, page, _ = local.get("/ui/settings")
 	if !strings.Contains(page, "Add a device…") {
 		t.Fatalf("local set-up page:\n%s", page)
 	}
@@ -363,7 +363,7 @@ func TestOnlyTheComputerRunningWasyncHandsOutDeviceCodes(t *testing.T) {
 	// Five wrong codes in a row cancel every code.
 	code = newDeviceCode(t, f)
 	for range deviceCodeMisses {
-		if _, _, hd := beginEnroll(t, c, "AAAA-BBBB-CCCC"); notice(hd) != "badcode" || !strings.HasPrefix(hd.Get("Location"), "/ui/setup?") {
+		if _, _, hd := beginEnroll(t, c, "AAAA-BBBB-CCCC"); notice(hd) != "badcode" || !strings.HasPrefix(hd.Get("Location"), "/ui/settings?") {
 			t.Fatalf("wrong code: %q", hd.Get("Location"))
 		}
 	}
@@ -529,7 +529,7 @@ func TestRemovingADeviceStopsItAtOnce(t *testing.T) {
 	_, ask, _ := c.post("/ui/agents", url.Values{"csrf": {csrfOf(t, page)}, "action": {"openon"}})
 
 	// Removing needs no confirmation, on this computer or the device itself.
-	_, page, _ = c.get("/ui/setup")
+	_, page, _ = c.get("/ui/settings")
 	if !strings.Contains(page, "Laptop") {
 		t.Fatalf("remote set-up page lists no device:\n%s", page)
 	}
@@ -553,7 +553,7 @@ func TestThePasskeyScriptIsServedAndOnlyItsPagesMayRunIt(t *testing.T) {
 	if code != 200 || !strings.HasPrefix(hd.Get("Content-Type"), "text/javascript") || !strings.Contains(body, "navigator.credentials") {
 		t.Fatalf("script: %d %q", code, hd.Get("Content-Type"))
 	}
-	for _, path := range []string{"/ui/chats", "/ui/agents", "/ui/setup", "/ui/approvals"} {
+	for _, path := range []string{"/ui/chats", "/ui/agents", "/ui/settings", "/ui/home", "/ui/setup/link", "/ui/approvals"} {
 		_, page, hd := c.get(path)
 		if strings.Contains(hd.Get("Content-Security-Policy"), "script-src") || strings.Contains(page, "<script") {
 			t.Fatalf("%s may run script: %q", path, hd.Get("Content-Security-Policy"))

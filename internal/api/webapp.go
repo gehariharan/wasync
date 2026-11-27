@@ -134,6 +134,9 @@ func agentCanRead(agents []agentauth.Client, chat string) bool {
 
 func (h *handler) webRender(w http.ResponseWriter, r *http.Request, t *template.Template, data any) {
 	h.frameFor(r, data)
+	if f, ok := data.(framed); ok && len(f.frame().Scripts) > 0 {
+		w.Header().Set("Content-Security-Policy", scriptPolicy)
+	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if err := t.Execute(w, data); err != nil {
 		http.Error(w, "page error", http.StatusInternalServerError)
@@ -363,11 +366,12 @@ var chatsTemplate = template.Must(template.New("chats").Funcs(uiFuncs).Funcs(tem
 <a class="ic" href="/ui/chats{{if not .All}}?all=1{{end}}" title="{{if .All}}Show syncing chats only{{else}}Show all chats{{end}}" aria-label="{{if .All}}Show syncing chats only{{else}}Show all chats{{end}}" aria-pressed="{{.All}}">{{template "icon" "all"}}</a>
 <a class="ic" href="/ui/chats/pick" title="Choose chats to sync" aria-label="Choose chats to sync">{{template "icon" "pick"}}</a>
 <a class="ic" href="/ui/chats/new" title="New message" aria-label="New message">{{template "icon" "new"}}</a>
+<a class="ic" href="/ui/sent" title="Sent from this computer" aria-label="Sent from this computer">{{template "icon" "sent"}}</a>
 <span class="sub">{{.Syncing}} of {{.Total}} syncing</span>
 </div>
 {{if .New}}<a class="row" href="/ui/chats/new" aria-current="true"><span class="av">{{template "icon" "new"}}</span><span class="nm">New message</span><span></span></a>{{end}}
 {{range .Rows}}<a class="row" href="/ui/chats?c={{.ID}}{{if $.All}}&amp;all=1{{end}}"{{if .Selected}} aria-current="true"{{end}}>
-<span class="av">{{.Initials}}{{if .Agent}}<span class="bot" title="Agents can read this chat" aria-label="Agents can read this chat">🤖</span>{{end}}</span>
+<span class="av"><img src="/ui/avatar?c={{.ID}}" alt="" width="40" height="40" loading="lazy">{{if .Agent}}<span class="bot" title="Agents can read this chat" aria-label="Agents can read this chat">🤖</span>{{end}}</span>
 <span><span class="nm">{{.Name}}</span><span class="sub">{{if .Syncing}}{{.Count}} messages{{else}}not syncing{{end}}</span></span>
 <span class="sub">{{.Last}}</span></a>
 {{else}}<p class="empty">No chats are syncing yet. Use the <a href="/ui/chats/pick">choose chats</a> button to pick some.</p>{{end}}

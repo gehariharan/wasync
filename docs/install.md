@@ -123,7 +123,7 @@ chat choices and pairing state remain in the per-user data directory:
 
 ### Updating from the web app
 
-The **Updates** section of the Set up page shows the version you have. **Check for
+The **Updates** section of Settings shows the version you have. **Check for
 updates** asks GitHub for the newest published release; wasync never checks by itself.
 On a copy installed by Windows Setup, and on the macOS app in your Applications folder,
 **Update and restart…** asks you to confirm (Touch ID, your password or Windows Hello),
@@ -140,11 +140,50 @@ downloads the installer for your computer and checks its SHA-256 against the rel
 wasync then stops; a short-lived helper installs the update once it has, and starts wasync
 again the way it was running: through its login item, as the same background command, or
 by opening the app. A terminal UI is left for you to start again. If the install fails,
-the version you had starts again, and the Set up page says what happened. Updating is only
+the version you had starts again, and Settings says what happened. Updating is only
 offered on the computer running wasync, never to an agent or from another device.
 
 Homebrew, the Linux archive, the Microsoft Store, the Windows ZIP and the macOS
 command-line package update the way you installed them; the page says how.
+
+## Removing wasync
+
+In the wasync app or the web app, **Settings > Remove wasync** removes wasync without a
+terminal. In order, it:
+
+1. disconnects every agent: it takes wasync's entry out of each app's settings file (putting
+   back any entry wasync replaced) and revokes every agent credential;
+2. unlinks this computer from WhatsApp. If it cannot do 1 or 2 (for example, the phone is
+   offline), the page says what is left and how to finish it, and waits for **Finish removing**;
+3. stops wasync and quits the wasync app, then removes both start-at-login items: the app's own
+   and the older `wasync service install` one;
+4. only if you ticked **Also delete my chats and data** (it starts unticked) and confirmed with
+   Touch ID, your password or Windows Hello: deletes the data directory, the approval
+   credential in the macOS Keychain and the agent credentials wasync saved for `wasync-axi`;
+5. removes the program the way it was installed:
+   - Windows Setup: opens Setup's own uninstaller (the one Settings > Apps runs), which asks
+     whether you are sure and removes the program files and the PATH entry;
+   - the macOS app: moves `wasync.app` to the Bin. If the macOS package also installed
+     `/usr/local/bin/wasync-axi`, macOS asks for an administrator's password to remove it; a
+     `wasync-axi` that Homebrew owns is left alone.
+
+Your data is kept unless you ticked the box, so installing wasync again later finds your chats
+and settings. A short-lived helper does steps 3 to 5 once wasync has stopped; if wasync or the app
+does not stop within two minutes, it gives up and changes nothing. It logs what it did to
+`remove.log` in the data directory, or, when the data was deleted, in a `wasync-remove-` folder in
+your temporary folder.
+
+Other installs leave the program files for you to remove, and the page says how:
+
+- Homebrew on macOS: `brew uninstall --cask gehariharan/tap/wasync`, and
+  `brew uninstall gehariharan/tap/wasync-axi` if you added it.
+- Homebrew on Linux: `brew uninstall gehariharan/tap/wasync-axi gehariharan/tap/wasync`.
+- Linux archive: delete `wasync` and `wasync-axi` from the folder `install.sh` put them in
+  (`~/.local/bin` unless you chose another).
+- macOS package: `sudo rm -f /usr/local/bin/wasync /usr/local/bin/wasync-axi
+  /usr/local/bin/whatsapp-axi && sudo rm -rf /usr/local/share/wasync`.
+- Windows ZIP: delete the folder you unpacked it into.
+- Microsoft Store: uninstall it from the Start menu or Settings > Apps.
 
 ## Homebrew
 

@@ -124,7 +124,7 @@ func TestEveryPageWarnsWhileWasyncIsNotInTheBackground(t *testing.T) {
 		want, deny string
 	}{
 		{"manually", false, "stops when its terminal closes", ""},
-		{"manually", true, "wasync service restart", ""},
+		{"manually", true, "It runs by itself from your next login.", ""},
 		{"login item", true, "", "terminal closes"},
 		{"", true, "", "terminal closes"}, // cannot tell how it started
 		{"", false, "stops when its terminal closes", ""},
@@ -135,10 +135,16 @@ func TestEveryPageWarnsWhileWasyncIsNotInTheBackground(t *testing.T) {
 		})
 		c := newPageClient(t, f)
 		c.get(linkPath(t, f))
-		for _, path := range []string{"/ui/approvals", "/ui/chats", "/ui/sent", "/ui/agents", "/ui/setup"} {
+		for _, path := range []string{"/ui/approvals", "/ui/chats", "/ui/sent", "/ui/agents", "/ui/settings", "/ui/home", "/ui/agents/connect", "/ui/settings/remove"} {
 			_, page, _ := c.get(path)
 			if tc.want != "" && !strings.Contains(page, tc.want) || tc.deny != "" && strings.Contains(page, tc.deny) {
 				t.Fatalf("%+v %s:\n%s", tc, path, page)
+			}
+		}
+		// The setup steps have their own Keep running step instead.
+		for _, path := range []string{"/ui/setup/link", "/ui/setup/chats", "/ui/setup/running", "/ui/setup/agent"} {
+			if _, page, _ := c.get(path); strings.Contains(page, "terminal closes") || strings.Contains(page, "wasync service restart") {
+				t.Fatalf("%+v %s warns:\n%s", tc, path, page)
 			}
 		}
 	}

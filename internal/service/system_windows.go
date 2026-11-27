@@ -21,19 +21,24 @@ var (
 )
 
 // runValue is a value under the current user's Run key: name says which one,
-// and command what it runs.
+// command what it runs, and parse reads that back.
 type runValue struct {
 	name    *string
 	command func(Spec) string
+	parse   func(string) (Spec, error)
 }
 
 // System is a value under the current user's Run key. CI writes, reads and
 // removes one under a test-only name; starting wasync at login has not been
 // run on a real Windows computer.
-func System() Manager { return serveRun{runValue{name: &valueName, command: RunCommand}} }
+func System() Manager {
+	return serveRun{runValue{name: &valueName, command: RunCommand, parse: ParseRunCommand}}
+}
 
 // App is the Run value that opens the wasync app, with no window, at login.
-func App() Manager { return runValue{name: &appValueName, command: AppRunCommand} }
+func App() Manager {
+	return runValue{name: &appValueName, command: AppRunCommand, parse: ParseAppRunCommand}
+}
 
 func (runValue) Where() string { return "a Windows startup item" }
 
@@ -80,6 +85,26 @@ func (v runValue) Installed() (bool, error) {
 		return false, err
 	}
 	return true, nil
+}
+
+// Read returns what the Run value starts, or ErrNotInstalled when there is none.
+func (v runValue) Read() (Spec, error) {
+	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
+	if errors.Is(err, registry.ErrNotExist) {
+		return Spec{}, ErrNotInstalled
+	}
+	if err != nil {
+		return Spec{}, err
+	}
+	defer k.Close()
+	line, _, err := k.GetStringValue(*v.name)
+	if errors.Is(err, registry.ErrNotExist) {
+		return Spec{}, ErrNotInstalled
+	}
+	if err != nil {
+		return Spec{}, err
+	}
+	return v.parse(line)
 }
 
 // serveRun is the Run value that starts `wasync serve`; it can also start it now.

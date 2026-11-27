@@ -120,7 +120,7 @@ func TestSetupForTheAppAnswersOnItsPipesAndStopsWhenTheAppGoes(t *testing.T) {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	res, err = browser.Get("http://" + api + "/ui/setup")
+	res, err = browser.Get("http://" + api + "/ui/settings")
 	if err != nil {
 		t.Fatal(err)
 	}

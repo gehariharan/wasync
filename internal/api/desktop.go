@@ -20,16 +20,13 @@ const (
 	desktopLoginPath     = "/ui/desktop/start-at-login"
 )
 
-// loginItemPrompt is what the system prompt says before wasync starts at login.
-const loginItemPrompt = "Approve: start wasync by itself every time you log in, and keep it running in the background"
-
 type desktopLoginItem struct {
 	// Available is false where this computer has no login item for wasync (Linux).
 	Available bool   `json:"available"`
 	On        bool   `json:"on"`
 	Where     string `json:"where,omitempty"`
-	// Confirm names the system prompt that turning it on asks for; empty when
-	// this computer cannot show one, and then it cannot be turned on here.
+	// Confirm is kept for older app builds and is always empty: turning
+	// start-at-login on asks for no system prompt (see setLoginItem).
 	Confirm string `json:"confirm,omitempty"`
 }
 
@@ -49,7 +46,7 @@ func (h *handler) desktopSettings(r *http.Request) (desktopSettings, error) {
 		if err != nil {
 			return desktopSettings{}, err
 		}
-		d.StartAtLogin = desktopLoginItem{Available: true, On: on, Where: h.service.Where(), Confirm: h.confirmName(r)}
+		d.StartAtLogin = desktopLoginItem{Available: true, On: on, Where: h.service.Where()}
 	}
 	return d, nil
 }
@@ -103,25 +100,28 @@ func (h *handler) desktopRoute(w http.ResponseWriter, r *http.Request, sess uiSe
 	return true
 }
 
-// setLoginItem turns start-at-login on or off. Turning it on asks for the
-// system prompt first, because it leaves a program that runs at every login;
-// turning it off never does. Both the setup page's button and the JSON setting
-// come here.
+// setLoginItem turns start-at-login on or off. Both the Keep running step's
+// switch, Settings and the JSON setting come here.
+//
+// It asks for no system prompt, on or off. The switch, pressed on this
+// computer in a signed-in page, is the person's choice, just as the
+// installer's tick box is: a session on this computer already needed a
+// one-time link from the approval credential or the system prompt, agents
+// never get one, and the login item starts wasync for this person only,
+// giving no agent and no other device anything it did not have. It is about
+// this computer, so a device signed in through the tailnet cannot change it.
 func (h *handler) setLoginItem(r *http.Request, on bool) error {
 	if h.service == nil || h.service.Where() == "" {
 		return statusError{code: http.StatusNotImplemented, msg: "this computer has no login item for wasync", notice: "failed"}
+	}
+	if remoteLogin(r) != "" {
+		return statusError{code: http.StatusForbidden, msg: "start-at-login is about the computer running wasync; change it there", notice: "loginhere"}
 	}
 	if !on {
 		if err := h.service.Uninstall(); err != nil {
 			return statusError{code: http.StatusInternalServerError, msg: "could not remove the login item", notice: "failed"}
 		}
 		return nil
-	}
-	if !h.canConfirm(r) {
-		return statusError{code: http.StatusForbidden, msg: "this computer cannot show a system confirmation, so start-at-login cannot be turned on here", notice: noGate(r)}
-	}
-	if err := h.confirmError(r.Context(), loginItemPrompt); err != nil {
-		return err
 	}
 	if err := h.service.Install(h.serviceSpec); err != nil {
 		return statusError{code: http.StatusInternalServerError, msg: "could not add the login item", notice: "failed"}

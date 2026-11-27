@@ -410,7 +410,7 @@ func TestAvatarsWithoutAConnectionShowInitials(t *testing.T) {
 func TestPickerPageWorksWithoutScript(t *testing.T) {
 	f, c, csrf := pickerFixture(t, nil)
 	_, page, _ := c.get("/ui/chats/pick")
-	for _, want := range []string{"All 8", "Groups 3", "People 5", "4 chats without a name", `href="/ui/chats/pick?tab=unnamed"`, `name="sync" value="` + officeTeam + `"`, "0 of 8 syncing", "Nothing is syncing yet.", `name="save_media" value="on" checked`, `name="history" value="yes" checked`} {
+	for _, want := range []string{`All<span class="n">8<`, `Groups<span class="n">3<`, `People<span class="n">5<`, "4 chats without a name", `href="/ui/chats/pick?tab=unnamed"`, `name="sync" value="` + officeTeam + `"`, "Selected · <span data-count>0<", "Nothing is syncing yet.", `name="save_media" value="on" checked`, `name="history" value="yes" checked`} {
 		if !strings.Contains(page, want) {
 			t.Fatalf("picker lacks %q:\n%s", want, page)
 		}
@@ -419,11 +419,11 @@ func TestPickerPageWorksWithoutScript(t *testing.T) {
 		t.Fatalf("the picker grew inline styles:\n%s", page)
 	}
 	code, _, hd := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "tab": {"groups"}, "q": {"o"}, "sync": {officeTeam}})
-	if code != 303 || hd.Get("Location") != "/ui/chats/pick?q=o&tab=groups&n=saved" || !f.group(t, officeTeam).Enabled {
+	if code != 303 || hd.Get("Location") != "/ui/chats/pick?q=o&tab=groups#c-"+officeTeam || !f.group(t, officeTeam).Enabled {
 		t.Fatalf("sync: %d %v", code, hd.Get("Location"))
 	}
 	_, page, _ = c.get("/ui/chats/pick")
-	if !strings.Contains(page, "Selected · 1") || !strings.Contains(page, `name="stop" value="`+officeTeam+`" aria-label="Remove Office team"`) {
+	if !strings.Contains(page, "Selected · <span data-count>1<") || !strings.Contains(page, `name="stop" value="`+officeTeam+`" aria-label="Remove Office team"`) {
 		t.Fatalf("selected panel:\n%s", page)
 	}
 	if code, _, _ = c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "stop": {officeTeam}}); code != 303 || f.group(t, officeTeam).Enabled {

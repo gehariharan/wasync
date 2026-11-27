@@ -62,6 +62,13 @@ func TestUpdateSavesPrivatelyAndKeepsUnknownKeys(t *testing.T) {
 	if _, err = store.Update(func(s *Settings) { s.Use = "robots" }); err == nil {
 		t.Fatal("an unknown use was saved")
 	}
+	// Finishing setup is remembered by every store on the folder.
+	if s, err = store.Update(func(s *Settings) { s.SetupDone = true }); err != nil || !s.SetupDone {
+		t.Fatalf("setup done: %+v %v", s, err)
+	}
+	if got, _ := Open(dir).Get(); !got.SetupDone {
+		t.Fatalf("setup done was not saved: %+v", got)
+	}
 }
 
 func TestADamagedFileGivesDefaultsAndIsNotOverwritten(t *testing.T) {
