@@ -60,7 +60,7 @@ func newConnectFixture(t *testing.T, withCodex bool, more ...func(*Owner)) (conn
 			return "", errors.New("not found")
 		},
 		Run: func(_ context.Context, env []string, name string, args ...string) ([]byte, error) {
-			*ran = append(*ran, filepath.Base(name)+" "+strings.Join(args, " "))
+			*ran = append(*ran, strings.TrimSuffix(filepath.Base(name), ".exe")+" "+strings.Join(args, " ")) // the same on every system
 			return nil, nil
 		},
 	}

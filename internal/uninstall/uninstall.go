@@ -11,6 +11,8 @@
 package uninstall
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -117,20 +119,22 @@ func Start(exe string, req Request) (err error) {
 	if req.Created.IsZero() {
 		req.Created = time.Now().UTC()
 	}
-	dir, err := os.MkdirTemp("", tempPrefix+"*")
-	if err != nil {
+	// EnsureDir creates the folder private from the start. A folder made by
+	// os.MkdirTemp would inherit the temporary folder's access on Windows,
+	// which EnsureDir then refuses.
+	suffix := make([]byte, 8)
+	if _, err = rand.Read(suffix); err != nil {
 		return fmt.Errorf("could not make a folder for the removal: %w", err)
 	}
+	dir := filepath.Join(os.TempDir(), tempPrefix+hex.EncodeToString(suffix))
 	defer func() {
 		if err != nil {
 			_ = os.RemoveAll(dir)
 			_ = os.Remove(MarkerPath(req.DataDir))
 		}
 	}()
-	// MkdirTemp makes it private on macOS and Linux; this does the same for
-	// Windows, which otherwise lets the folder inherit the temp folder's access.
 	if err = localfs.EnsureDir(dir); err != nil {
-		return err
+		return fmt.Errorf("could not make a folder for the removal: %w", err)
 	}
 	reqPath := filepath.Join(dir, requestFile)
 	if err = writePrivateJSON(reqPath, req); err != nil {
