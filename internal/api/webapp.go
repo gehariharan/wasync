@@ -271,6 +271,10 @@ func senderName(names map[string]string, m storage.Message) string {
 	return "Member"
 }
 
+// personSynced reports whether the person chose to sync g. A chat switched on
+// only for an agent's approved list is not shared with connected agents.
+func personSynced(g storage.Group) bool { return g.Enabled && !g.ListCapture }
+
 type sentRow struct {
 	Time, Who, To, Text, Outcome          string
 	Agent, Problem, Open, List, NewNumber bool

@@ -369,7 +369,7 @@ func (c *Client) followNumber(account int64, e *events.Message) (bool, error) {
 	if err != nil || !never {
 		return false, err
 	}
-	return true, p.store.EnableCapture(p.ctx, account, chat, false)
+	return true, p.store.EnableListCapture(p.ctx, account, chat)
 }
 
 func (c *Client) Status() CaptureStatus {

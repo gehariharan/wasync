@@ -17,7 +17,7 @@ func (r Request) Effect(name string) string {
 		if r.Send == nil {
 			return "send a message for an agent"
 		}
-		where := chat + ", a chat that was not synced when it asked"
+		where := chat + ", " + r.Send.Target()
 		if r.Send.NewNumber {
 			where = "the new number " + quoted(PhoneNumber(r.Chat), r.Chat)
 		}

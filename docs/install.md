@@ -79,8 +79,9 @@ signatures and include validated stapled notarization tickets. Older previews
 were unsigned/ad hoc. No installer removes quarantine or bypasses Gatekeeper.
 
 The package rejects the wrong CPU architecture, unsupported macOS versions and an existing
-`/usr/local/bin/wasync` or `/usr/local/bin/wasync-axi` symlink owned by another installation
-method (for example Homebrew).
+`/usr/local/bin/wasync` symlink owned by another installation method (for example Homebrew).
+When another installation method already owns `/usr/local/bin/wasync-axi` as a symlink, the
+package keeps that copy and installs wasync as usual.
 
 ## Linux archive
 

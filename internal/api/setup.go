@@ -100,7 +100,7 @@ func (h *handler) setupView(w http.ResponseWriter, r *http.Request, sess uiSessi
 		}
 		d.Total = len(groups)
 		for _, g := range groups {
-			if g.Enabled {
+			if personSynced(g) {
 				d.Syncing++
 			}
 		}

@@ -203,7 +203,7 @@ func sendTarget(r approval.Request) string {
 	if r.Send.NewNumber {
 		return "new number " + approval.PhoneNumber(r.Chat)
 	}
-	return printable(r.Chat) + " (not synced)"
+	return printable(r.Chat) + " (" + r.Send.Target() + ")"
 }
 
 // approveAgentSend shows the person exactly what an agent asks to send, and

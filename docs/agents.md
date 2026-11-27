@@ -156,6 +156,8 @@ number count, so older chat with that person never removes it. That counts any r
 number's chat from its first list message on, so that message shows in the chat on the Chats page and wasync
 can see the replies, including a listed contact's replies that WhatsApp delivers in a separate
 hidden-ID chat, unless you already turned archiving of that hidden-ID chat on or off yourself.
+A chat wasync archives only for a list is not one you synced: other agents that use every synced
+chat do not get it, and **Choose chats** shows it unticked until you tick it yourself.
 
 **Pause** stops a list's sends and keeps everything else; **Resume…** asks you to confirm.
 Removing a list needs no confirmation. The one-message-until-reply rule belongs to the number,

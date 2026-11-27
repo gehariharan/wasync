@@ -270,3 +270,59 @@ func TestAccessRequestsAreGoneAndSaySoAndTheModeIsGone(t *testing.T) {
 		t.Fatalf("access mode route: %d", code)
 	}
 }
+
+// A chat wasync switched on only so one agent's approved list sees replies is
+// not handed to the other connected agents. They get it once the person syncs
+// it in Choose chats, where it is shown as not chosen until then.
+func TestAChatSyncedOnlyForAnAgentsListIsNotSharedUntilThePersonSyncsIt(t *testing.T) {
+	f, c, csrf := chatsFixture(t)
+	codex := f.connect(t, "codex")
+	// Another agent's approved list messaged this number, so its capture is on.
+	if err := f.store.EnableListCapture(context.Background(), f.account, phoneChat); err != nil {
+		t.Fatal(err)
+	}
+	if g := f.group(t, phoneChat); !g.Enabled || !g.ListCapture {
+		t.Fatalf("list capture: %+v", g)
+	}
+	messages := "/api/v1/chats/" + phoneChat + "/messages"
+	if code, out := f.do(t, "GET", messages, codex, nil); code != 403 {
+		t.Fatalf("a connected agent read a chat synced for another agent's list: %d %s", code, out)
+	}
+	if code, out := f.do(t, "POST", "/api/v1/messages", codex, map[string]string{"chat": phoneChat, "text": "hi"}); code != 403 {
+		t.Fatalf("a connected agent wrote in a chat synced for another agent's list: %d %s", code, out)
+	}
+	if got := mustClient(t, f.dir, "codex"); strings.Join(got.Chats, ",") != familyChat {
+		t.Fatalf("stored chats %v", got.Chats)
+	}
+	if _, page, _ := c.get("/ui/chats/pick"); !strings.Contains(page, "1 of 3 syncing") {
+		t.Fatalf("Choose chats counted a chat the person did not choose:\n%s", page)
+	}
+	// The person ticks it in Choose chats; from then on it is shared.
+	if code, _, _ := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "sync": {phoneChat}}); code != 303 {
+		t.Fatalf("save: %d", code)
+	}
+	if g := f.group(t, phoneChat); !g.Enabled || g.ListCapture {
+		t.Fatalf("after the person synced it: %+v", g)
+	}
+	if code, out := f.do(t, "GET", messages, codex, nil); code != 200 {
+		t.Fatalf("a chat the person synced is not readable: %d %s", code, out)
+	}
+}
+
+// An agent whose own fixed list leaves out a synced chat asks to send there;
+// the person is told the chat is synced, not that it was not.
+func TestASendRequestForASyncedChatTheAgentMayNotUseSaysSo(t *testing.T) {
+	stub := &promptStub{confirm: true}
+	f := setupAccessWith(t, humancheck.NewGate(stub))
+	f.sync(t, familyChat, true)
+	asked := f.askToSend(t, f.jit, map[string]string{"chat": familyChat, "text": "See you at 6"}, 202)
+	if asked.Data.Status != "pending" || asked.Data.NewNumber {
+		t.Fatalf("pending: %+v", asked)
+	}
+	if code, _ := f.signed(t, "POST", agentRequestsPath+"/"+asked.Data.RequestID+"/approve", f.approver, nil); code != 200 {
+		t.Fatalf("approve: %d", code)
+	}
+	if got := stub.seen(); len(got) != 1 || !strings.Contains(got[0], `agent "jit" send this message to "Family Group", a synced chat this agent may not use: "See you at 6"`) {
+		t.Fatalf("prompt %q", got)
+	}
+}

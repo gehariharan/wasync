@@ -1,6 +1,12 @@
 #!/bin/sh
+# Another installation method, such as the Homebrew wasync-axi formula, may
+# own /usr/local/bin/wasync-axi as a symlink. Keep that copy: set the link
+# aside so this package does not write through it, and postinstall puts it back.
 set -eu
-if [ -L /usr/local/bin/wasync-axi ]; then
-  echo "A symlink already owns /usr/local/bin/wasync-axi. Uninstall that installation (for example the Homebrew wasync-axi formula) before installing this package." >&2
-  exit 1
+bin=/usr/local/bin/wasync-axi
+kept=/usr/local/bin/.wasync-axi.kept
+rm -f "$kept"
+if [ -L "$bin" ]; then
+  mv -f "$bin" "$kept"
 fi
+exit 0

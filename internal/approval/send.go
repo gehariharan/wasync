@@ -38,6 +38,9 @@ type AgentSend struct {
 	// NewNumber marks a phone number the archive had no chat with when the
 	// agent asked.
 	NewNumber bool `json:"new_number,omitempty"`
+	// Synced marks a chat that was synced in wasync when the agent asked,
+	// though not one this agent may use.
+	Synced bool `json:"synced,omitempty"`
 	// MessageID is the WhatsApp message ID once wasync sent it.
 	MessageID string `json:"message_id,omitempty"`
 }
@@ -56,6 +59,16 @@ func validateSend(chat string, s AgentSend) error {
 		return fmt.Errorf("text exceeds %d bytes", MaxSendText)
 	}
 	return nil
+}
+
+// Target says what kind of chat an agent's send request goes to, for the
+// person: one that was not synced when the agent asked, or a synced chat this
+// agent may not use. A new number is described by its number instead.
+func (s AgentSend) Target() string {
+	if s.Synced {
+		return "a synced chat this agent may not use"
+	}
+	return "a chat that was not synced when it asked"
 }
 
 // IsAgentRequest reports whether an agent raised r, as opposed to the owner's

@@ -15,7 +15,9 @@ import (
 // TUI, the CLI and these pages all change it, so the list is brought up to
 // date here, before each request from such an agent, when the owner starts
 // and when the Agents page opens. A chat synced or unsynced anywhere applies
-// at the agent's next request.
+// at the agent's next request. A chat switched on only so an agent's approved
+// list can see replies is not shared: the list agent reads it through its
+// list, and other agents get it once the person syncs it themselves.
 
 // syncAgentChats brings every synced-chats agent's list up to date, and does
 // nothing when there is no such agent.
@@ -27,7 +29,7 @@ func (h *handler) syncAgentChats(ctx context.Context) error {
 }
 
 // SyncAgentChats sets the chat list of every synced-chats agent in dir to the
-// chats synced in store, and records each change in the agent audit log. With
+// chats the person synced in store, and records each change in the agent audit log. With
 // no paired account no chat is synced, so such agents use none.
 func SyncAgentChats(ctx context.Context, store *storage.Store, dir string) error {
 	chats, err := syncedChats(ctx, store)
@@ -56,7 +58,7 @@ func syncedChats(ctx context.Context, store *storage.Store) ([]string, error) {
 	}
 	chats := []string{}
 	for _, g := range groups {
-		if g.Enabled {
+		if personSynced(g) {
 			chats = append(chats, g.ID)
 		}
 	}

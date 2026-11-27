@@ -8,8 +8,9 @@
 # SIGNED_AXI_BINARY, the installer's wasync-axi must be byte-identical to it.
 #
 # On a disposable GitHub-hosted runner only, it also installs the package with
-# `installer` and its default choices (both at VERSION), and removes everything
-# it installed.
+# `installer` and its default choices (both at VERSION), installs it again over
+# a wasync-axi symlink owned by another installation method (which it must keep),
+# and removes everything it installed.
 set -euo pipefail
 package="${1:?Usage: scripts/test-macos-pkg.sh PKG VERSION ARCHITECTURE [SIGNED_AXI_BINARY]}"
 version="${2:?}"
@@ -21,7 +22,7 @@ work="$(mktemp -d)"
 installed=0
 cleanup() {
   if [[ "$installed" == 1 ]]; then
-    sudo rm -f /usr/local/bin/wasync /usr/local/bin/wasync-axi /usr/local/bin/whatsapp-axi
+    sudo rm -f /usr/local/bin/wasync /usr/local/bin/wasync-axi /usr/local/bin/whatsapp-axi /usr/local/bin/.wasync-axi.kept
     sudo rm -rf /usr/local/share/wasync
     for id in com.gehariharan.wasynctuicli com.gehariharan.wasynctuicli.axi; do sudo pkgutil --forget "$id" >/dev/null 2>&1 || true; done
   fi
@@ -77,6 +78,19 @@ if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hoste
   /usr/local/bin/wasync version | grep -qF "wasync $version " || fail "installed wasync is not version $version"
   python3 "$project_dir/scripts/smoke-installed.py" /usr/local/bin/wasync "$version" "$architecture" /usr/local/bin/wasync-axi
   pass "default install provides both tools at $version, and they work together"
+
+  other_axi="$work/other/wasync-axi"
+  mkdir -p "$work/other"
+  printf '#!/bin/sh\necho other-wasync-axi\n' > "$other_axi"
+  chmod 755 "$other_axi"
+  sudo rm -f /usr/local/bin/wasync-axi
+  sudo ln -s "$other_axi" /usr/local/bin/wasync-axi
+  run_installer
+  [[ "$(readlink /usr/local/bin/wasync-axi)" == "$other_axi" ]] || fail "the install replaced another installation's wasync-axi symlink"
+  [[ "$(/usr/local/bin/wasync-axi --version)" == other-wasync-axi ]] || fail "the install wrote through another installation's wasync-axi symlink"
+  [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
+  /usr/local/bin/wasync version | grep -qF "wasync $version " || fail "wasync is not installed when another installation owns wasync-axi"
+  pass "install over another installation's wasync-axi symlink keeps it and still installs wasync"
 else
   echo "test-macos-pkg: skipped the real install (only run on disposable GitHub-hosted runners)"
 fi

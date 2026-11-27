@@ -109,6 +109,16 @@ func TestAnApprovedListLetsItsAgentMessageThoseNumbersOnly(t *testing.T) {
 	if on, err := f.store.IsEnabled(context.Background(), f.account, listed); err != nil || !on {
 		t.Fatalf("the messaged chat is not captured: %v %v", on, err)
 	}
+	// It is captured for the list only, not as a chat the person synced.
+	groups, err := f.store.Groups(context.Background(), f.account)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, g := range groups {
+		if g.ID == listed && !g.ListCapture {
+			t.Fatalf("the messaged chat is not marked as captured for the list: %+v", g)
+		}
+	}
 }
 
 func TestAListAllowsOneMessagePerNumberUntilItReplies(t *testing.T) {

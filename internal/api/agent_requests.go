@@ -31,6 +31,7 @@ type agentRequestView struct {
 	ChatName  string    `json:"chat_name,omitempty"`
 	Phone     string    `json:"phone,omitempty"` // the number, for a phone-number chat
 	NewNumber bool      `json:"new_number"`
+	Synced    bool      `json:"synced"` // the chat was synced, though not one this agent may use
 	Text      string    `json:"text"`
 	AskedAt   time.Time `json:"asked_at"`
 	ExpiresAt time.Time `json:"expires_at"`
@@ -54,7 +55,7 @@ func (h *handler) agentRequests(ctx context.Context, account int64) []agentReque
 		name := names[r.Chat]
 		out = append(out, agentRequestView{
 			ID: r.ID, Agent: humancheck.Clean(r.Send.Agent, 60), Chat: r.Chat, ChatName: humancheck.Clean(name, 80), Phone: approval.PhoneNumber(r.Chat),
-			NewNumber: r.Send.NewNumber, Text: r.Send.Text, AskedAt: r.Expires.Add(-approval.RequestTTL), ExpiresAt: r.Expires, Effect: r.Effect(name),
+			NewNumber: r.Send.NewNumber, Synced: r.Send.Synced, Text: r.Send.Text, AskedAt: r.Expires.Add(-approval.RequestTTL), ExpiresAt: r.Expires, Effect: r.Effect(name),
 		})
 	}
 	return out

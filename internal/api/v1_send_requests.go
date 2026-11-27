@@ -128,12 +128,12 @@ func (h *handler) v1RequestSend(w http.ResponseWriter, r *http.Request, id strin
 		v1OK(w, id, sendRequestView{Status: "already_allowed", Chat: target}, nil)
 		return
 	}
-	known, err := h.knownChat(r.Context(), target)
+	known, synced, err := h.knownChat(r.Context(), target)
 	if err != nil {
 		v1Fail(w, id, 503, query.CodeArchiveUnavailable, "archive unavailable", "check the wasync owner log")
 		return
 	}
-	req, _, err := h.approvals.AddSend(a.ID, target, approval.AgentSend{Agent: c.Name, AgentID: c.ID, Text: in.Text, NewNumber: !known && approval.PhoneNumber(target) != ""})
+	req, _, err := h.approvals.AddSend(a.ID, target, approval.AgentSend{Agent: c.Name, AgentID: c.ID, Text: in.Text, NewNumber: !known && approval.PhoneNumber(target) != "", Synced: synced})
 	if err != nil {
 		v1Fail(w, id, 429, query.CodeRateLimited, err.Error(), "wait for the person to answer or for the requests to expire ("+strconv.Itoa(int(approval.RequestTTL/time.Minute))+" minutes)")
 		return

@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gehariharan/wasync/internal/approval"
 )
 
 // The approval page is a plain server-rendered page on the same loopback
@@ -623,9 +625,9 @@ func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession)
 			case p.NewNumber:
 				v.Where = "the new number " + p.Phone
 			case p.ChatName != "":
-				v.Where = "“" + p.ChatName + "”, a chat that was not synced when it asked"
+				v.Where = "“" + p.ChatName + "”, " + approval.AgentSend{Synced: p.Synced}.Target()
 			default:
-				v.Where = p.Chat + ", a chat that was not synced when it asked"
+				v.Where = p.Chat + ", " + approval.AgentSend{Synced: p.Synced}.Target()
 			}
 			data.AgentPending = append(data.AgentPending, v)
 		}

@@ -250,7 +250,7 @@ func (h *handler) openSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 		v1Fail(w, id, 429, query.CodeRateLimited, fmt.Sprintf("open sending allows %d messages an hour and they are used up", opensend.MaxMessages), "wait for the hour to pass, or ask the person to approve this chat")
 		return false
 	}
-	known, err := h.knownChat(r.Context(), chat)
+	known, _, err := h.knownChat(r.Context(), chat)
 	if err != nil {
 		v1Fail(w, id, 503, query.CodeInternal, "the archive is unavailable, so open sending is refused", "")
 		return false
@@ -263,25 +263,23 @@ func (h *handler) openSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 	return true
 }
 
-// knownChat reports whether the archive already has this chat.
-func (h *handler) knownChat(ctx context.Context, chat string) (bool, error) {
+// knownChat reports whether the archive already has this chat, and whether
+// it is synced.
+func (h *handler) knownChat(ctx context.Context, chat string) (known, synced bool, err error) {
 	account, err := h.store.Account(ctx)
-	if err != nil {
-		return false, err
+	if err != nil || account == nil {
+		return false, false, err
 	}
-	if account == nil {
-		return false, nil
-	}
-	groups, err := h.store.GroupSummaries(ctx, account.ID)
+	groups, err := h.store.Groups(ctx, account.ID)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	for _, g := range groups {
 		if g.ID == chat {
-			return true, nil
+			return true, g.Enabled, nil
 		}
 	}
-	return false, nil
+	return false, false, nil
 }
 
 // agentName is the authenticated agent's name for the sent log.

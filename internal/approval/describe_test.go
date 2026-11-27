@@ -13,6 +13,8 @@ func TestPromptNamesTheEffectFromTheOwnersData(t *testing.T) {
 	}{
 		{"send to a chat", Request{Input: Input{Kind: KindAgentSend, Chat: "a@g.us"}, Send: &AgentSend{Agent: "codex", Text: "See you at 6"}},
 			[]string{`let agent "codex" send this message to "a@g.us", a chat that was not synced when it asked: "See you at 6"`}},
+		{"send to a synced chat the agent may not use", Request{Input: Input{Kind: KindAgentSend, Chat: "a@g.us"}, Send: &AgentSend{Agent: "codex", Text: "Hi", Synced: true}},
+			[]string{`let agent "codex" send this message to "a@g.us", a synced chat this agent may not use: "Hi"`}},
 		{"send to a new number", Request{Input: Input{Kind: KindAgentSend, Chat: "15551230000@s.whatsapp.net"}, Send: &AgentSend{Agent: "codex", Text: "Hi", NewNumber: true}},
 			[]string{`to the new number "+15551230000": "Hi"`}},
 		{"purge", Request{Input: Input{Kind: "purge-chat", Chat: "a@g.us"}}, []string{"permanently erase", `"a@g.us"`}},

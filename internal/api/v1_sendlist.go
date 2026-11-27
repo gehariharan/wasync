@@ -266,7 +266,7 @@ func (h *handler) captureListed(ctx context.Context, chat string) {
 		return
 	}
 	if h.store.SaveDiscoveredChat(ctx, account.ID, storage.Group{ID: chat, Name: chat}) == nil {
-		_ = h.store.EnableCapture(ctx, account.ID, chat, false)
+		_ = h.store.EnableListCapture(ctx, account.ID, chat)
 	}
 }
 

@@ -1146,7 +1146,7 @@ func (m Model) sendDescription() string {
 			where = oneLine(g.Name) + " (" + oneLine(r.Chat) + ")"
 		}
 	}
-	where += ", a chat that was not synced when it asked"
+	where += ", " + r.Send.Target()
 	if r.Send.NewNumber {
 		where = "the new number " + oneLine(approval.PhoneNumber(r.Chat))
 	}

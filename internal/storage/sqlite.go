@@ -39,21 +39,27 @@ var migration7 string
 //go:embed migrations/008_chat_activity.sql
 var migration8 string
 
+//go:embed migrations/009_list_capture.sql
+var migration9 string
+
 // migrations lists every embedded migration in order; migration i+1 sets
 // user_version to i+1. New migrations must follow docs/architecture/migrations.md.
-var migrations = []string{migration1, migration2, migration3, migration4, migration5, migration6, migration7, migration8}
+var migrations = []string{migration1, migration2, migration3, migration4, migration5, migration6, migration7, migration8, migration9}
 
 // schemaVersion is the newest archive schema this binary writes.
 var schemaVersion = len(migrations)
 
 // SchemaVersion is the archive schema this build migrates to and queries.
-const SchemaVersion = 8
+const SchemaVersion = 9
 
 type Store struct{ db *sql.DB }
 type Group struct {
-	ID           string
-	Name         string
-	Enabled      bool
+	ID      string
+	Name    string
+	Enabled bool
+	// ListCapture marks an enabled chat that only an agent's approved list
+	// switched on; the person did not choose to sync it.
+	ListCapture  bool
 	MediaPolicy  string
 	MessageCount int64
 	LastMessage  *time.Time
@@ -215,7 +221,7 @@ func (s *Store) SaveGroups(ctx context.Context, account int64, groups []Group) e
 	return tx.Commit()
 }
 func (s *Store) Groups(ctx context.Context, account int64) ([]Group, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT group_id,name,sync_enabled,COALESCE((SELECT mode FROM media_preferences p WHERE p.account_id=groups.account_id AND p.group_id=groups.group_id),'inherit') FROM groups WHERE account_id=? ORDER BY name COLLATE NOCASE,group_id`, account)
+	rows, err := s.db.QueryContext(ctx, `SELECT group_id,name,sync_enabled,sync_enabled=1 AND list_capture=1,COALESCE((SELECT mode FROM media_preferences p WHERE p.account_id=groups.account_id AND p.group_id=groups.group_id),'inherit') FROM groups WHERE account_id=? ORDER BY name COLLATE NOCASE,group_id`, account)
 	if err != nil {
 		return nil, err
 	}
@@ -223,7 +229,7 @@ func (s *Store) Groups(ctx context.Context, account int64) ([]Group, error) {
 	groups := make([]Group, 0)
 	for rows.Next() {
 		var g Group
-		if err = rows.Scan(&g.ID, &g.Name, &g.Enabled, &g.MediaPolicy); err != nil {
+		if err = rows.Scan(&g.ID, &g.Name, &g.Enabled, &g.ListCapture, &g.MediaPolicy); err != nil {
 			return nil, err
 		}
 		groups = append(groups, g)
@@ -231,7 +237,7 @@ func (s *Store) Groups(ctx context.Context, account int64) ([]Group, error) {
 	return groups, rows.Err()
 }
 func (s *Store) SetEnabled(ctx context.Context, account int64, ids []string, enabled bool) error {
-	return s.setEnabled(ctx, account, ids, enabled, historyOnEnable)
+	return s.setEnabled(ctx, account, ids, enabled, historyOnEnable, false)
 }
 
 // historyMode says when enabling capture queues a request for older messages.
@@ -252,7 +258,15 @@ func (s *Store) EnableCapture(ctx context.Context, account int64, chat string, w
 	if withHistory {
 		mode = historyAlways
 	}
-	return s.setEnabled(ctx, account, []string{chat}, true, mode)
+	return s.setEnabled(ctx, account, []string{chat}, true, mode, false)
+}
+
+// EnableListCapture turns capture on for one cached chat, from now on only,
+// so an agent's approved list sees replies there. When the chat was off it is
+// marked as list capture, which the person did not choose: enabling the chat
+// themselves clears the mark. A chat already on is left as it is.
+func (s *Store) EnableListCapture(ctx context.Context, account int64, chat string) error {
+	return s.setEnabled(ctx, account, []string{chat}, true, historyNever, true)
 }
 
 // EnableAllCapture turns capture on for every cached chat, groups and direct
@@ -285,13 +299,13 @@ func (s *Store) EnableAllCapture(ctx context.Context, account int64, withHistory
 	if withHistory {
 		mode = historyAlways
 	}
-	if err = s.setEnabled(ctx, account, ids, true, mode); err != nil {
+	if err = s.setEnabled(ctx, account, ids, true, mode, false); err != nil {
 		return 0, err
 	}
 	return newly, nil
 }
 
-func (s *Store) setEnabled(ctx context.Context, account int64, ids []string, enabled bool, history historyMode) error {
+func (s *Store) setEnabled(ctx context.Context, account int64, ids []string, enabled bool, history historyMode, forList bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -302,7 +316,7 @@ func (s *Store) setEnabled(ctx context.Context, account int64, ids []string, ena
 		if err = tx.QueryRowContext(ctx, "SELECT sync_enabled FROM groups WHERE account_id=? AND group_id=?", account, id).Scan(&wasEnabled); err != nil {
 			return fmt.Errorf("group %q is not in the cached group list; refresh discovery first", id)
 		}
-		result, e := tx.ExecContext(ctx, `UPDATE groups SET sync_enabled=?,enabled_at=CASE WHEN ? AND sync_enabled=0 THEN ? ELSE enabled_at END,updated_at=? WHERE account_id=? AND group_id=?`, enabled, enabled, time.Now().UnixMilli(), time.Now().UnixMilli(), account, id)
+		result, e := tx.ExecContext(ctx, `UPDATE groups SET sync_enabled=?,enabled_at=CASE WHEN ? AND sync_enabled=0 THEN ? ELSE enabled_at END,list_capture=CASE WHEN ? THEN sync_enabled=0 OR list_capture=1 ELSE 0 END,updated_at=? WHERE account_id=? AND group_id=?`, enabled, enabled, time.Now().UnixMilli(), forList, time.Now().UnixMilli(), account, id)
 		if e != nil {
 			return e
 		}
