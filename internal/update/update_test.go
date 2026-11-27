@@ -17,6 +17,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/gehariharan/wasync/internal/localfs"
 )
 
 func TestNewerComparesPreviewsAndRefusesUnreadableVersions(t *testing.T) {
@@ -196,7 +198,7 @@ func TestDetectTellsInstallsApart(t *testing.T) {
 		}
 	}
 	mac := Detect(cases[1].host)
-	if mac.Target != "/Applications/wasync.app" {
+	if mac.Target != filepath.FromSlash("/Applications/wasync.app") {
 		t.Fatalf("mac target %q", mac.Target)
 	}
 	if got := mac.AssetNames("1.0.0"); got[0] != "wasync_1.0.0_darwin_arm64.dmg" {
@@ -454,8 +456,12 @@ func TestTheLastResultShowsOnlyWhileItDescribesTheRunningVersion(t *testing.T) {
 func applyFixture(t *testing.T, kind string) (dir string, plan Plan) {
 	t.Helper()
 	dir = filepath.Join(t.TempDir(), "data")
+	// Like Manager.start, make the update folder private before staging in it.
+	if err := localfs.EnsureDir(Folder(dir)); err != nil {
+		t.Fatal(err)
+	}
 	staging := filepath.Join(Folder(dir), stagingPrefix+"1")
-	if err := os.MkdirAll(staging, 0o700); err != nil {
+	if err := os.Mkdir(staging, 0o700); err != nil {
 		t.Fatal(err)
 	}
 	staged := filepath.Join(staging, "setup.exe")
