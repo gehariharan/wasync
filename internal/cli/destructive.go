@@ -210,7 +210,7 @@ func sendTarget(r approval.Request) string {
 // where, then needs a typed phrase. Nothing is sent until the phrase matches
 // (and, on a computer that has one, the system confirmation).
 func (a *App) approveAgentSend(ctx context.Context, cfg config.Config, request approval.Request) error {
-	fmt.Fprintf(a.Err, "Agent %s asks to send ONE message to %s.\nMessage:\n%s\n", printable(request.Send.Agent), sendTarget(request), printableLines(request.Send.Text))
+	fmt.Fprintf(a.Err, "Agent %s asks to send ONE message to %s.\nMessage:\n%s\n", printable(request.Send.Agent), sendTarget(request), quotedLines(printableLines(request.Send.Text)))
 	code := "SEND " + request.ID[len(request.ID)-6:]
 	fmt.Fprintf(a.Err, "\nApproving sends exactly this message once, from your WhatsApp. The agent gets no other access.\nType %s then Enter to approve: ", code)
 	line, err := readLine(ctx, a.In)
@@ -244,6 +244,12 @@ func printableLines(s string) string {
 		}
 		return r
 	}, strings.ReplaceAll(s, "\r\n", "\n"))
+}
+
+// quotedLines marks every line of an agent's message, so none of it can pass
+// for wasync's own words.
+func quotedLines(s string) string {
+	return " │ " + strings.ReplaceAll(s, "\n", "\n │ ")
 }
 
 func printCommandJSON(out io.Writer, body io.Reader) error {

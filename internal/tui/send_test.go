@@ -34,7 +34,7 @@ func sendModel() (Model, *fakeBackend) {
 func TestSendDialogShowsTheAgentTheChatAndTheMessage(t *testing.T) {
 	m, _ := sendModel()
 	text := m.confirmDescription()
-	for _, want := range []string{"codex", "Ravi", "a chat that was not synced when it asked", "See you at 6\nBring the keys", "exactly this message once", "SEND abc123"} {
+	for _, want := range []string{"codex", "Ravi", "a chat that was not synced when it asked", "Message:\n │ See you at 6\n │ Bring the keys\n", "exactly this message once", "SEND abc123"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("dialog lacks %q:\n%s", want, text)
 		}

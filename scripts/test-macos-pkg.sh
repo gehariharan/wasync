@@ -108,6 +108,16 @@ if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hoste
   [[ "$(readlink /usr/local/bin/wasync-axi)" == "$other_axi" ]] || fail "an install after one stopped past the payload lost another installation's wasync-axi symlink"
   [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
   pass "an install after one stopped past the payload puts another installation's wasync-axi symlink back"
+
+  # A link left behind by an uninstalled formula points nowhere; the install
+  # replaces it with this package's working wasync-axi.
+  sudo rm -f /usr/local/bin/wasync-axi
+  sudo ln -s "$work/gone/wasync-axi" /usr/local/bin/wasync-axi
+  run_installer
+  [[ ! -L /usr/local/bin/wasync-axi ]] || fail "the install kept a wasync-axi link whose target is gone"
+  [[ "$(/usr/local/bin/wasync-axi --version)" == "$version" ]] || fail "wasync-axi does not run after installing over a dangling link"
+  [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
+  pass "an install over a dangling wasync-axi link installs a working wasync-axi"
 else
   echo "test-macos-pkg: skipped the real install (only run on disposable GitHub-hosted runners)"
 fi

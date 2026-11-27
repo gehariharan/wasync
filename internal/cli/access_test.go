@@ -137,7 +137,7 @@ func TestActionsApproveAgentSendShowsTheMessageAndNeedsItsPhrase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("approve: %v\n%s", err, prompts)
 	}
-	for _, want := range []string{"co[2Jdex", "ONE message", "new number +15551234567", "Hello[2J there\nBring the keys", "exactly this message once", code} {
+	for _, want := range []string{"co[2Jdex", "ONE message", "new number +15551234567", "Message:\n │ Hello[2J there\n │ Bring the keys\n", "exactly this message once", code} {
 		if !strings.Contains(prompts, want) {
 			t.Fatalf("prompt lacks %q:\n%s", want, prompts)
 		}

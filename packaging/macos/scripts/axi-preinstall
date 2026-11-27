@@ -2,14 +2,19 @@
 # Another installation method, such as the Homebrew wasync-axi formula, may
 # own /usr/local/bin/wasync-axi as a symlink. Keep that copy: set the link
 # aside so this package does not write through it, and postinstall puts it back.
+# A link whose target is gone is dropped, so this package's copy is used.
 set -eu
 bin=/usr/local/bin/wasync-axi
 kept=/usr/local/bin/.wasync-axi.kept
-if [ -L "$kept" ] && [ ! -L "$bin" ] && [ ! -d "$bin" ]; then
+if [ -L "$kept" ] && [ -e "$kept" ] && [ ! -L "$bin" ] && [ ! -d "$bin" ]; then
   mv -f "$kept" "$bin"
 fi
 rm -f "$kept"
 if [ -L "$bin" ]; then
-  mv -f "$bin" "$kept"
+  if [ -e "$bin" ]; then
+    mv -f "$bin" "$kept"
+  else
+    rm -f "$bin"
+  fi
 fi
 exit 0

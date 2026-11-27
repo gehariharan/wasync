@@ -251,7 +251,7 @@ func (a *App) runSend(ctx context.Context, inv invocation) error {
 		resp, err = post(ctx, w, t, "/messages", body, &res)
 	}
 	if err != nil {
-		return refusalHint(writeExplain(err, "send"), "send-request", sendRequestHelp)
+		return writeExplain(err, "send")
 	}
 	if note != "" && !inv.json {
 		fmt.Fprintln(a.Out, "note: "+note)

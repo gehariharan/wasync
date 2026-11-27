@@ -18,10 +18,6 @@ import (
 
 const sendRequestUsage = "wasync-axi send-request (--chat JID | --to PHONE) --text TEXT [--json]; wasync-axi send-request status REQUEST_ID [--json]"
 
-// sendRequestHelp is added to a send wasync refused, for a chat or number the
-// agent may not use yet.
-const sendRequestHelp = "If the chat is not synced in wasync or the number is new, ask the person to approve this one message with `wasync-axi send-request (--chat JID | --to PHONE) --text TEXT`."
-
 var sendRequestCommand = &command{
 	name:        "send-request",
 	usage:       sendRequestUsage,

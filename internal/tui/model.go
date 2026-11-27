@@ -1159,7 +1159,7 @@ func (m Model) sendDescription() string {
 		where = "the new number " + oneLine(approval.PhoneNumber(r.Chat))
 	}
 	var b strings.Builder
-	fmt.Fprintf(&b, "Agent %s asks to send ONE message to %s.\n\nMessage:\n%s\n\n", oneLine(r.Send.Agent), where, clean(r.Send.Text))
+	fmt.Fprintf(&b, "Agent %s asks to send ONE message to %s.\n\nMessage:\n%s\n\n", oneLine(r.Send.Agent), where, " │ "+strings.ReplaceAll(clean(r.Send.Text), "\n", "\n │ "))
 	b.WriteString("Approving sends exactly this message once, from your WhatsApp. The agent gets no other access.\n")
 	fmt.Fprintf(&b, "\nType SEND %s then Enter to approve.\n> %s\nn / Esc decline", m.confirmID[max(0, len(m.confirmID)-6):], oneLine(m.confirmDraft))
 	return b.String()

@@ -22,9 +22,10 @@ for dependency trust and source-build toolchain behavior.
 Installer checks cover AXI for agents (see [Installers and AXI for agents](#installers-and-axi-for-agents)):
 PR CI builds the unsigned macOS installer, checks that both components are locked on and
 installs it on the hosted Mac runners, builds the Linux archive and runs its `install.sh`
-(which must install both tools, ask nothing and refuse the removed AXI options), and builds
-the Windows Setup program and ZIP, runs Setup silently, which must install both tools, and
-starts the wasync app. The release
+(which must install both tools and ask nothing, accept `--with-axi` as a no-op, run
+`wasync-axi setup skill` or `setup hooks` only for `--axi-skill` or `--axi-hooks`, and refuse
+`--without-axi`), and builds the Windows Setup program and ZIP, runs Setup silently, which
+must install both tools, and starts the wasync app. The release
 workflow repeats those checks on the packages it is about to publish, and
 `scripts/verify-signed-release.sh` repeats the Mac ones on the signed installer.
 
@@ -57,8 +58,9 @@ certified package; a real choice there would mean a separate Store add-on, which
 a new Partner Center product and certification. That is an **owner-only action**
 and was not started. Nothing was submitted to the Store.
 
-No installer changes agent configuration or runs `wasync-axi setup`; connecting an
-agent happens later, from wasync's Connect an agent step.
+No installer changes agent configuration on its own: only the Linux `install.sh` runs
+`wasync-axi setup skill` or `setup hooks`, and only when given `--axi-skill` or
+`--axi-hooks`. Connecting an agent happens later, from wasync's Connect an agent step.
 
 macOS details. `scripts/package.sh` builds `wasync.pkg` and `wasync-axi.pkg`
 with `pkgbuild` and joins them with `productbuild` (signed with the Developer ID
