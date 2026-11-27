@@ -743,7 +743,7 @@ func fileVersion(t *testing.T, path string) int {
 
 func TestConnectEffectNamesTheAgentTheAbilitiesAndTheChats(t *testing.T) {
 	got := GrantEffect("codex", ConnectScopes, []string{chatA, chatB}, true, 0)
-	if got != `Approve: let the agent "codex" read, reply and react in every chat you sync in wasync (2 now) and any you sync later` {
+	if got != `Approve: let the agent "codex" read, reply and react in every chat you sync in wasync (2 now) and any you sync later (it asks you before sending anywhere else)` {
 		t.Fatalf("effect %q", got)
 	}
 	if got = GrantEffect("x", []string{ScopeReadChats}, nil, false, 0); !strings.Contains(got, "ALL chats") || !strings.Contains(got, "read.chats") {

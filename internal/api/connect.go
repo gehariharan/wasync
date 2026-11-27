@@ -309,7 +309,7 @@ func (h *handler) setupConnect(w http.ResponseWriter, r *http.Request, sess uiSe
 	}
 	// Read, reply and react in every synced chat, now and later; the
 	// same credential Connect by name gives.
-	synced, err := syncedChats(r.Context(), h.store)
+	synced, err := syncedChats(r.Context(), h.store, h.dataDir)
 	if err != nil {
 		back("failed")
 		return

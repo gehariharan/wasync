@@ -463,6 +463,39 @@ func FirstSent(dir string) (map[string]time.Time, error) {
 	return r.FirstSent, nil
 }
 
+// AllNumbers returns every number an approved list holds or ever messaged,
+// including those that replied STOP.
+func AllNumbers(dir string) ([]string, error) {
+	mu.Lock()
+	defer mu.Unlock()
+	v, err := load(dir)
+	if err != nil {
+		return nil, err
+	}
+	r, err := loadRecord(dir)
+	if err != nil {
+		return nil, err
+	}
+	set := map[string]bool{}
+	for _, l := range v.Lists {
+		for _, n := range l.Numbers {
+			set[n.Chat] = true
+		}
+	}
+	for chat := range r.FirstSent {
+		set[chat] = true
+	}
+	for _, chat := range r.OptedOut {
+		set[chat] = true
+	}
+	out := make([]string, 0, len(set))
+	for chat := range set {
+		out = append(out, chat)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // OptOut remembers for good that the numbers in stop replied STOP and drops
 // them from every list, counting them in that list's Stopped. No list may
 // hold them again.

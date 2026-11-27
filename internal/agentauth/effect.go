@@ -25,7 +25,7 @@ func GrantEffect(name string, scopes, chats []string, synced bool, expires time.
 	}
 	text := "Approve: create the agent credential " + QuotedName(name) + " with scopes " + humancheck.Clean(strings.Join(scopes, ","), 120) + " for " + where
 	if synced && slices.Equal(scopes, ConnectScopes) {
-		text = "Approve: let the agent " + QuotedName(name) + " read, reply and react in " + where
+		text = "Approve: let the agent " + QuotedName(name) + " read, reply and react in " + where + " (it asks you before sending anywhere else)"
 	}
 	if expires > 0 {
 		text += ", expiring in " + expires.String()

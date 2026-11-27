@@ -2,9 +2,14 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/localfs"
+	"github.com/gehariharan/wasync/internal/sendlist"
 	"github.com/gehariharan/wasync/internal/storage"
 )
 
@@ -32,7 +37,7 @@ func (h *handler) syncAgentChats(ctx context.Context) error {
 // chats the person synced in store, and records each change in the agent audit log. With
 // no paired account no chat is synced, so such agents use none.
 func SyncAgentChats(ctx context.Context, store *storage.Store, dir string) error {
-	chats, err := syncedChats(ctx, store)
+	chats, err := syncedChats(ctx, store, dir)
 	if err != nil {
 		return err
 	}
@@ -47,7 +52,10 @@ func SyncAgentChats(ctx context.Context, store *storage.Store, dir string) error
 	return nil
 }
 
-func syncedChats(ctx context.Context, store *storage.Store) ([]string, error) {
+func syncedChats(ctx context.Context, store *storage.Store, dir string) ([]string, error) {
+	if err := markEarlierListChats(ctx, store, dir); err != nil {
+		return nil, err
+	}
 	account, err := store.Account(ctx)
 	if err != nil || account == nil {
 		return nil, err
@@ -63,4 +71,33 @@ func syncedChats(ctx context.Context, store *storage.Store) ([]string, error) {
 		}
 	}
 	return chats, nil
+}
+
+// listCaptureMarker is written to the data directory once
+// markEarlierListChats has run, so it runs only once.
+const listCaptureMarker = "list-capture-backfill.done"
+
+// markEarlierListChats marks, once, the synced chats of every number an
+// approved list holds or ever messaged as list capture. Releases before
+// list_capture switched those chats on like any other, so after an upgrade
+// they would otherwise go to every connected agent. A chat the person synced
+// that is also on a list is marked too; ticking it again in Choose chats
+// makes it theirs.
+func markEarlierListChats(ctx context.Context, store *storage.Store, dir string) error {
+	marker := filepath.Join(dir, listCaptureMarker)
+	if _, err := os.Lstat(marker); err == nil || !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	account, err := store.Account(ctx)
+	if err != nil || account == nil {
+		return err
+	}
+	chats, err := sendlist.AllNumbers(dir)
+	if err != nil {
+		return err
+	}
+	if err = store.MarkListCapture(ctx, account.ID, chats); err != nil {
+		return err
+	}
+	return localfs.EnsureFile(marker)
 }

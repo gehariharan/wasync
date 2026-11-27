@@ -311,6 +311,22 @@ func (s *Store) EnableAllCapture(ctx context.Context, account int64, withHistory
 	return newly, nil
 }
 
+// MarkListCapture marks those of chats that are enabled as list capture, as
+// if only an agent's approved list had switched them on.
+func (s *Store) MarkListCapture(ctx context.Context, account int64, chats []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	for _, chat := range chats {
+		if _, err = tx.ExecContext(ctx, "UPDATE groups SET list_capture=1 WHERE account_id=? AND group_id=? AND sync_enabled=1", account, chat); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
 func (s *Store) setEnabled(ctx context.Context, account int64, ids []string, enabled bool, history historyMode, forList bool) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

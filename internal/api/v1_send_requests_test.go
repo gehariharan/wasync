@@ -14,6 +14,7 @@ import (
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/query"
+	"github.com/gehariharan/wasync/internal/sendlist"
 )
 
 // connect grants name the credential a person gives an agent at Connect.
@@ -336,5 +337,47 @@ func TestASendRequestForASyncedChatTheAgentMayNotUseSaysSo(t *testing.T) {
 	}
 	if got := stub.seen(); len(got) != 1 || !strings.Contains(got[0], `agent "jit" send this message to "Family Group", a synced chat this agent may not use: "See you at 6"`) {
 		t.Fatalf("prompt %q", got)
+	}
+}
+
+// An archive from a release before list_capture: an approved list's send
+// switched a number's chat on like any other. After the upgrade a newly
+// connected agent must not get it; the person ticking it shares it, and the
+// one-time marking does not undo that.
+func TestAChatAnEarlierReleaseSyncedForAListIsNotSharedAfterTheUpgrade(t *testing.T) {
+	f, c, csrf := chatsFixture(t)
+	ctx := context.Background()
+	if err := f.store.SetEnabled(ctx, f.account, []string{phoneChat}, true); err != nil {
+		t.Fatal(err)
+	}
+	poster, err := agentauth.ActiveByName(f.dir, "jit")
+	if err != nil || poster == nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err = sendlist.Put(f.dir, sendlist.List{AgentID: poster.ID, Agent: poster.Name, GrantedAt: now, Numbers: []sendlist.Number{{Chat: phoneChat, FirstSentAt: &now, LastSentAt: &now}}}); err != nil {
+		t.Fatal(err)
+	}
+	// The owner in the fixture already started on this archive; the upgrade
+	// is the first start that has not marked earlier list chats yet.
+	if err = os.Remove(filepath.Join(f.dir, listCaptureMarker)); err != nil {
+		t.Fatal(err)
+	}
+	codex := f.connect(t, "codex")
+	messages := "/api/v1/chats/" + phoneChat + "/messages"
+	if code, out := f.do(t, "GET", messages, codex, nil); code != 403 {
+		t.Fatalf("a newly connected agent read a chat an earlier release synced for a list: %d %s", code, out)
+	}
+	if g := f.group(t, phoneChat); !g.Enabled || !g.ListCapture {
+		t.Fatalf("the earlier list chat was not marked: %+v", g)
+	}
+	if code, _ := f.do(t, "GET", "/api/v1/chats/"+familyChat+"/messages", codex, nil); code != 200 {
+		t.Fatalf("a chat the person synced, not on any list, was taken away: %d", code)
+	}
+	if code, _, _ := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "sync": {phoneChat}}); code != 303 {
+		t.Fatalf("save: %d", code)
+	}
+	if code, out := f.do(t, "GET", messages, codex, nil); code != 200 {
+		t.Fatalf("the person synced it, yet the agent cannot read it: %d %s", code, out)
 	}
 }

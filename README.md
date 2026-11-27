@@ -93,7 +93,8 @@ wasync setup
 3. **Connect an agent** (optional). Pick ChatGPT & Codex, Claude Code or Claude Desktop. The
    page first shows the exact lines it will add to that app's own settings file. When you
    confirm, wasync gives the app its own credential (read, reply and react in every chat you
-   sync, now and later; editing is off), saves it where only that app's WhatsApp tools read it,
+   sync, now and later; editing is off; to message any other chat or a new number it asks you
+   to approve each message), saves it where only that app's WhatsApp tools read it,
    keeps a copy of the settings file, and adds the tools; for Codex it also adds the WhatsApp
    plugin. Restart the app, and the page shows when it last called wasync. **Disconnect** takes
    the entry out and revokes the credential. For any other agent, pick a name instead; wasync

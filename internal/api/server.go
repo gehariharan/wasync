@@ -199,7 +199,8 @@ func StartOwner(o Owner) (*Server, error) {
 	if store != nil {
 		// Chats synced while no owner ran apply to connected agents now.
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = h.syncAgentChats(ctx) // best effort: every request from such an agent tries again
+		_ = markEarlierListChats(ctx, store, dir) // best effort: tried again before any agent's chats are set
+		_ = h.syncAgentChats(ctx)                 // best effort: every request from such an agent tries again
 		cancel()
 	}
 	srv := &http.Server{Handler: h.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}

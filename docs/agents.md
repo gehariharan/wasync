@@ -158,6 +158,11 @@ can see the replies, including a listed contact's replies that WhatsApp delivers
 hidden-ID chat, unless you already turned archiving of that hidden-ID chat on or off yourself.
 A chat wasync archives only for a list is not one you synced: other agents that use every synced
 chat do not get it, and **Choose chats** shows it unticked until you tick it yourself.
+Releases before this one did not keep that difference, so the first time wasync starts after the
+upgrade it treats the synced chat of every number an approved list holds or ever messaged as one
+it archives only for a list. That includes a chat you synced yourself whose number is also on a
+list: tick it again in **Choose chats** to share it with your agents. A list contact's separate
+hidden-ID chat that an earlier release followed is not recognised this way.
 
 **Pause** stops a list's sends and keeps everything else; **Resume…** asks you to confirm.
 Removing a list needs no confirmation. The one-message-until-reply rule belongs to the number,

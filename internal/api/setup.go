@@ -192,7 +192,7 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 	// Read, reply and react in every synced chat, now and later, until
 	// revoked. Sending anywhere else waits for the person to approve that
 	// one message.
-	synced, err := syncedChats(r.Context(), h.store)
+	synced, err := syncedChats(r.Context(), h.store, h.dataDir)
 	if err != nil {
 		h.uiBack(w, r, "failed")
 		return
