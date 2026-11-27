@@ -431,6 +431,56 @@ func TestNewFolderIsNotInUseUntilItHoldsTheData(t *testing.T) {
 	}
 }
 
+func TestFailedNoteKeepsTheSwitchAndSaysSo(t *testing.T) {
+	l := oldFolder(t)
+	// Something in the way of the note makes writing it fail.
+	beforeSwitch = func() {
+		if err := os.Mkdir(filepath.Join(l.Legacy, NoteFile), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	defer func() { beforeSwitch = nil }()
+	m, err := l.Move(context.Background(), day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m == nil || !m.Copied || m.NoteErr == nil {
+		t.Fatalf("the failed note must be reported: %+v", m)
+	}
+	if l.InUse() != l.Dir {
+		t.Fatal("the switch stands")
+	}
+	if _, err = os.Stat(filepath.Join(l.Dir, "archive.db")); err != nil {
+		t.Fatalf("the data must be in the new folder: %v", err)
+	}
+}
+
+func TestMoveFinishesAfterStoppingBetweenSwitchAndNote(t *testing.T) {
+	l := oldFolder(t)
+	// What a move that stopped right after the switch leaves: the copy in
+	// Dir names the old folder it came from, which has no note yet.
+	write(t, filepath.Join(l.Dir, "archive.db"), "")
+	write(t, filepath.Join(l.Dir, KeptNoteFile), l.Legacy+"\n\nthe old folder\n")
+	if l.InUse() != l.Dir {
+		t.Fatal("the copy is in use")
+	}
+	m, err := l.Move(context.Background(), day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := l.Legacy + ".moved-2026-11-26"
+	if m == nil || m.Copied || m.Kept != kept || m.NoteErr != nil {
+		t.Fatalf("the next start must finish the move: %+v", m)
+	}
+	note, err := os.ReadFile(filepath.Join(kept, NoteFile))
+	if err != nil || !strings.Contains(string(note), l.Dir) {
+		t.Fatalf("the kept folder must say where the data went: %q %v", note, err)
+	}
+	if KeptCopy(l.Dir) != kept {
+		t.Fatalf("the new folder must name the kept folder: %q", KeptCopy(l.Dir))
+	}
+}
+
 func TestNothingToMove(t *testing.T) {
 	base := t.TempDir()
 	for _, l := range []Location{

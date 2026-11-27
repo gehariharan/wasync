@@ -28,6 +28,9 @@ type Moved struct {
 	// Copied is set when this Move copied the data; otherwise it only
 	// renamed an old folder an earlier move could not.
 	Copied bool
+	// NoteErr says why the old folder could not get its note saying where
+	// the data went, or is nil. The old folder still holds a copy.
+	NoteErr error
 }
 
 // afterCopy, when set by a test, runs between copying and checking the copy.
@@ -60,7 +63,7 @@ func (l Location) Move(ctx context.Context, now time.Time) (*Moved, error) {
 		return nil, nil
 	}
 	if HoldsData(l.Dir) {
-		if moved(l.Legacy) {
+		if moved(l.Legacy) || l.copiedFromLegacy() {
 			return l.finish(now), nil
 		}
 		// Both hold data, as when an older wasync ran again after a move:
@@ -84,7 +87,27 @@ func (l Location) Move(ctx context.Context, now time.Time) (*Moved, error) {
 	if err = l.copyAndSwitch(ctx); err != nil {
 		return nil, err
 	}
-	return &Moved{From: l.Legacy, To: l.Dir, Kept: l.retire(now, &locks), Copied: true}, nil
+	m := &Moved{From: l.Legacy, To: l.Dir, Copied: true, NoteErr: l.markMoved()}
+	m.Kept = l.retire(now, &locks)
+	return m, nil
+}
+
+// copiedFromLegacy reports whether Dir is a copy of the old folder, which
+// Dir's note names while the old folder keeps its name.
+func (l Location) copiedFromLegacy() bool {
+	kept := KeptCopy(l.Dir)
+	return kept != "" && same(kept, l.Legacy)
+}
+
+// markMoved leaves the note in the old folder saying where the data went.
+func (l Location) markMoved() error {
+	err := writeNote(filepath.Join(l.Legacy, NoteFile), "wasync moved your data to:\n\n  "+l.Dir+"\n\n"+
+		"This folder is what was here before the move, kept in case you need it.\n"+
+		"wasync no longer uses it. Delete it once wasync works from the new folder.\n")
+	if err != nil {
+		return fmt.Errorf("write the note in %s: %w", l.Legacy, err)
+	}
+	return nil
 }
 
 // finish renames an old folder a move switched away from but could not
@@ -95,8 +118,12 @@ func (l Location) finish(now time.Time) *Moved {
 		return nil
 	}
 	defer locks.release()
+	var noteErr error
+	if !moved(l.Legacy) {
+		noteErr = l.markMoved()
+	}
 	if kept := l.retire(now, &locks); kept != "" {
-		return &Moved{From: l.Legacy, To: l.Dir, Kept: kept}
+		return &Moved{From: l.Legacy, To: l.Dir, Kept: kept, NoteErr: noteErr}
 	}
 	return nil
 }
@@ -129,6 +156,9 @@ func (l Location) copyAndSwitch(ctx context.Context) error {
 	if err = verify(ctx, l.Legacy, staging, want); err != nil {
 		return err
 	}
+	if err = writeKeptNote(staging, l.Legacy); err != nil {
+		return fmt.Errorf("write the note in the copy: %w", err)
+	}
 	if beforeSwitch != nil {
 		beforeSwitch()
 	}
@@ -140,9 +170,6 @@ func (l Location) copyAndSwitch(ctx context.Context) error {
 	}
 	switched = true
 	_ = localfs.SyncDir(filepath.Dir(l.Dir))
-	_ = writeNote(filepath.Join(l.Legacy, NoteFile), "wasync moved your data to:\n\n  "+l.Dir+"\n\n"+
-		"This folder is what was here before the move, kept in case you need it.\n"+
-		"wasync no longer uses it. Delete it once wasync works from the new folder.\n")
 	return nil
 }
 
@@ -365,13 +392,18 @@ func (l Location) retire(now time.Time, locks *folderLocks) string {
 		kept = l.keep(now)
 	}
 	if kept != "" {
-		// The path comes first, on its own line, for KeptCopy.
-		_ = writeNote(filepath.Join(l.Dir, KeptNoteFile), kept+"\n\n"+
-			"wasync moved your data here from an older folder and kept that folder,\n"+
-			"as it was before the move, at the path above. wasync no longer uses it.\n"+
-			"Delete it once wasync works from this folder.\n")
+		_ = writeKeptNote(l.Dir, kept)
 	}
 	return kept
+}
+
+// writeKeptNote notes in the data folder dir where the old folder is kept:
+// its path first, on its own line, for KeptCopy.
+func writeKeptNote(dir, kept string) error {
+	return writeNote(filepath.Join(dir, KeptNoteFile), kept+"\n\n"+
+		"wasync moved your data here from an older folder and kept that folder,\n"+
+		"as it was before the move, at the path above. wasync no longer uses it.\n"+
+		"Delete it once wasync works from this folder.\n")
 }
 
 // keep renames the old folder into KeepIn, or beside where it is.

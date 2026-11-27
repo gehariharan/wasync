@@ -73,6 +73,13 @@ func MoveData(ctx context.Context, dir string, report io.Writer) (use string, he
 	case moved != nil:
 		fmt.Fprintf(report, "wasync moved your data to %s. The old folder %s is no longer used; delete it once everything works.\n", moved.To, moved.From)
 	}
+	if moved != nil && moved.NoteErr != nil {
+		old := moved.Kept
+		if old == "" {
+			old = moved.From
+		}
+		fmt.Fprintf(report, "wasync could not leave a note in the old folder %s saying where your data went (%v). It still holds a copy of your data; delete it once everything works.\n", old, moved.NoteErr)
+	}
 	if moved != nil && moved.Kept != "" && loc.KeepIn != "" && filepath.Dir(moved.Kept) != filepath.Clean(loc.KeepIn) {
 		fmt.Fprintf(report, "wasync could not move the old folder into %s, so Windows may still copy it between computers; delete %s once everything works.\n", loc.KeepIn, moved.Kept)
 	}
