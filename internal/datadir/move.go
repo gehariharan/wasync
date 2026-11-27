@@ -33,6 +33,10 @@ type Moved struct {
 // afterCopy, when set by a test, runs between copying and checking the copy.
 var afterCopy func(staged string)
 
+// beforeSwitch, when set by a test, runs once the copy is checked, right
+// before it becomes Dir.
+var beforeSwitch func()
+
 // sideLockWait bounds how long Move waits for a command that is changing one
 // of the smaller files (agent credentials, webhooks) to finish.
 const sideLockWait = 5 * time.Second
@@ -125,21 +129,20 @@ func (l Location) copyAndSwitch(ctx context.Context) error {
 	if err = verify(ctx, l.Legacy, staging, want); err != nil {
 		return err
 	}
-	note := filepath.Join(l.Legacy, NoteFile)
-	if err = writeNote(note, "wasync moved your data to:\n\n  "+l.Dir+"\n\n"+
-		"This folder is what was here before the move, kept in case you need it.\n"+
-		"wasync no longer uses it. Delete it once wasync works from the new folder.\n"); err != nil {
-		return fmt.Errorf("write the note in %s: %w", l.Legacy, err)
+	if beforeSwitch != nil {
+		beforeSwitch()
 	}
 	if err = removeEmpty(l.Dir); err == nil {
 		err = os.Rename(staging, l.Dir)
 	}
 	if err != nil {
-		_ = os.Remove(note)
 		return fmt.Errorf("switch to %s: %w", l.Dir, err)
 	}
 	switched = true
 	_ = localfs.SyncDir(filepath.Dir(l.Dir))
+	_ = writeNote(filepath.Join(l.Legacy, NoteFile), "wasync moved your data to:\n\n  "+l.Dir+"\n\n"+
+		"This folder is what was here before the move, kept in case you need it.\n"+
+		"wasync no longer uses it. Delete it once wasync works from the new folder.\n")
 	return nil
 }
 

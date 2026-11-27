@@ -415,6 +415,22 @@ func TestMoveKeepsTheOldFolderBesideWhenKeepInFails(t *testing.T) {
 	}
 }
 
+func TestNewFolderIsNotInUseUntilItHoldsTheData(t *testing.T) {
+	l := oldFolder(t)
+	var during string
+	beforeSwitch = func() { during = l.InUse() }
+	defer func() { beforeSwitch = nil }()
+	if _, err := l.Move(context.Background(), day); err != nil {
+		t.Fatal(err)
+	}
+	if during != l.Legacy {
+		t.Fatalf("while the new folder is still empty the old one is in use, not %s", during)
+	}
+	if l.InUse() != l.Dir || !HoldsData(l.Dir) {
+		t.Fatal("after the move the new folder holds the data and is in use")
+	}
+}
+
 func TestNothingToMove(t *testing.T) {
 	base := t.TempDir()
 	for _, l := range []Location{
