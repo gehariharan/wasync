@@ -159,7 +159,9 @@ wasync --data-dir /absolute/path/to/private/wasync query groups
 
 Each group in `query groups` carries `potential_account_gaps` (every gap the account has
 had, the same for all chats) and `potential_chat_gaps` (only those that overlap the time
-capture has been on for that chat). `query status` reports persisted archive counts,
+capture has been on for that chat). `sync_enabled` is the capture state; a chat whose
+capture is on only so an agent's approved number list sees replies, not because you synced
+it, also carries `list_capture: true`, and connected agents do not get it. `query status` reports persisted archive counts,
 capture timestamps, history observations and potential gaps. Its `connection` is always `unknown`: an
 unfinished capture run or recent heartbeat cannot prove that capture is currently
 running or connected. Querying works with capture stopped, but the archive only
