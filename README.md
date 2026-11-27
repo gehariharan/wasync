@@ -46,10 +46,11 @@ and pairing. Platform details, signing, checksums and the Microsoft Store editio
 ### Choose whether to add AXI for agents
 
 `wasync-axi` ("AXI for agents") is the command agents use to work with your archive. You only
-need it if you want an agent to use wasync, so the installers offer it as a choice that is off
-by default: a checkbox in the macOS and Windows installers, `./install.sh --with-axi` on Linux,
-and a separate Homebrew formula. (The Windows ZIP always includes it; the Microsoft Store edition
-does not.) Both programs come from the same release. Installing it never
+need it if you want an agent to use wasync. The wasync app (the macOS disk image and Windows
+Setup) always carries it, and it does nothing until you connect an agent. The other installers
+offer it as a choice that is off by default: a checkbox in the macOS `.pkg`,
+`./install.sh --with-axi` on Linux, and a separate Homebrew formula. (The Windows ZIP always
+includes it; the Microsoft Store edition does not.) Both programs come from the same release. Installing it never
 changes your agents' settings; to tell your agents about it, run `wasync-axi setup skill` and
 `wasync-axi setup hooks` (add `--dry-run` to preview). It was previously called `whatsapp-axi`,
 which still works as an alias. See [docs/install.md](docs/install.md#axi-for-agents-wasync-axi).
@@ -98,7 +99,8 @@ wasync setup
    credential. For any other agent, pick a name instead; wasync creates a read-only credential
    that starts with no chats and saves it straight to where `wasync-axi` reads it, never showing it.
 4. **Start at login** (optional, macOS and Windows). Adds a login item for your account only,
-   with no administrator rights, that runs `wasync serve`.
+   with no administrator rights, that runs `wasync serve` (or, when the
+   [wasync app](docs/desktop.md#start-when-i-log-in) started wasync, opens the app).
 
 Steps 3 and 4 widen what runs on your behalf, so each asks your computer to confirm (Touch ID or
 password on macOS, Windows Hello or password on Windows). Where a computer cannot show that
@@ -308,6 +310,7 @@ our public GitHub issue tracker; do not post private messages or credentials the
 ## Documentation
 
 - [Installing wasync](docs/install.md) and [wasync on Windows](docs/windows.md), including the Microsoft Store edition
+- [The wasync app](docs/desktop.md) for macOS and Windows
 - [Agents: access, approvals and sending](docs/agents.md) and [using wasync from Codex](docs/codex.md)
 - [The command line](docs/cli.md)
 - [Local API](docs/api.md) and [webhooks](docs/webhooks.md)
