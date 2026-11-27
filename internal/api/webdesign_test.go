@@ -115,7 +115,8 @@ func TestTheDesignSystemFilesNeedNoSession(t *testing.T) {
 		}
 	}
 	_, tokens, _ := c.get("/ui/tokens.css")
-	if !strings.Contains(tokens, `url("/ui/inter.woff2")`) || !strings.Contains(tokens, "--brand: #128254") {
+	// The font URL is relative to /ui/tokens.css, so it resolves to the /ui/inter.woff2 served above.
+	if !strings.Contains(tokens, `url("inter.woff2")`) || !strings.Contains(tokens, "--brand: #128254") {
 		t.Fatal("tokens.css lost the bundled typeface or the brand colour")
 	}
 	if _, license, _ := c.get("/ui/inter-license.txt"); !strings.Contains(license, "SIL Open Font License") {

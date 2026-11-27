@@ -12,7 +12,8 @@ on:
       - "axi/*.md"
       - "axi/docs/**"
       - "packaging/**/*.md"
-      - "website/**/*.md"
+      # The website deploys on its own (see website/README.md); it never needs an app release.
+      - "website/**"
   workflow_dispatch:
 
 permissions:

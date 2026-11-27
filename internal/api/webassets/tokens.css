@@ -1,14 +1,15 @@
 /* wasync design tokens: the one place colours, type, spacing and shapes are
    defined. components.css builds every page from these; pages carry no styles
    of their own. Inter is bundled (latin subset, weights 400-700), see
-   inter-license.txt. */
+   inter-license.txt. The font URL is relative to this file, so the same file
+   works in the app (/ui/) and on the website (website/scripts/copy-design.mjs). */
 
 @font-face {
   font-family: "Inter";
   font-style: normal;
   font-weight: 400 700;
   font-display: swap;
-  src: url("/ui/inter.woff2") format("woff2");
+  src: url("inter.woff2") format("woff2");
 }
 
 :root {
