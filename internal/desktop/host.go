@@ -343,7 +343,7 @@ func (h *Host) StartPage(ctx context.Context) string {
 	if st := h.CLI.Status(ctx, h.config()); st.Paired == nil || !*st.Paired {
 		return "setup"
 	}
-	if s, err := prefs.Open(h.DataDir()).Get(); err != nil || !s.SetupDone {
+	if s, err := prefs.Open(h.DataDir()).Get(); err != nil || s.SettingUp() {
 		return "setup"
 	}
 	return "chats"

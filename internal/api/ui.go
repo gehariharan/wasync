@@ -435,7 +435,7 @@ func (h *handler) uiStart(w http.ResponseWriter, r *http.Request, sess uiSession
 	}
 	pending, _ := firstopen.Pending(h.dataDir)
 	settings, _ := h.prefs.Get()
-	if account == nil || (pending || !settings.SetupDone) && remoteLogin(r) == "" {
+	if account == nil || (pending || settings.SettingUp()) && remoteLogin(r) == "" {
 		http.Redirect(w, r, "/ui/setup", http.StatusSeeOther)
 		return
 	}

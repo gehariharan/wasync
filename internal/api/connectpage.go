@@ -61,6 +61,7 @@ type connectData struct {
 type setupAgent struct{ Name, Status string }
 
 func (h *handler) agentStep(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	h.reachedStep(stepAgent)
 	h.connectView(w, r, sess, true)
 }
 

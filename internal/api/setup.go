@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"html/template"
 	"net/http"
 	"net/url"
@@ -57,10 +58,37 @@ func (h *handler) linkState(r *http.Request) (linkState, error) {
 	return st, nil
 }
 
+// recordSetupStart records, once, whether this installation still has the
+// setup steps ahead of it. One that has no record and whose phone is already
+// linked was set up before the steps existed, so it never sees them.
+func (h *handler) recordSetupStart(ctx context.Context) {
+	if s, err := h.prefs.Get(); err != nil || s.SetupDone != nil {
+		return
+	}
+	account, err := h.store.Account(ctx)
+	if err != nil {
+		return
+	}
+	done := account != nil
+	_, _ = h.prefs.Update(func(s *prefs.Settings) {
+		if s.SetupDone == nil {
+			s.SetupDone = &done
+		}
+	})
+}
+
+// reachedStep records step n as reached while setup is unfinished.
+func (h *handler) reachedStep(n int) {
+	if s, err := h.prefs.Get(); err != nil || !s.SettingUp() || s.SetupStep >= n {
+		return
+	}
+	_, _ = h.prefs.Update(func(s *prefs.Settings) { s.SetupStep = max(s.SetupStep, n) })
+}
+
 // setupRoute leads /ui/setup to the step that is due: the First open screen
 // once, then linking until a phone is linked, then the steps until setup is
-// done, from choosing chats once step 1 saved how wasync will be used, and
-// Settings after that.
+// done, at the furthest step reached once step 1 saved how wasync will be
+// used, and Settings after that.
 func (h *handler) setupRoute(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	to := "/ui/settings"
 	st, err := h.linkState(r)
@@ -76,10 +104,10 @@ func (h *handler) setupRoute(w http.ResponseWriter, r *http.Request, sess uiSess
 		to = welcomePath
 	case !st.Paired:
 		to = "/ui/setup/link"
-	case !settings.SetupDone && settings.Use == "":
+	case settings.SettingUp() && settings.Use == "":
 		to = "/ui/setup/link" // linked: the step asks how wasync will be used
-	case !settings.SetupDone:
-		to = "/ui/setup/chats"
+	case settings.SettingUp():
+		to = setupSteps[min(max(settings.SetupStep, stepChats), stepAgent)-1].path
 	}
 	if n := r.URL.Query().Get("n"); n != "" {
 		to += "?n=" + url.QueryEscape(n)
@@ -148,6 +176,7 @@ func quietly(where string) string {
 
 // runningStep is step 3: start wasync when the person logs in.
 func (h *handler) runningStep(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	h.reachedStep(stepRunning)
 	d := &runningData{uiData: uiData{CSRF: sess.csrf, Title: "Keep running · wasync", Setup: h.setupFrameFor(stepRunning, true)}, Remote: remoteLogin(r) != ""}
 	h.noticeFrom(r, &d.uiData)
 	if h.service != nil && h.service.Where() != "" {
@@ -163,7 +192,8 @@ func (h *handler) setupFinish(w http.ResponseWriter, r *http.Request, sess uiSes
 	if !h.uiForm(w, r, sess) {
 		return
 	}
-	if _, err := h.prefs.Update(func(s *prefs.Settings) { s.SetupDone = true }); err != nil {
+	done := true
+	if _, err := h.prefs.Update(func(s *prefs.Settings) { s.SetupDone, s.SetupStep = &done, 0 }); err != nil {
 		http.Redirect(w, r, "/ui/setup/agent?n=failed", http.StatusSeeOther)
 		return
 	}

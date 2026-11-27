@@ -5,15 +5,10 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-
-	"github.com/gehariharan/wasync/internal/prefs"
 )
 
 func TestTheWebAppOpensOnChatsAndApprovalsKeepTheirPage(t *testing.T) {
 	f := setupAccess(t)
-	if _, err := prefs.Open(f.dir).Update(func(s *prefs.Settings) { s.SetupDone = true }); err != nil {
-		t.Fatal(err)
-	}
 	c := newPageClient(t, f)
 	// wasync approvals asks for no page; its link still opens the approval page.
 	if code, _, hd := c.get(linkPath(t, f)); code != 303 || hd.Get("Location") != "/ui/approvals" {

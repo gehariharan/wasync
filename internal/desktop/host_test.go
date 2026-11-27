@@ -227,9 +227,7 @@ func TestStartLinkOpensTheChatsOnceTheWasyncItStartsSaysAPhoneIsLinked(t *testin
 	if err := firstopen.Done(h.Config.DataDir, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := prefs.Open(h.Config.DataDir).Update(func(s *prefs.Settings) { s.SetupDone = true }); err != nil {
-		t.Fatal(err)
-	}
+	// An installation from before the setup steps has no setup-done value.
 	link, err := h.StartLink(context.Background())
 	if err != nil || !strings.HasSuffix(link, "next=chats") {
 		t.Fatalf("a linked phone opens on the chats: %q %v", link, err)
@@ -246,7 +244,8 @@ func TestStartLinkReopensSetupWhenThePersonQuitAfterLinking(t *testing.T) {
 	}
 	// Step 1 is done: the phone is linked and how wasync is used is saved,
 	// but the person quit before finishing or skipping the other steps.
-	if _, err := prefs.Open(h.Config.DataDir).Update(func(s *prefs.Settings) { s.Use = prefs.UseChats }); err != nil {
+	notDone := false
+	if _, err := prefs.Open(h.Config.DataDir).Update(func(s *prefs.Settings) { s.Use, s.SetupDone = prefs.UseChats, &notDone }); err != nil {
 		t.Fatal(err)
 	}
 	link, err := h.StartLink(context.Background())

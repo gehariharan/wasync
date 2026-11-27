@@ -40,10 +40,17 @@ type Settings struct {
 	// SaveMedia is the "Also save photos, videos and files" box; nil means
 	// the default, which is on.
 	SaveMedia *bool `json:"save_media,omitempty"`
-	// SetupDone is set once the person finished, or skipped, the last setup
-	// step; until then the setup pages lead through the steps.
-	SetupDone bool `json:"setup_done,omitempty"`
+	// SetupDone is false while a setup begun on this version is unfinished,
+	// and true once the person finished, or skipped, the last setup step.
+	// nil means never recorded: an installation from before the setup steps.
+	SetupDone *bool `json:"setup_done,omitempty"`
+	// SetupStep is the furthest setup step the person reached, so an
+	// unfinished setup resumes there.
+	SetupStep int `json:"setup_step,omitempty"`
 }
+
+// SettingUp reports whether a setup begun on this version is unfinished.
+func (s Settings) SettingUp() bool { return s.SetupDone != nil && !*s.SetupDone }
 
 // AgentOnly reports whether wasync is used for AI agents only.
 func (s Settings) AgentOnly() bool { return s.Use == UseAgents }
@@ -192,6 +199,10 @@ func (s *Store) Update(change func(*Settings)) (Settings, error) {
 		v := *current.SaveMedia
 		next.SaveMedia = &v
 	}
+	if current.SetupDone != nil {
+		v := *current.SetupDone
+		next.SetupDone = &v
+	}
 	change(&next)
 	if err = next.Validate(); err != nil {
 		return current, err
@@ -202,7 +213,12 @@ func (s *Store) Update(change func(*Settings)) (Settings, error) {
 	} else {
 		setKey(raw, "save_media", *next.SaveMedia, false)
 	}
-	setKey(raw, "setup_done", next.SetupDone, !next.SetupDone)
+	if next.SetupDone == nil {
+		delete(raw, "setup_done")
+	} else {
+		setKey(raw, "setup_done", *next.SetupDone, false)
+	}
+	setKey(raw, "setup_step", next.SetupStep, next.SetupStep == 0)
 	if err = s.write(raw); err != nil {
 		return current, err
 	}

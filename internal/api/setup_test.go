@@ -62,6 +62,11 @@ func newSetupFixture(t *testing.T, withPrompt bool) (setupFixture, *pageClient, 
 		gate = humancheck.NewGate(sf.stub)
 	}
 	sf.accessFixture = setupAccessOwner(t, gate, func(o *Owner) {
+		// A setup begun on this version: the phone was linked in step 1.
+		notDone := false
+		if _, err := prefs.Open(o.Dir).Update(func(s *prefs.Settings) { s.SetupDone = &notDone }); err != nil {
+			t.Fatal(err)
+		}
 		o.Setup, o.Service, o.ServiceSpec = sf.state, sf.item, service.Spec{Exe: "/opt/wasync", DataDir: "/data/wasync"}
 		o.AxiPath = func() (string, error) { return sf.axiFile, nil }
 	})
@@ -114,6 +119,10 @@ func TestSetupPageShowsTheQRCodeAsAnImageUntilTheScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { server.Close() })
+	// A new computer with no phone linked has the setup steps ahead of it.
+	if s, _ := prefs.Open(dir).Get(); !s.SettingUp() {
+		t.Fatalf("a new installation did not record a setup in progress: %+v", s)
+	}
 	c := &pageClient{t: t, base: server.URL, http: newPageClient(t, accessFixture{server: server}).http}
 	c.get(strings.TrimPrefix(server.NewLink("setup"), server.URL))
 
@@ -397,10 +406,42 @@ func TestTheAppReopensOnTheSetupStepsUntilTheyAreFinished(t *testing.T) {
 		t.Fatalf("setup resumes at: %q", hd.Get("Location"))
 	}
 
+	// The person goes on to step 4 and quits there; it resumes at step 4.
+	for _, step := range []string{"/ui/setup/chats", "/ui/setup/running", "/ui/setup/agent"} {
+		if code, _, _ := c.get(step); code != 200 {
+			t.Fatalf("%s: %d", step, code)
+		}
+	}
+	c.get("/ui/setup/chats") // going back does not lose the furthest step
+	third := newPageClient(t, sf.accessFixture)
+	third.get(linkPath(t, sf.accessFixture))
+	if _, _, hd := third.get("/ui/setup"); hd.Get("Location") != "/ui/setup/agent" {
+		t.Fatalf("quit at step 4, setup resumes at: %q", hd.Get("Location"))
+	}
+
 	if _, _, hd := c.post("/ui/setup/finish", url.Values{"csrf": {csrf}}); hd.Get("Location") != "/ui/chats" {
 		t.Fatalf("finish: %q", hd.Get("Location"))
 	}
 	if _, _, hd := again.get("/ui/"); hd.Get("Location") != "/ui/chats" {
 		t.Fatalf("after finishing, the app opens: %q", hd.Get("Location"))
+	}
+}
+
+func TestAnInstallationLinkedBeforeTheSetupStepsNeverSeesThem(t *testing.T) {
+	// setupAccess is a computer that ran an earlier wasync: a linked phone,
+	// the First open screen seen, and no setup-done value.
+	f := setupAccess(t)
+	for i := 0; i < 2; i++ {
+		c := newPageClient(t, f)
+		c.get(linkPath(t, f))
+		if _, _, hd := c.get("/ui/"); hd.Get("Location") != "/ui/chats" {
+			t.Fatalf("open %d after upgrading: %q", i+1, hd.Get("Location"))
+		}
+		if _, _, hd := c.get("/ui/setup"); hd.Get("Location") != "/ui/settings" {
+			t.Fatalf("Set up after upgrading: %q", hd.Get("Location"))
+		}
+	}
+	if s, _ := prefs.Open(f.dir).Get(); s.SetupDone == nil || !*s.SetupDone {
+		t.Fatalf("the upgrade was not recorded as set up: %+v", s)
 	}
 }

@@ -115,6 +115,7 @@ func (h *handler) pickPage(w http.ResponseWriter, r *http.Request, sess uiSessio
 }
 
 func (h *handler) chatsStep(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	h.reachedStep(stepChats)
 	h.pickView(w, r, sess, true)
 }
 
