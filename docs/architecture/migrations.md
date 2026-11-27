@@ -113,6 +113,10 @@ agent's approved list sees replies, not chosen by the person) and raises
 `min_writer` to 9, keeping `min_reader=5`: older readers ignore the column,
 but a schema-6, schema-7 or schema-8 owner would enable a chat for the person
 without clearing the mark, so the chat would stay hidden from connected agents.
+It also creates `list_capture_backfill`, with one row only when the upgraded
+archive already synced chats: the owner then marks, once and only once, the
+synced chats of numbers on any approved list as list capture and deletes the row
+in the same transaction. A new archive never gets the row.
 
 Binaries before this check (schema 5 releases without it) ignore
 `schema_compat` and always refuse newer archives, so the release containing it

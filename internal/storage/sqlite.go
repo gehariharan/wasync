@@ -311,14 +311,31 @@ func (s *Store) EnableAllCapture(ctx context.Context, account int64, withHistory
 	return newly, nil
 }
 
-// MarkListCapture marks those of chats that are enabled as list capture, as
-// if only an agent's approved list had switched them on.
-func (s *Store) MarkListCapture(ctx context.Context, account int64, chats []string) error {
+// ListCaptureBackfillPending reports whether this archive was upgraded from
+// a release that did not record list capture and its earlier list chats are
+// not marked yet.
+func (s *Store) ListCaptureBackfillPending(ctx context.Context) (bool, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM list_capture_backfill").Scan(&n)
+	return n > 0, err
+}
+
+// BackfillListCapture marks those of chats that are enabled as list capture,
+// as if only an agent's approved list had switched them on, and records that
+// the backfill is done, in one transaction. It does nothing once done.
+func (s *Store) BackfillListCapture(ctx context.Context, account int64, chats []string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
+	done, err := tx.ExecContext(ctx, "DELETE FROM list_capture_backfill")
+	if err != nil {
+		return err
+	}
+	if n, err := done.RowsAffected(); err != nil || n == 0 {
+		return err
+	}
 	for _, chat := range chats {
 		if _, err = tx.ExecContext(ctx, "UPDATE groups SET list_capture=1 WHERE account_id=? AND group_id=? AND sync_enabled=1", account, chat); err != nil {
 			return err

@@ -137,7 +137,7 @@ func TestMigrationQueuesPreviouslyEnabledGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Recreate the exact version-2 boundary, with no cursor/history-job schema.
-	if _, err = s.db.Exec("DROP TABLE history_anchors;DROP TABLE history_jobs;ALTER TABLE messages DROP COLUMN sent_by;ALTER TABLE groups DROP COLUMN list_capture;PRAGMA user_version=2"); err != nil {
+	if _, err = s.db.Exec("DROP TABLE history_anchors;DROP TABLE history_jobs;ALTER TABLE messages DROP COLUMN sent_by;ALTER TABLE groups DROP COLUMN list_capture;DROP TABLE list_capture_backfill;PRAGMA user_version=2"); err != nil {
 		t.Fatal(err)
 	}
 	account, err := s.UseAccount(context.Background(), "own@s.whatsapp.net")

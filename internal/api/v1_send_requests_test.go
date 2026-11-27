@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"net/url"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/query"
 	"github.com/gehariharan/wasync/internal/sendlist"
+	"github.com/gehariharan/wasync/internal/storage"
 )
 
 // connect grants name the credential a person gives an agent at Connect.
@@ -358,11 +360,16 @@ func TestAChatAnEarlierReleaseSyncedForAListIsNotSharedAfterTheUpgrade(t *testin
 	if err = sendlist.Put(f.dir, sendlist.List{AgentID: poster.ID, Agent: poster.Name, GrantedAt: now, Numbers: []sendlist.Number{{Chat: phoneChat, FirstSentAt: &now, LastSentAt: &now}}}); err != nil {
 		t.Fatal(err)
 	}
-	// The owner in the fixture already started on this archive; the upgrade
-	// is the first start that has not marked earlier list chats yet.
-	if err = os.Remove(filepath.Join(f.dir, listCaptureMarker)); err != nil {
+	// The fixture's archive is new; record what migration 009 records when it
+	// upgrades an archive that already synced chats.
+	raw, err := sql.Open("sqlite3", storage.DSN(filepath.Join(f.dir, "archive.db")))
+	if err != nil {
 		t.Fatal(err)
 	}
+	if _, err = raw.Exec("INSERT INTO list_capture_backfill(id) VALUES(1)"); err != nil {
+		t.Fatal(err)
+	}
+	raw.Close()
 	codex := f.connect(t, "codex")
 	messages := "/api/v1/chats/" + phoneChat + "/messages"
 	if code, out := f.do(t, "GET", messages, codex, nil); code != 403 {
@@ -379,5 +386,29 @@ func TestAChatAnEarlierReleaseSyncedForAListIsNotSharedAfterTheUpgrade(t *testin
 	}
 	if code, out := f.do(t, "GET", messages, codex, nil); code != 200 {
 		t.Fatalf("the person synced it, yet the agent cannot read it: %d %s", code, out)
+	}
+}
+
+// On a new archive nothing is backfilled: a chat the person synced on this
+// release stays shared when its number later goes on an approved list.
+func TestANewArchiveKeepsAPersonSyncedChatSharedWhenItGoesOnAList(t *testing.T) {
+	f, c, csrf := chatsFixture(t)
+	if code, _, _ := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "sync": {phoneChat}}); code != 303 {
+		t.Fatalf("save: %d", code)
+	}
+	poster, err := agentauth.ActiveByName(f.dir, "jit")
+	if err != nil || poster == nil {
+		t.Fatal(err)
+	}
+	now := time.Now()
+	if err = sendlist.Put(f.dir, sendlist.List{AgentID: poster.ID, Agent: poster.Name, GrantedAt: now, Numbers: []sendlist.Number{{Chat: phoneChat, FirstSentAt: &now, LastSentAt: &now}}}); err != nil {
+		t.Fatal(err)
+	}
+	codex := f.connect(t, "codex")
+	if code, out := f.do(t, "GET", "/api/v1/chats/"+phoneChat+"/messages", codex, nil); code != 200 {
+		t.Fatalf("a chat the person synced was withdrawn from a connected agent: %d %s", code, out)
+	}
+	if g := f.group(t, phoneChat); !g.PersonSynced() {
+		t.Fatalf("the person's chat was marked as list capture: %+v", g)
 	}
 }

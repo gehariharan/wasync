@@ -2,13 +2,9 @@ package api
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
-	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/sendlist"
 	"github.com/gehariharan/wasync/internal/storage"
 )
@@ -73,19 +69,16 @@ func syncedChats(ctx context.Context, store *storage.Store, dir string) ([]strin
 	return chats, nil
 }
 
-// listCaptureMarker is written to the data directory once
-// markEarlierListChats has run, so it runs only once.
-const listCaptureMarker = "list-capture-backfill.done"
-
-// markEarlierListChats marks, once, the synced chats of every number an
-// approved list holds or ever messaged as list capture. Releases before
-// list_capture switched those chats on like any other, so after an upgrade
-// they would otherwise go to every connected agent. A chat the person synced
-// that is also on a list is marked too; ticking it again in Choose chats
-// makes it theirs.
+// markEarlierListChats marks, once, in an archive upgraded from a release
+// before list capture was recorded, the synced chats of every number an
+// approved list holds or ever messaged as list capture. Those releases switched
+// such chats on like any other, so they would otherwise go to every connected
+// agent. A chat the person synced that is also on a list is marked too;
+// ticking it again in Choose chats makes it theirs. Until a phone is linked it
+// waits.
 func markEarlierListChats(ctx context.Context, store *storage.Store, dir string) error {
-	marker := filepath.Join(dir, listCaptureMarker)
-	if _, err := os.Lstat(marker); err == nil || !errors.Is(err, os.ErrNotExist) {
+	pending, err := store.ListCaptureBackfillPending(ctx)
+	if err != nil || !pending {
 		return err
 	}
 	account, err := store.Account(ctx)
@@ -96,8 +89,5 @@ func markEarlierListChats(ctx context.Context, store *storage.Store, dir string)
 	if err != nil {
 		return err
 	}
-	if err = store.MarkListCapture(ctx, account.ID, chats); err != nil {
-		return err
-	}
-	return localfs.EnsureFile(marker)
+	return store.BackfillListCapture(ctx, account.ID, chats)
 }
