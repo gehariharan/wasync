@@ -85,16 +85,25 @@ func (h *Host) Ensure(ctx context.Context) (own bool, err error) {
 	h.mu.Unlock()
 	if c == nil || !c.alive() {
 		if st := h.CLI.Status(ctx, h.Config); st.Running {
-			return false, nil
+			return h.useOther(), nil
 		}
 		if c, err = h.start(); err != nil {
 			return false, err
 		}
 	}
 	if err = h.waitReady(ctx, c); err != nil && !c.alive() && h.CLI.Status(ctx, h.Config).Running {
-		return false, nil
+		return h.useOther(), nil
 	}
 	return true, err
+}
+
+// useOther notes that another wasync holds the data directory, so no failed
+// wasync of the app's own is waiting to start again. It reports own as false.
+func (h *Host) useOther() bool {
+	h.mu.Lock()
+	h.lastExit, h.failures = "", 0
+	h.mu.Unlock()
+	return false
 }
 
 func (h *Host) waitReady(ctx context.Context, c *child) error {

@@ -253,8 +253,8 @@ func TestALateLinkAnswerDoesNotReachTheNextRequest(t *testing.T) {
 }
 
 // holdDataDirectory starts a separate wasync that takes dir and answers on
-// its local API, the way `wasync serve` started at login does.
-func holdDataDirectory(t *testing.T, dir string) {
+// its local API, the way `wasync serve` started at login does. stop stops it.
+func holdDataDirectory(t *testing.T, dir string) (stop func()) {
 	t.Helper()
 	cmd := exec.Command(os.Args[0], "--data-dir", dir)
 	cmd.Env = append(os.Environ(), "WASYNC_FAKE=hold")
@@ -270,17 +270,21 @@ func holdDataDirectory(t *testing.T, dir string) {
 	if err = cmd.Start(); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = stdin.Close(); _ = cmd.Wait() })
+	var once sync.Once
+	stop = func() { once.Do(func() { _ = stdin.Close(); _ = cmd.Wait() }) }
+	t.Cleanup(stop)
 	if line, _ := bufio.NewReader(stdout).ReadString('\n'); line != "held\n" {
 		t.Fatalf("the other wasync did not take the data directory: %q", line)
 	}
+	return stop
 }
 
 func TestHostUsesAWasyncThatTookTheDataDirectoryWhileItsOwnWasStarting(t *testing.T) {
 	h, _, starts := testHost(t, "busy")
 	start := h.Command
+	var stopOther func()
 	h.Command = func(name string, args ...string) *exec.Cmd {
-		holdDataDirectory(t, h.Config.DataDir)
+		stopOther = holdDataDirectory(t, h.Config.DataDir)
 		return start(name, args...)
 	}
 	link, err := h.Link(context.Background(), "chats")
@@ -289,6 +293,10 @@ func TestHostUsesAWasyncThatTookTheDataDirectoryWhileItsOwnWasStarting(t *testin
 	}
 	if *starts != 1 {
 		t.Fatalf("wasync started %d times", *starts)
+	}
+	stopOther()
+	if got := h.Status(context.Background()); got != "wasync is not running" {
+		t.Fatalf("once the other wasync stops, the app's own lost start is no problem to report: %q", got)
 	}
 }
 
