@@ -457,3 +457,34 @@ func TestAnAgentMayAskToSendOnceOpenSendingsHourlyLimitsAreUsedUp(t *testing.T) 
 		t.Fatalf("requests waiting for the person: %d, want 2", n)
 	}
 }
+
+// The approvals page and the desktop app's request list show an agent's
+// message without invisible direction overrides, so the person reads it in
+// the order it will be sent; the message sent is still the agent's own.
+func TestAgentRequestsShowTheMessageWithoutDirectionOverrides(t *testing.T) {
+	f := setupAccessWith(t, humancheck.NewGate(&promptStub{confirm: true}))
+	sent := "Pay ‮redro on\nthen ⁦call⁩ me"
+	shown := "Pay redro on\nthen call me"
+	asked := f.askSend(t, otherChat, sent)
+
+	c := newPageClient(t, f)
+	c.get(linkPath(t, f))
+	_, page, _ := c.get("/ui/approvals")
+	if strings.ContainsAny(page, "‮⁦⁩") || !strings.Contains(page, shown) {
+		t.Fatalf("page:\n%s", page)
+	}
+	sendToken, err := loadNamedToken(f.dir, "send.token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, out := f.signed(t, "GET", agentRequestsPath, sendToken, nil)
+	var list struct {
+		Items []agentRequestView `json:"items"`
+	}
+	if code != 200 || json.Unmarshal(out, &list) != nil || len(list.Items) != 1 || list.Items[0].Text != shown {
+		t.Fatalf("list: %d %s", code, out)
+	}
+	if code, out = f.signed(t, "POST", agentRequestsPath+"/"+asked.ID+"/approve", f.approver, nil); code != 200 || len(*f.sent) != 1 || (*f.sent)[0].Text != sent {
+		t.Fatalf("approve: %d %s %+v", code, out, *f.sent)
+	}
+}

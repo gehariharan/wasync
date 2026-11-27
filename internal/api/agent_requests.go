@@ -55,7 +55,7 @@ func (h *handler) agentRequests(ctx context.Context, account int64) []agentReque
 		name := names[r.Chat]
 		out = append(out, agentRequestView{
 			ID: r.ID, Agent: humancheck.Clean(r.Send.Agent, 60), Chat: r.Chat, ChatName: humancheck.Clean(name, 80), Phone: approval.PhoneNumber(r.Chat),
-			NewNumber: r.Send.NewNumber, Synced: r.Send.Synced, Text: r.Send.Text, AskedAt: r.Expires.Add(-approval.RequestTTL), ExpiresAt: r.Expires, Effect: r.Effect(name),
+			NewNumber: r.Send.NewNumber, Synced: r.Send.Synced, Text: humancheck.CleanLines(r.Send.Text), AskedAt: r.Expires.Add(-approval.RequestTTL), ExpiresAt: r.Expires, Effect: r.Effect(name),
 		})
 	}
 	return out
