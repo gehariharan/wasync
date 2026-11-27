@@ -10,7 +10,9 @@ import (
 func TestAppLoginItemOpensTheAppWithNoWindowAndIsNotKeptAlive(t *testing.T) {
 	home := t.TempDir()
 	a := appAgent{Home: home}
-	s := Spec{Exe: "/Applications/wasync.app/Contents/MacOS/wasync-desktop", DataDir: filepath.Join(t.TempDir(), "data & more")}
+	// An absolute path on every OS, written with the forward slashes macOS uses.
+	exe := filepath.ToSlash(filepath.Join(t.TempDir(), "Applications", "wasync.app", "Contents", "MacOS", "wasync-desktop"))
+	s := Spec{Exe: exe, DataDir: filepath.Join(t.TempDir(), "data & more")}
 	if on, err := a.Installed(); err != nil || on {
 		t.Fatalf("before install: %v %v", on, err)
 	}
@@ -59,7 +61,8 @@ func TestAppLoginItemOpensTheAppWithNoWindowAndIsNotKeptAlive(t *testing.T) {
 
 func TestAppLoginItemOutsideABundleNamesNoBundle(t *testing.T) {
 	a := appAgent{Home: t.TempDir()}
-	if err := a.Install(Spec{Exe: "/tmp/build/wasync-desktop", DataDir: "/tmp/data"}); err != nil {
+	data := filepath.Join(t.TempDir(), "data")
+	if err := a.Install(Spec{Exe: filepath.Join(t.TempDir(), "build", "wasync-desktop"), DataDir: data}); err != nil {
 		t.Fatal(err)
 	}
 	b, _ := os.ReadFile(a.path())
@@ -70,7 +73,7 @@ func TestAppLoginItemOutsideABundleNamesNoBundle(t *testing.T) {
 	if _, ok := got["AssociatedBundleIdentifiers"]; ok {
 		t.Fatal("a program outside an app bundle cannot name one")
 	}
-	if err := a.Install(Spec{Exe: "wasync-desktop", DataDir: "/tmp/data"}); err == nil {
+	if err := a.Install(Spec{Exe: "wasync-desktop", DataDir: data}); err == nil {
 		t.Fatal("a relative program path was accepted")
 	}
 }

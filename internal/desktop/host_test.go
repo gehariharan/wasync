@@ -65,6 +65,9 @@ func fakeWasync() {
 	// Standard input closed: the app quit.
 }
 
+// heldLock is the data directory lock the fake linked wasync holds.
+var heldLock *processlock.Lock
+
 // holdLinked takes the data directory the way a running wasync does and
 // answers on its local API that a phone is linked.
 func holdLinked(args []string) error {
@@ -77,9 +80,13 @@ func holdLinked(args []string) error {
 	if err := localfs.EnsureDir(dir); err != nil {
 		return err
 	}
-	if _, err := processlock.Acquire(filepath.Join(dir, "device.lock")); err != nil {
+	lock, err := processlock.Acquire(filepath.Join(dir, "device.lock"))
+	if err != nil {
 		return err
 	}
+	// Kept for the life of the process: a lock nothing refers to is closed by
+	// the garbage collector, which lets the data directory go.
+	heldLock = lock
 	token := filepath.Join(dir, "api.token")
 	if err := localfs.EnsureFile(token); err != nil {
 		return err

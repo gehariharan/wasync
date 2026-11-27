@@ -152,7 +152,6 @@ func (h *Host) start() (*child, error) {
 	go func() {
 		readReplies(stdout, c)
 		c.err = cmd.Wait()
-		close(c.done)
 		h.exited(c, time.Since(started))
 	}()
 	return c, nil
@@ -189,6 +188,8 @@ func restartAfter(failures int) time.Duration {
 // exited notes how a wasync the app started stopped. One that failed is
 // started again after a pause; one that stopped cleanly (wasync stop, or the
 // phone was unlinked) stays stopped until the person opens the app again.
+// It closes c.done only once the exit is recorded, so whoever sees wasync
+// stopped also sees why.
 func (h *Host) exited(c *child, ran time.Duration) {
 	h.mu.Lock()
 	if h.child == c {
@@ -196,6 +197,7 @@ func (h *Host) exited(c *child, ran time.Duration) {
 	}
 	if c.err == nil {
 		h.lastExit, h.failures = "", 0
+		close(c.done)
 		h.mu.Unlock()
 		return
 	}
@@ -205,6 +207,7 @@ func (h *Host) exited(c *child, ran time.Duration) {
 	h.failures++
 	h.lastExit = c.err.Error()
 	wait, quitting := restartAfter(h.failures), h.quitting
+	close(c.done)
 	h.mu.Unlock()
 	if quitting {
 		return
