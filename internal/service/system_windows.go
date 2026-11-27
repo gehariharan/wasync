@@ -13,19 +13,31 @@ import (
 
 const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
 
-// valueName is the Run value wasync owns. Tests replace it so they never touch a real one.
-var valueName = RunName
+// valueName and appValueName are the Run values wasync owns. Tests replace
+// them so they never touch a real one.
+var (
+	valueName    = RunName
+	appValueName = AppRunName
+)
 
-type runValue struct{}
+// runValue is a value under the current user's Run key: name says which one,
+// and command what it runs.
+type runValue struct {
+	name    *string
+	command func(Spec) string
+}
 
 // System is a value under the current user's Run key. CI writes, reads and
 // removes one under a test-only name; starting wasync at login has not been
 // run on a real Windows computer.
-func System() Manager { return runValue{} }
+func System() Manager { return serveRun{runValue{name: &valueName, command: RunCommand}} }
+
+// App is the Run value that opens the wasync app, with no window, at login.
+func App() Manager { return runValue{name: &appValueName, command: AppRunCommand} }
 
 func (runValue) Where() string { return "a Windows startup item" }
 
-func (runValue) Install(s Spec) error {
+func (v runValue) Install(s Spec) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -34,10 +46,10 @@ func (runValue) Install(s Spec) error {
 		return err
 	}
 	defer k.Close()
-	return k.SetStringValue(valueName, RunCommand(s))
+	return k.SetStringValue(*v.name, v.command(s))
 }
 
-func (runValue) Uninstall() error {
+func (v runValue) Uninstall() error {
 	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.SET_VALUE)
 	if err != nil {
 		if errors.Is(err, registry.ErrNotExist) {
@@ -46,16 +58,37 @@ func (runValue) Uninstall() error {
 		return err
 	}
 	defer k.Close()
-	if err = k.DeleteValue(valueName); err != nil && !errors.Is(err, registry.ErrNotExist) {
+	if err = k.DeleteValue(*v.name); err != nil && !errors.Is(err, registry.ErrNotExist) {
 		return err
 	}
 	return nil
 }
 
+func (v runValue) Installed() (bool, error) {
+	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
+	if err != nil {
+		if errors.Is(err, registry.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	defer k.Close()
+	if _, _, err = k.GetStringValue(*v.name); err != nil {
+		if errors.Is(err, registry.ErrNotExist) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
+// serveRun is the Run value that starts `wasync serve`; it can also start it now.
+type serveRun struct{ runValue }
+
 // Start runs wasync serve now, hidden and detached, as the login item would.
 // Windows keeps no copy running for it, so the caller stops any running
 // wasync first.
-func (runValue) Start(s Spec) error {
+func (serveRun) Start(s Spec) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
@@ -65,22 +98,4 @@ func (runValue) Start(s Spec) error {
 		return err
 	}
 	return cmd.Process.Release()
-}
-
-func (runValue) Installed() (bool, error) {
-	k, err := registry.OpenKey(registry.CURRENT_USER, runKey, registry.QUERY_VALUE)
-	if err != nil {
-		if errors.Is(err, registry.ErrNotExist) {
-			return false, nil
-		}
-		return false, err
-	}
-	defer k.Close()
-	if _, _, err = k.GetStringValue(valueName); err != nil {
-		if errors.Is(err, registry.ErrNotExist) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
 }

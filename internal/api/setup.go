@@ -233,29 +233,23 @@ func (h *handler) setupService(w http.ResponseWriter, r *http.Request, sess uiSe
 	if !h.uiForm(w, r, sess) || h.service == nil {
 		return
 	}
+	var on bool
 	switch r.PostForm.Get("action") {
 	case "install":
-		if !h.canConfirm(r) {
-			h.uiBack(w, r, noGate(r))
-			return
-		}
-		if err := h.confirmError(r.Context(), "Approve: start wasync by itself every time you log in, and keep it running in the background"); err != nil {
-			h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
-			return
-		}
-		if err := h.service.Install(h.serviceSpec); err != nil {
-			h.uiBack(w, r, "failed")
-			return
-		}
-		h.uiBack(w, r, "loginon")
+		on = true
 	case "remove":
-		if err := h.service.Uninstall(); err != nil {
-			h.uiBack(w, r, "failed")
-			return
-		}
-		h.uiBack(w, r, "loginoff")
 	default:
 		http.Error(w, "unknown action", http.StatusBadRequest)
+		return
+	}
+	if err := h.setLoginItem(r, on); err != nil {
+		h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
+		return
+	}
+	if on {
+		h.uiBack(w, r, "loginon")
+	} else {
+		h.uiBack(w, r, "loginoff")
 	}
 }
 

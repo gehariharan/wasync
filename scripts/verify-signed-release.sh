@@ -32,7 +32,7 @@ import hashlib, sys
 from pathlib import Path
 lines = Path('checksums.txt').read_text().splitlines()
 entries = {line.split()[1].removeprefix('./'): line.split()[0] for line in lines}
-for name in (sys.argv[1] + '.tar.gz', sys.argv[1] + '.pkg', sys.argv[2] + '.tar.gz'):
+for name in (sys.argv[1] + '.tar.gz', sys.argv[1] + '.pkg', sys.argv[1] + '.dmg', sys.argv[2] + '.tar.gz'):
     if entries.get(name) != hashlib.sha256(Path(name).read_bytes()).hexdigest():
         raise SystemExit('Missing or invalid checksum: ' + name)
 PY
@@ -64,3 +64,20 @@ xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-
 python3 "$project_dir/scripts/smoke-installed.py" "$work/archive/wasync" "$version" "$architecture" "$work/axi/wasync-axi"
 # The installer offers AXI for agents unticked and, on a hosted runner, installs both ways.
 bash "$project_dir/scripts/test-macos-pkg.sh" "$work/$name.pkg" "$version" "$architecture" "$work/axi/wasync-axi"
+# The wasync app's disk image: Developer ID signed and stapled, holding an app
+# that is signed and stapled too, and carrying the very wasync and wasync-axi
+# checked above.
+team='anchor apple generic and certificate leaf[field.1.2.840.113635.100.6.1.13] exists and certificate leaf[subject.OU] = "57V379V642"'
+codesign --verify --strict -R="$team" "$name.dmg"
+retry_check xcrun stapler validate "$name.dmg"
+retry_check spctl --assess --type open --context context:primary-signature --verbose=2 "$name.dmg"
+mkdir dmg
+hdiutil attach "$name.dmg" -readonly -nobrowse -noautoopen -mountpoint "$work/dmg" -quiet
+trap 'hdiutil detach "$work/dmg" -quiet -force >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
+codesign --verify --strict --deep -R="$team" dmg/wasync.app
+retry_check xcrun stapler validate dmg/wasync.app
+retry_check spctl --assess --type execute --verbose=2 dmg/wasync.app
+cmp archive/wasync dmg/wasync.app/Contents/MacOS/wasync
+cmp axi/wasync-axi dmg/wasync.app/Contents/MacOS/wasync-axi
+hdiutil detach "$work/dmg" -quiet
+bash "$project_dir/scripts/test-macos-dmg.sh" "$work/$name.dmg" "$version" "$architecture" "$work/axi/wasync-axi"

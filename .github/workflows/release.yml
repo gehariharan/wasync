@@ -88,13 +88,14 @@ jobs:
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
         run: bash scripts/package.sh "$PACKAGE_VERSION"
-      - name: Check the installers offer AXI for agents as an opt-in, at the release version
+      - name: Check the installers offer AXI for agents as an opt-in, and the Mac app's disk image, at the release version
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
           PLATFORM: ${{ matrix.platform }}
         run: |
           if [[ "$RUNNER_OS" == macOS ]]; then
             bash scripts/test-macos-pkg.sh "dist/$PACKAGE_VERSION/$PLATFORM/wasync_${PACKAGE_VERSION}_${PLATFORM}.pkg" "$PACKAGE_VERSION" "${PLATFORM#darwin_}"
+            bash scripts/test-macos-dmg.sh "dist/$PACKAGE_VERSION/$PLATFORM/wasync_${PACKAGE_VERSION}_${PLATFORM}.dmg" "$PACKAGE_VERSION" "${PLATFORM#darwin_}"
           else
             bash scripts/test-install-linux.sh "dist/$PACKAGE_VERSION/$PLATFORM/wasync_${PACKAGE_VERSION}_${PLATFORM}.tar.gz" "$PACKAGE_VERSION"
           fi
@@ -133,7 +134,7 @@ jobs:
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
         run: ./scripts/package-windows.ps1 -Version $env:PACKAGE_VERSION
-      - name: Check Setup offers AXI for agents as an opt-in, and the ZIP carries it
+      - name: Check Setup installs the wasync app and AXI for agents, and the ZIP carries them
         shell: pwsh
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
@@ -248,7 +249,7 @@ jobs:
           source_sum="$(sha256sum dist/source.tar.gz | cut -d' ' -f1)"
           python3 scripts/homebrew-formulas.py "$PACKAGE_VERSION" "$source_sum" dist/release --commit "${GITHUB_SHA:0:12}"
           cd dist/release
-          sha256sum ./*.tar.gz ./*.pkg ./*.zip ./*.exe > checksums.txt
+          sha256sum ./*.tar.gz ./*.pkg ./*.dmg ./*.zip ./*.exe > checksums.txt
       - name: Create draft prerelease
         env:
           GH_TOKEN: ${{ github.token }}
@@ -263,9 +264,9 @@ jobs:
           cat > dist/release/RELEASE_NOTES.md <<'NOTES'
           Prebuilt preview packages. No Go compiler is required on the user's computer.
 
-          - macOS 15+: download the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .pkg and open it. The installer lists "AXI for agents" (wasync-axi) as an optional part, off unless you tick it. Then run `wasync` in Terminal.
+          - macOS 15+: the wasync app is the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .dmg: open it and drag wasync to Applications. The .pkg installs the wasync command instead; it lists "AXI for agents" (wasync-axi) as an optional part, off unless you tick it.
           - Linux: download the matching linux archive, extract it and run `./install.sh`. It asks whether to also install wasync-axi (AXI for agents); the answer is no unless you say yes (`--with-axi` or `--without-axi` skips the question). Builds target glibc 2.35 or newer.
-          - Windows: Setup has an unticked "AXI for agents" option; the portable ZIP includes wasync-axi.exe.
+          - Windows: Setup installs the wasync app (Start menu) and AXI for agents (wasync-axi.exe); the portable ZIP includes wasync-desktop.exe and wasync-axi.exe.
           - `wasync query --help` documents the agent query interface.
           - Verify downloads against checksums.txt.
 
@@ -275,4 +276,4 @@ jobs:
           NOTES
           gh release create "$tag" --draft --prerelease --verify-tag \
             --title "wasync $PACKAGE_VERSION" --notes-file dist/release/RELEASE_NOTES.md \
-            dist/release/*.tar.gz dist/release/*.pkg dist/release/*.zip dist/release/*.exe dist/release/checksums.txt dist/release/*.rb
+            dist/release/*.tar.gz dist/release/*.pkg dist/release/*.dmg dist/release/*.zip dist/release/*.exe dist/release/checksums.txt dist/release/*.rb

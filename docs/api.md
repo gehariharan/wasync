@@ -110,6 +110,10 @@ a plaintext bearer token is rejected there.
 | `POST /api/sync` | | `wasync sync` |
 | `POST /api/actions`, `GET /api/actions/{id}` | | `wasync clean`, `wasync delete`, `wasync actions status` |
 
+The wasync app's settings (its First open flag and its start-at-login item) are read
+and changed on signed-in pages, under `/ui/desktop`; see
+[The wasync app](desktop.md#settings-the-setup-screens-use).
+
 A holder of `send.token` can request sending any regular local file the owner process can read;
 it is a privileged credential, not a read-only API key. See
 [Data, files and security](data-and-security.md#credentials-and-the-keychain) for all three

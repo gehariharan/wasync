@@ -21,6 +21,7 @@ import (
 	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/service"
 	"github.com/gehariharan/wasync/internal/storage"
+	"github.com/gehariharan/wasync/internal/whatsapp"
 )
 
 type loginItem struct {
@@ -232,7 +233,16 @@ func (c *linkingClient) EnableCapture(ctx context.Context, s *storage.Store) err
 	if !c.Paired() {
 		return nil
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.boundedSyncClient.EnableCapture(ctx, s)
+}
+
+// Status is read by the owner's API while LoginWithQR links, so it takes the lock too.
+func (c *linkingClient) Status() whatsapp.CaptureStatus {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.boundedSyncClient.Status()
 }
 func (c *linkingClient) Paired() bool { c.mu.Lock(); defer c.mu.Unlock(); return c.linked }
 func (c *linkingClient) LoginWithQR(ctx context.Context, display func(string)) error {
@@ -417,6 +427,16 @@ func TestSetupWhenWasyncIsAlreadyRunningOpensItsSetupPage(t *testing.T) {
 	}
 	if !strings.Contains(opened, "next=setup") {
 		t.Fatalf("opened %q", opened)
+	}
+}
+
+func TestSetupForTheAppWhenWasyncIsAlreadyRunningOpensNoBrowserAndFails(t *testing.T) {
+	app, _, run, _, _, _, _ := ownerFixture(t)
+	app.OpenURL = func(u string) error { t.Errorf("a browser was opened for the app: %s", u); return nil }
+	app.Err = &bytes.Buffer{}
+	err := run("setup", "--app")
+	if !errors.Is(err, processlock.ErrBusy) || !strings.Contains(err.Error(), "data directory") {
+		t.Fatalf("setup --app through a running wasync: %v", err)
 	}
 }
 

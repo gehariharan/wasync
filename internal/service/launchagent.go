@@ -66,26 +66,7 @@ func (l launchAgent) Install(s Spec) error {
 	if err := s.validate(); err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(l.path()), 0o755); err != nil {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(l.path()), ".wasync-*.plist")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err = tmp.WriteString(plist(s)); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err = tmp.Chmod(0o644); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err = tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), l.path())
+	return writeAtomic(l.path(), plist(s), 0o644)
 }
 
 func (l launchAgent) Uninstall() error {
@@ -120,16 +101,7 @@ func (l launchAgent) Start(Spec) error {
 	return err
 }
 
-func (l launchAgent) Installed() (bool, error) {
-	_, err := os.Stat(l.path())
-	switch {
-	case err == nil:
-		return true, nil
-	case os.IsNotExist(err):
-		return false, nil
-	}
-	return false, err
-}
+func (l launchAgent) Installed() (bool, error) { return exists(l.path()) }
 
 func runCommand(name string, args ...string) error {
 	out, err := exec.Command(name, args...).CombinedOutput()

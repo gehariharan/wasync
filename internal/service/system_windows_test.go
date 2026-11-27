@@ -5,6 +5,7 @@ package service
 import (
 	"errors"
 	"strings"
+	"syscall"
 	"testing"
 
 	"golang.org/x/sys/windows/registry"
@@ -93,4 +94,38 @@ func deleteRunValue(name string) error {
 	}
 	defer k.Close()
 	return k.DeleteValue(name)
+}
+
+func TestWindowsAppStartupItemIsWrittenReadAndRemoved(t *testing.T) {
+	name := "wasync-test-" + t.Name()
+	appValueName = name
+	t.Cleanup(func() { _ = deleteRunValue(name); appValueName = AppRunName })
+	m := App()
+	if _, starts := m.(Starter); starts {
+		t.Fatal("the app item must not start anything now: the app is already running")
+	}
+	spec := Spec{Exe: `C:\Users\Test User\AppData\Local\Programs\wasync\wasync-desktop.exe`, DataDir: `C:\Users\Test User\AppData\Roaming\wasync`}
+	if err := m.Install(spec); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := readRunValue(name); err != nil || got != AppRunCommand(spec) {
+		t.Fatalf("stored command %q, want %q (%v)", got, AppRunCommand(spec), err)
+	}
+	if on, err := m.Installed(); err != nil || !on {
+		t.Fatalf("after install: %v %v", on, err)
+	}
+	if err := m.Uninstall(); err != nil {
+		t.Fatal(err)
+	}
+	if on, _ := m.Installed(); on {
+		t.Fatal("still installed after uninstall")
+	}
+}
+
+func TestWindowsArgMatchesTheSystemQuoting(t *testing.T) {
+	for _, in := range []string{"", "plain", "a b", `say "hi"`, `a\"b c`, `C:\Program Files\x\`, `back\\slash`} {
+		if got, want := windowsArg(in), syscall.EscapeArg(in); got != want {
+			t.Errorf("windowsArg(%q) = %s, syscall.EscapeArg = %s", in, got, want)
+		}
+	}
 }

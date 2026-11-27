@@ -1,0 +1,6 @@
+Please read: wasync is not WhatsApp.
+
+wasync is an independent, open-source project. It is not made by, affiliated with or endorsed by WhatsApp or Meta. It links to your account as a linked device through an unofficial method (whatsmeow), so WhatsApp could limit or ban an account that uses it. Use it at your own risk, and only keep or share chats you have permission to. WhatsApp is a trademark of Meta Platforms, Inc.
+
+------------------------------------------------------------------------
+

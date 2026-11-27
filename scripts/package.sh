@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Maintainer tool: build the native wasync and wasync-axi binaries, the archive,
-# and the macOS installer. Both binaries carry the same VERSION. The macOS
-# installer lets the user choose whether to add wasync-axi (off by default).
+# and on macOS the installer and the wasync app's disk image. Every program
+# carries the same VERSION. The macOS installer lets the user choose whether to
+# add wasync-axi (off by default); the app always carries it, unused until an
+# agent is connected.
 set -euo pipefail
 
 version="${1:-}"
@@ -110,9 +112,40 @@ HOOK
     bash scripts/notarize.sh "$WASYNC_NOTARY_PROFILE" "$stage/wasync" "$out/$name.pkg"
   fi
 fi
+
+if [[ "$platform" == darwin ]]; then
+  # The wasync app (cmd/wasync-desktop): its window and menu-bar icon, with
+  # wasync and wasync-axi beside it, in a drag-to-Applications disk image.
+  CGO_ENABLED=1 GOOS="$platform" GOARCH="$architecture" go build -trimpath -tags sqlite_fts5 \
+    -ldflags "-s -w -X github.com/gehariharan/wasync/internal/buildinfo.Version=$version -X github.com/gehariharan/wasync/internal/buildinfo.Commit=$commit -X github.com/gehariharan/wasync/internal/buildinfo.BuiltAt=$built_at" \
+    -o "$stage/wasync-desktop" ./cmd/wasync-desktop
+  app="$stage/app/wasync.app"
+  mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+  # CFBundleVersion is numbers only: the release number, then a preview's serial.
+  bundle_version="${version%%-*}"
+  serial="${version##*.}"
+  if [[ "$version" == *-* && "$serial" =~ ^[0-9]+$ ]]; then bundle_version="$bundle_version.$serial"; fi
+  sed -e "s/@VERSION@/$version/" -e "s/@BUNDLE_VERSION@/$bundle_version/" packaging/macos/app/Info.plist > "$app/Contents/Info.plist"
+  plutil -lint "$app/Contents/Info.plist" >/dev/null
+  cp packaging/macos/app/wasync.icns "$app/Contents/Resources/wasync.icns"
+  install -m 755 "$stage/wasync-desktop" "$stage/wasync" "$stage/wasync-axi" "$app/Contents/MacOS/"
+  bash scripts/sign-app-macos.sh "$app" "${WASYNC_CODESIGN_IDENTITY:-}"
+  if [[ -n "${WASYNC_NOTARY_PROFILE:-}" ]]; then
+    bash scripts/notarize.sh "$WASYNC_NOTARY_PROFILE" "$app"
+  fi
+  go run ./packaging/macos/mkdmg -app "$app" -out "$out/$name.dmg"
+  if [[ -n "${WASYNC_CODESIGN_IDENTITY:-}" ]]; then
+    codesign --force --timestamp --sign "$WASYNC_CODESIGN_IDENTITY" "$out/$name.dmg"
+  fi
+  if [[ -n "${WASYNC_NOTARY_PROFILE:-}" ]]; then
+    bash scripts/notarize.sh "$WASYNC_NOTARY_PROFILE" "$out/$name.dmg"
+  fi
+fi
 (
   cd "$out"
   shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"
-  if [[ -f "$name.pkg" ]]; then shasum -a 256 "$name.pkg" > "$name.pkg.sha256"; fi
+  for extra in pkg dmg; do
+    if [[ -f "$name.$extra" ]]; then shasum -a 256 "$name.$extra" > "$name.$extra.sha256"; fi
+  done
 )
 printf 'Release packages: %s\n' "$out"

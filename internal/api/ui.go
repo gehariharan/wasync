@@ -369,6 +369,10 @@ func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.setupService(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/devices":
 		h.setupDevices(w, r, sess)
+	case r.URL.Path == desktopPath || strings.HasPrefix(r.URL.Path, desktopPath+"/"):
+		if !h.desktopRoute(w, r, sess) {
+			http.NotFound(w, r)
+		}
 	default:
 		http.NotFound(w, r)
 	}

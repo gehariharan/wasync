@@ -56,6 +56,8 @@ encrypt data at rest.
 | `avatars/` | Small profile pictures of chats, fetched only when a wasync page shows that chat, and asked about again at most once a day |
 | `wasync.log` | Structured lifecycle logs from the terminal UI and interactive login, including warnings and errors from the WhatsApp encryption library, which never print to the terminal |
 | `service.log` | Output of the macOS login item's `wasync serve` |
+| `desktop.log` | The [wasync app](desktop.md)'s messages and what the `wasync` it started says for a person |
+| `first-open.done` | Says the wasync app's First open screen was seen |
 | `device.lock` | Process ownership lock, retained after exit |
 | `owner.json` | Who holds the lock right now (command, PID, start time, how it was started, API address); removed when that wasync exits, and ignored when it names a process that no longer runs |
 | `*-wal`, `*-shm` | SQLite WAL sidecars when present |

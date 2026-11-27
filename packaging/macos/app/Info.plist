@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- scripts/package.sh fills in the version. The identifier is the one the
+     wasync command is signed with (see internal/service/app.go AppBundleID). -->
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key><string>en</string>
+	<key>CFBundleDisplayName</key><string>wasync</string>
+	<key>CFBundleExecutable</key><string>wasync-desktop</string>
+	<key>CFBundleIconFile</key><string>wasync</string>
+	<key>CFBundleIdentifier</key><string>com.gehariharan.wasynctuicli</string>
+	<key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
+	<key>CFBundleName</key><string>wasync</string>
+	<key>CFBundlePackageType</key><string>APPL</string>
+	<key>CFBundleShortVersionString</key><string>@VERSION@</string>
+	<key>CFBundleVersion</key><string>@BUNDLE_VERSION@</string>
+	<key>LSApplicationCategoryType</key><string>public.app-category.productivity</string>
+	<key>LSMinimumSystemVersion</key><string>15.0</string>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>NSHumanReadableCopyright</key><string>wasync is an independent, open-source project, not made by or affiliated with WhatsApp or Meta.</string>
+</dict>
+</plist>

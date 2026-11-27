@@ -23,7 +23,7 @@ Installer checks cover AXI for agents (see [Installers and the AXI choice](#inst
 PR CI builds the unsigned macOS installer and installs it twice on the hosted Mac
 runners (default choices, then with AXI ticked), builds the Linux archive and runs its
 `install.sh` with and without `--with-axi`, and builds the Windows Setup program and
-ZIP and runs Setup silently with and without the `installaxi` task. The release
+ZIP, runs Setup silently (it always installs `wasync-axi`), and starts the wasync app. The release
 workflow repeats those checks on the packages it is about to publish, and
 `scripts/verify-signed-release.sh` repeats the Mac ones on the signed installer.
 
@@ -33,18 +33,20 @@ never use a paired account. Review both modules and run no-mistakes before merge
 ## Installers and the AXI choice
 
 wasync (the app and engine) and `wasync-axi` (the agent command) stay separate
-programs, as in [ADR-002](architecture/ADR-002-monorepo.md), but every installer that
-can offer a choice installs `wasync-axi` from the same release on request. It is
-always off by default. Both binaries get the same `VERSION`, and installers refuse to
+programs, as in [ADR-002](architecture/ADR-002-monorepo.md). The wasync app (the macOS
+disk image and Windows Setup) always carries `wasync-axi`, which does nothing until an
+agent is connected. Every other installer that can offer a choice installs it from the
+same release on request, off by default. Both binaries get the same `VERSION`, and installers refuse to
 build or verify if they do not.
 
 | Channel | What ships | How AXI for agents is chosen |
 | --- | --- | --- |
+| macOS `.dmg` | `wasync.app`, which carries `wasync-desktop`, `wasync` and `wasync-axi` | Always inside the app; it does nothing until an agent is connected |
 | macOS `.pkg` | A product archive with two components: `wasync` (locked on) and `wasync-axi` (starts unticked), defined by `packaging/macos/distribution.xml` | Installer's Customize step |
 | macOS Homebrew cask | `wasync` only | `brew install gehariharan/tap/wasync-axi` (the cask prints this) |
 | Linux archive | `wasync`, `wasync-axi`, `install.sh` (from `packaging/linux/`) | `install.sh` asks, default no; `--with-axi`/`--without-axi` |
 | Linux Homebrew | The `wasync-axi` formula depends on `wasync` | Install the formula or not |
-| Windows Setup | `wasync-axi.exe` is a file of the unticked `installaxi` task in `packaging/windows/wasync.iss` | Tasks page; silent `/MERGETASKS="installaxi"` |
+| Windows Setup | `wasync-axi.exe` beside `wasync.exe` and the wasync app, from `packaging/windows/wasync.iss` | Always installed, as in the Mac app; it does nothing until an agent is connected |
 | Windows ZIP | Both executables | Portable; nothing is installed or configured by extracting |
 | Microsoft Store MSIX | `wasync` only | Not offered, by design |
 
@@ -67,6 +69,17 @@ with the signed ones, rebuilds both components with the same identifiers
 installer's own `Distribution` and `Resources`, then signs and notarizes it. The
 signed standalone `wasync-axi` is the one placed in the installer, so the two are
 byte-identical; `verify-signed-release.sh` checks that.
+
+The wasync app's disk image. `scripts/package.sh` also builds `cmd/wasync-desktop`,
+puts it in `wasync.app` beside `wasync` and `wasync-axi`
+(`packaging/macos/app/Info.plist`, bundle identifier `com.gehariharan.wasynctuicli`),
+signs it with `scripts/sign-app-macos.sh` and builds `wasync_VERSION_darwin_ARCH.dmg`
+with `packaging/macos/mkdmg` (no Finder scripting, so it runs without a logged-in
+session). The signing step opens each image, replaces the app's `wasync` and
+`wasync-axi` with the signed ones, signs, notarizes and staples the app, compresses the
+image again, then signs, notarizes and staples the image. It uses the same identities,
+Keychain and notary profile as the rest of the step. `scripts/test-macos-dmg.sh` checks
+an image, and on GitHub-hosted runners starts the app from it with a new data directory.
 
 ## Preview publication
 

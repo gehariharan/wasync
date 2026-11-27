@@ -56,7 +56,7 @@ jobs:
           pattern: release-*
           merge-multiple: true
           path: dist/signing
-      - name: Sign and notarize both Mac architectures
+      - name: Sign and notarize both Mac architectures (archives, installers and app disk images)
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
           WASYNC_CODESIGN_IDENTITY: 'Developer ID Application: Xaurum Fintech Private Limited (57V379V642)'
@@ -75,13 +75,14 @@ jobs:
           if [[ "$PRIVATE_REPOSITORY" == true ]]; then extra+=(--private); fi
           python3 scripts/homebrew-cask.py "$PACKAGE_VERSION" dist/signing dist/signing/wasync.rb "${extra[@]}"
           cd dist/signing
-          shasum -a 256 ./*.tar.gz ./*.pkg ./*.zip ./*.exe > checksums.txt
+          shasum -a 256 ./*.tar.gz ./*.pkg ./*.dmg ./*.zip ./*.exe > checksums.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: signed-release
           path: |
             dist/signing/*darwin*.tar.gz
             dist/signing/*darwin*.pkg
+            dist/signing/*darwin*.dmg
             dist/signing/checksums.txt
             dist/signing/wasync.rb
           if-no-files-found: error

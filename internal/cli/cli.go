@@ -75,6 +75,9 @@ type App struct {
 	OpenURL func(string) error
 	// Service installs the start-at-login item; nil means this platform has none.
 	Service service.Manager
+	// AppService replaces the wasync app's own login item (service.App), for
+	// tests. It is the item offered when the app started this wasync.
+	AppService service.Manager
 	// Executable replaces os.Executable when recording what the login item starts, for tests.
 	Executable func() (string, error)
 	// Setup is what the setup page shows while WhatsApp is linked (setup mode only).
@@ -110,7 +113,7 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   tui [--offline]                            Full-screen group browser and capture (default)
   run                                        Start the TUI with capture
   serve [--offline]                          Headless capture and local API
-  setup                                      Link WhatsApp and choose chats in your browser, no terminal
+  setup [--app]                              Link WhatsApp and choose chats in your browser, no terminal
   service install|restart|uninstall|status   Run wasync in the background and at login
   keychain [prune [--apply]]                 List or remove leftover Keychain items (macOS)
   login [--select=true|false] [--observe 30s]  Pair or reuse session, then open the TUI
@@ -353,6 +356,9 @@ func (a *App) throughOwner(ctx context.Context, cfg config.Config, args []string
 	case "groups", "chats":
 		return a.targetsThroughOwner(ctx, withOwnerAPI(cfg), args)
 	case "setup":
+		if app, _ := a.parseSetup(args[1:]); app {
+			return a.busyError(cfg, "setup")
+		}
 		// wasync is already running: open its setup page instead of starting a second one.
 		return a.openPage(ctx, withOwnerAPI(cfg), "setup")
 	case "logout":
@@ -361,6 +367,19 @@ func (a *App) throughOwner(ctx context.Context, cfg config.Config, args []string
 		return a.statusThroughOwner(ctx, cfg)
 	}
 	return a.busyError(cfg, args[0])
+}
+
+// parseSetup reads setup's flags and reports whether it runs for the wasync app.
+func (a *App) parseSetup(args []string) (app bool, err error) {
+	fs := a.flags("setup")
+	appMode := fs.Bool("app", false, "run for the wasync app: open no browser and answer the app on standard input and output")
+	if err = a.parseFlags(fs, args); err != nil {
+		return false, err
+	}
+	if fs.NArg() != 0 {
+		return false, fmt.Errorf("usage: wasync setup [--app]")
+	}
+	return *appMode, nil
 }
 
 type action func(context.Context, config.Config, *storage.Store, *slog.Logger) error
@@ -381,10 +400,11 @@ func (a *App) parse(args []string) (action, error) {
 		}
 		return a.tuiAction(*offline), nil
 	case "setup":
-		if len(args) != 1 {
-			return nil, fmt.Errorf("usage: wasync setup")
+		app, err := a.parseSetup(args[1:])
+		if err != nil {
+			return nil, err
 		}
-		return a.setupAction(), nil
+		return a.setupAction(app), nil
 	case "login":
 		fs := a.flags("login")
 		selectGroups := fs.Bool("select", a.Interactive, "offer additive group selection in terminal")

@@ -48,6 +48,9 @@ func (a *App) startedBy() string {
 	if getenv == nil {
 		getenv = os.Getenv
 	}
+	if a.desktopApp() != "" {
+		return startedByApp
+	}
 	if runtime.GOOS == "darwin" {
 		switch name := getenv("XPC_SERVICE_NAME"); name {
 		case service.Label:

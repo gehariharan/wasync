@@ -13,7 +13,7 @@ assets="$(cd "$assets" && pwd)"
 : "${WASYNC_NOTARY_PROFILE:?Set the notarytool profile}"
 : "${WASYNC_SIGNING_KEYCHAIN:?Set the signing Keychain path}"
 work="$(mktemp -d)"
-trap 'result=$?; if [[ $result == 0 ]]; then rm -rf "$work"; else printf "Signing stopped; diagnostic files retained in %s\n" "$work" >&2; fi' EXIT
+trap 'result=$?; for m in "$work"/*-mount; do [[ -d "$m" ]] && hdiutil detach "$m" -quiet -force >/dev/null 2>&1; done; if [[ $result == 0 ]]; then rm -rf "$work"; else printf "Signing stopped; diagnostic files retained in %s\n" "$work" >&2; fi' EXIT
 
 # Unlock and use credentials in this same SSH session. Password input is handled
 # by security's terminal prompt, never an argument or a script variable.
@@ -87,12 +87,40 @@ for architecture in arm64 amd64; do
   bash "$scripts_dir/notarize.sh" "$WASYNC_NOTARY_PROFILE" "$axi_binary"
   codesign --verify --strict --verbose=2 -R='notarized' --check-notarization "$axi_binary"
   tar -czf "$work/$axi_name.tar.gz" -C "$work/axi-$architecture" wasync-axi whatsapp-axi README.md LICENSE
+
+  # The wasync app's disk image. Its window layout is kept: the image is made
+  # writable, the app inside is signed and stapled in place, and it is
+  # compressed again. The app carries the very wasync and wasync-axi signed and
+  # notarized above, so only its own program and seal are new.
+  rw="$work/$architecture-app.dmg"
+  hdiutil convert "$assets/$name.dmg" -format UDRW -o "$rw" -quiet
+  hdiutil resize -size "$(( $(stat -f %z "$rw") / 1048576 + 64 ))m" "$rw"
+  mnt="$work/$architecture-mount"
+  mkdir "$mnt"
+  hdiutil attach "$rw" -nobrowse -noautoopen -mountpoint "$mnt" -quiet
+  app="$mnt/wasync.app"
+  for program in wasync-desktop wasync wasync-axi; do
+    [[ "$(lipo -archs "$app/Contents/MacOS/$program")" == "$expected_cpu" ]]
+  done
+  grep -qF "$version" "$app/Contents/MacOS/wasync-desktop"
+  install -m 755 "$binary" "$app/Contents/MacOS/wasync"
+  install -m 755 "$axi_binary" "$app/Contents/MacOS/wasync-axi"
+  codesign --force --options runtime --timestamp \
+    --keychain "$WASYNC_SIGNING_KEYCHAIN" \
+    --sign "$WASYNC_CODESIGN_IDENTITY" "$app"
+  codesign --verify --strict --deep --verbose=2 "$app"
+  bash "$scripts_dir/notarize.sh" "$WASYNC_NOTARY_PROFILE" "$app"
+  hdiutil detach "$mnt" -quiet
+  hdiutil convert "$rw" -format UDZO -o "$work/$name.dmg" -quiet
+  codesign --force --timestamp --keychain "$WASYNC_SIGNING_KEYCHAIN" \
+    --sign "$WASYNC_CODESIGN_IDENTITY" "$work/$name.dmg"
+  bash "$scripts_dir/notarize.sh" "$WASYNC_NOTARY_PROFILE" "$work/$name.dmg"
 done
 # Replace inputs only after both architectures pass signing and notarization.
 for architecture in arm64 amd64; do
   name="wasync_${version}_darwin_${architecture}"
-  cp "$work/$name.tar.gz" "$work/$name.pkg" "$assets/"
+  cp "$work/$name.tar.gz" "$work/$name.pkg" "$work/$name.dmg" "$assets/"
   cp "$work/wasync-axi_${version}_darwin_${architecture}.tar.gz" "$assets/"
-  (cd "$assets"; shasum -a 256 "$name.tar.gz" > "$name.tar.gz.sha256"; shasum -a 256 "$name.pkg" > "$name.pkg.sha256")
+  (cd "$assets"; for ext in tar.gz pkg dmg; do shasum -a 256 "$name.$ext" > "$name.$ext.sha256"; done)
 done
-printf 'Signed and notarized both macOS architectures in %s\n' "$assets"
+printf 'Signed and notarized both macOS architectures (archives, installers and app disk images) in %s\n' "$assets"
