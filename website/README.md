@@ -38,7 +38,8 @@ its `svg.logo` in `public/wasync/index.html`.
 
 ## Develop and test
 
-Node.js 22.23 or newer (24 recommended). From `website/`:
+Node.js 22.23+, 24.22+ or 26.12+, as the `cf` CLI requires (24 recommended).
+From `website/`:
 
 ```sh
 npm ci
