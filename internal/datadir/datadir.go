@@ -12,7 +12,9 @@
 // between computers on managed profiles, and $XDG_CONFIG_HOME/wasync on
 // Linux, which is meant for settings rather than data. Move copies such a
 // folder to the new place, checks the copy and only then switches to it; the
-// old folder is kept under a new name with a note saying where the data went.
+// old folder is kept under a new name with a note saying where the data went,
+// and the new folder gets a note saying where the old one is kept. On Windows
+// the kept folder goes to %LOCALAPPDATA% too, so it stops roaming.
 package datadir
 
 import (
@@ -33,12 +35,19 @@ const Name = "wasync"
 // that has it is never used again.
 const NoteFile = "MOVED-TO-NEW-FOLDER.txt"
 
+// KeptNoteFile is the note in the data folder naming the old folder a move
+// kept (see KeptCopy).
+const KeptNoteFile = "OLD-FOLDER-KEPT.txt"
+
 // Location is where wasync keeps its data by default on this computer.
 type Location struct {
 	// Dir is the standard per-user data folder.
 	Dir string
 	// Legacy is where earlier versions kept the data, or "" when they used Dir too.
 	Legacy string
+	// KeepIn is the folder the old folder is moved into once the data is
+	// moved, or "" to keep it beside where it was.
+	KeepIn string
 }
 
 // System is the default location for this computer and build.
@@ -71,7 +80,12 @@ func Standard(goos, distribution string, getenv func(string) string) (Location, 
 		if local == "" {
 			return Location{}, errors.New("%LOCALAPPDATA% is not defined")
 		}
-		return withLegacy(filepath.Join(local, Name), getenv("APPDATA")), nil
+		l := withLegacy(filepath.Join(local, Name), getenv("APPDATA"))
+		if l.Legacy != "" {
+			// %APPDATA% roams between computers; the kept copy must not.
+			l.KeepIn = local
+		}
+		return l, nil
 	}
 	home := getenv("HOME")
 	data := getenv("XDG_DATA_HOME")

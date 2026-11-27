@@ -12,6 +12,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"errors"
@@ -23,6 +24,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -90,18 +92,11 @@ func run() error {
 	if *wasync == "" {
 		*wasync = filepath.Join(filepath.Dir(self), wasyncName())
 	}
-	if err = localfs.EnsureDir(cfg.DataDir); err != nil {
-		return err
-	}
-	logFile, err := localfs.OpenFile(filepath.Join(cfg.DataDir, "desktop.log"))
+	cfg, logFile, log, err := openData(context.Background(), cfg)
 	if err != nil {
 		return err
 	}
 	defer logFile.Close()
-	if _, err = logFile.Seek(0, io.SeekEnd); err != nil {
-		return err
-	}
-	log := slog.New(slog.NewTextHandler(logFile, nil))
 	log.Info("wasync app starting", "version", buildinfo.Version, "data_dir", cfg.DataDir, "background", *background)
 
 	host := &desktop.Host{Wasync: *wasync, App: self, Config: cfg, Log: logFile, CLI: &cli.App{Out: io.Discard, Err: logFile}, Command: wasyncCommand}
@@ -111,6 +106,29 @@ func run() error {
 		d.app.Quit()
 	}
 	return d.run(*background)
+}
+
+// openData moves the data out of the folder earlier versions used, as every
+// wasync does before it opens anything there, and opens the app's log in the
+// folder in use, where it notes what the move did.
+func openData(ctx context.Context, cfg config.Config) (config.Config, *os.File, *slog.Logger, error) {
+	var report bytes.Buffer
+	cfg.DataDir = cli.MoveData(ctx, cfg.DataDir, &report)
+	if err := localfs.EnsureDir(cfg.DataDir); err != nil {
+		return cfg, nil, nil, err
+	}
+	logFile, err := localfs.OpenFile(filepath.Join(cfg.DataDir, "desktop.log"))
+	if err != nil {
+		return cfg, nil, nil, err
+	}
+	if _, err = logFile.Seek(0, io.SeekEnd); err != nil {
+		return cfg, nil, nil, errors.Join(err, logFile.Close())
+	}
+	log := slog.New(slog.NewTextHandler(logFile, nil))
+	if report.Len() > 0 {
+		log.Info("data folder", "move", strings.TrimSpace(report.String()))
+	}
+	return cfg, logFile, log, nil
 }
 
 type desktopApp struct {

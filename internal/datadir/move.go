@@ -45,9 +45,12 @@ const sideLockWait = 5 * time.Second
 // integrity check) and only then switches. On any failure nothing is
 // switched: the copy is removed and the old folder stays in use as it was.
 //
-// After switching, Move renames the old folder to <name>.moved-<date> with a
-// note saying where the data went; where that fails it is retried by the
-// next Move. Move returns nil and no error when there is nothing to do.
+// After switching, Move renames the old folder to <name>.moved-<date> in
+// KeepIn, or beside where it was when KeepIn is "" or the folder cannot be
+// moved there, with a note saying where the data went, and leaves a note in
+// Dir saying where the old folder is kept. Where the rename fails it is
+// retried by the next Move. Move returns nil and no error when there is
+// nothing to do.
 func (l Location) Move(ctx context.Context, now time.Time) (*Moved, error) {
 	if l.Legacy == "" || !HoldsData(l.Legacy) {
 		return nil, nil
@@ -77,7 +80,7 @@ func (l Location) Move(ctx context.Context, now time.Time) (*Moved, error) {
 	if err = l.copyAndSwitch(ctx); err != nil {
 		return nil, err
 	}
-	return &Moved{From: l.Legacy, To: l.Dir, Kept: retire(l.Legacy, now, &locks), Copied: true}, nil
+	return &Moved{From: l.Legacy, To: l.Dir, Kept: l.retire(now, &locks), Copied: true}, nil
 }
 
 // finish renames an old folder a move switched away from but could not
@@ -88,7 +91,7 @@ func (l Location) finish(now time.Time) *Moved {
 		return nil
 	}
 	defer locks.release()
-	if kept := retire(l.Legacy, now, &locks); kept != "" {
+	if kept := l.retire(now, &locks); kept != "" {
 		return &Moved{From: l.Legacy, To: l.Dir, Kept: kept}
 	}
 	return nil
@@ -123,7 +126,9 @@ func (l Location) copyAndSwitch(ctx context.Context) error {
 		return err
 	}
 	note := filepath.Join(l.Legacy, NoteFile)
-	if err = writeNote(note, l.Dir); err != nil {
+	if err = writeNote(note, "wasync moved your data to:\n\n  "+l.Dir+"\n\n"+
+		"This folder is what was here before the move, kept in case you need it.\n"+
+		"wasync no longer uses it. Delete it once wasync works from the new folder.\n"); err != nil {
 		return fmt.Errorf("write the note in %s: %w", l.Legacy, err)
 	}
 	if err = removeEmpty(l.Dir); err == nil {
@@ -306,14 +311,11 @@ func integrity(ctx context.Context, path string) error {
 	return nil
 }
 
-func writeNote(path, to string) error {
+func writeNote(path, text string) error {
 	f, err := localfs.OpenFile(path)
 	if err != nil {
 		return err
 	}
-	text := "wasync moved your data to:\n\n  " + to + "\n\n" +
-		"This folder is what was here before the move, kept in case you need it.\n" +
-		"wasync no longer uses it. Delete it once wasync works from the new folder.\n"
 	if err = f.Truncate(0); err == nil {
 		_, err = f.WriteString(text)
 	}
@@ -347,24 +349,52 @@ func removeEmpty(dir string) error {
 	return os.Remove(dir)
 }
 
-// retire renames the old folder after the switch and lets go of its locks.
-// It returns the new name, or "" when the folder could not be renamed.
-func retire(from string, now time.Time, locks *folderLocks) string {
+// retire renames the old folder after the switch, lets go of its locks and
+// notes the new name in Dir. It returns the new name, or "" when the folder
+// could not be renamed.
+func (l Location) retire(now time.Time, locks *folderLocks) string {
 	defer locks.release()
-	kept := keptName(from, now)
+	kept := l.keep(now)
 	if kept == "" {
-		return ""
+		// Windows does not rename a folder while a file in it is open, and
+		// the locks are open files.
+		locks.release()
+		kept = l.keep(now)
 	}
-	if os.Rename(from, kept) == nil {
-		return kept
+	if kept != "" {
+		// The path comes first, on its own line, for KeptCopy.
+		_ = writeNote(filepath.Join(l.Dir, KeptNoteFile), kept+"\n\n"+
+			"wasync moved your data here from an older folder and kept that folder,\n"+
+			"as it was before the move, at the path above. wasync no longer uses it.\n"+
+			"Delete it once wasync works from this folder.\n")
 	}
-	// Windows does not rename a folder while a file in it is open, and the
-	// locks are open files.
-	locks.release()
-	if os.Rename(from, kept) == nil {
-		return kept
+	return kept
+}
+
+// keep renames the old folder into KeepIn, or beside where it is.
+func (l Location) keep(now time.Time) string {
+	parents := []string{filepath.Dir(l.Legacy)}
+	if l.KeepIn != "" {
+		parents = []string{l.KeepIn, parents[0]}
+	}
+	for _, parent := range parents {
+		kept := keptName(filepath.Join(parent, filepath.Base(l.Legacy)), now)
+		if kept != "" && os.Rename(l.Legacy, kept) == nil {
+			return kept
+		}
 	}
 	return ""
+}
+
+// KeptCopy is the old folder a move kept for the data folder dir, as its
+// note names it, or "" when there is none.
+func KeptCopy(dir string) string {
+	b, err := os.ReadFile(filepath.Join(dir, KeptNoteFile))
+	if err != nil {
+		return ""
+	}
+	first, _, _ := strings.Cut(string(b), "\n")
+	return strings.TrimSpace(first)
 }
 
 func keptName(from string, now time.Time) string {

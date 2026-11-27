@@ -153,10 +153,6 @@ func Pending(dataDir string) bool {
 	return true
 }
 
-// Installing reports whether an update helper is installing an update for
-// the wasync that uses dataDir and has not yet recorded how it went.
-func Installing(dataDir string) bool { return pending(dataDir) }
-
 // cleanStaging removes download folders no plan refers to, such as one left
 // by a wasync that stopped in the middle of a download.
 func cleanStaging(dataDir string) {

@@ -26,7 +26,7 @@ func TestStandardPerOperatingSystem(t *testing.T) {
 		{"macOS keeps Application Support", "darwin", "standalone", map[string]string{"HOME": home},
 			Location{Dir: filepath.Join(home, "Library", "Application Support", "wasync")}},
 		{"Windows uses local app data and moves from roaming", "windows", "standalone", map[string]string{"LOCALAPPDATA": local, "APPDATA": roaming},
-			Location{Dir: filepath.Join(local, "wasync"), Legacy: filepath.Join(roaming, "wasync")}},
+			Location{Dir: filepath.Join(local, "wasync"), Legacy: filepath.Join(roaming, "wasync"), KeepIn: local}},
 		{"Windows Store keeps its profile folder", "windows", "msix", map[string]string{"USERPROFILE": profile, "LOCALAPPDATA": local, "APPDATA": roaming},
 			Location{Dir: filepath.Join(profile, ".wasync")}},
 		{"Linux uses the XDG data folder and moves from the config folder", "linux", "standalone", map[string]string{"HOME": home},

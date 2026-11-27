@@ -64,6 +64,10 @@ func TestFirstStartAfterTheUpdateMovesTheData(t *testing.T) {
 		t.Fatal(err)
 	}
 	kept := legacy + ".moved-" + time.Now().Format("2006-01-02")
+	if runtime.GOOS == "windows" {
+		// Out of %APPDATA%, which roams, into %LOCALAPPDATA%.
+		kept = filepath.Join(filepath.Dir(dir), "wasync.moved-"+time.Now().Format("2006-01-02"))
+	}
 	if !strings.Contains(stderr.String(), "wasync moved your data to "+dir) || !strings.Contains(stderr.String(), kept) {
 		t.Fatalf("the move must be reported: %q", stderr.String())
 	}

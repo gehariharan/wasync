@@ -129,10 +129,14 @@ func TestMoveCopiesChecksAndSwitches(t *testing.T) {
 	if err != nil || !strings.Contains(string(note), l.Dir) {
 		t.Fatalf("the kept folder must say where the data went: %q %v", note, err)
 	}
+	if KeptCopy(l.Dir) != kept {
+		t.Fatalf("the new folder must say where the old one is kept: %q", KeptCopy(l.Dir))
+	}
 	got, err := scan(l.Dir)
 	if err != nil {
 		t.Fatal(err)
 	}
+	delete(got, KeptNoteFile)
 	if len(got) != len(before) {
 		t.Fatalf("new folder has %d entries, want %d", len(got), len(before))
 	}
@@ -363,6 +367,51 @@ func TestMoveRenamesAnOldFolderAnEarlierMoveCouldNot(t *testing.T) {
 	}
 	if _, err = os.Lstat(l.Legacy); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal("the old folder keeps its name")
+	}
+}
+
+func TestMoveKeepsTheOldFolderInKeepIn(t *testing.T) {
+	l := oldFolder(t)
+	l.KeepIn = filepath.Join(filepath.Dir(filepath.Dir(l.Dir)), "local")
+	if err := os.Mkdir(l.KeepIn, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	m, err := l.Move(context.Background(), day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := filepath.Join(l.KeepIn, "wasync.moved-2026-11-26")
+	if m == nil || m.Kept != kept {
+		t.Fatalf("the old folder must leave the roaming folder: %+v", m)
+	}
+	if _, err = os.Stat(filepath.Join(kept, "archive.db")); err != nil {
+		t.Fatalf("the kept folder must hold the old data: %v", err)
+	}
+	if _, err = os.Lstat(l.Legacy); !errors.Is(err, os.ErrNotExist) {
+		t.Fatal("nothing may stay in the old place")
+	}
+	if got := KeptCopy(l.Dir); got != kept {
+		t.Fatalf("the data folder's note must name the kept folder: %q", got)
+	}
+}
+
+func TestMoveKeepsTheOldFolderBesideWhenKeepInFails(t *testing.T) {
+	l := oldFolder(t)
+	// A folder that does not exist takes no rename.
+	l.KeepIn = filepath.Join(t.TempDir(), "missing")
+	m, err := l.Move(context.Background(), day)
+	if err != nil {
+		t.Fatal(err)
+	}
+	kept := l.Legacy + ".moved-2026-11-26"
+	if m == nil || m.Kept != kept {
+		t.Fatalf("the old folder must be kept beside where it was: %+v", m)
+	}
+	if _, err = os.Stat(filepath.Join(kept, NoteFile)); err != nil {
+		t.Fatalf("the kept folder must keep its note: %v", err)
+	}
+	if got := KeptCopy(l.Dir); got != kept {
+		t.Fatalf("the data folder's note must name the kept folder: %q", got)
 	}
 }
 

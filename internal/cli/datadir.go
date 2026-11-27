@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"path/filepath"
 	"time"
 
@@ -36,23 +37,25 @@ func acquireData(dir string) (*processlock.Lock, error) {
 // the new version.
 const updateSettle = 30 * time.Second
 
-// moveData moves the data out of the folder earlier versions used, once,
-// when dir is a default folder (see internal/datadir), and returns the folder
-// to use. When the data cannot be moved, the old folder stays in use as it
-// was, and the next start tries again.
-func (a *App) moveData(ctx context.Context, dir string) string {
+// MoveData moves the data out of the folder earlier versions used, once,
+// when dir is a default folder (see internal/datadir), reports what it did
+// to report, and returns the folder to use. When the data cannot be moved,
+// the old folder stays in use as it was, and the next start tries again.
+// Every program that uses the data folder calls it before opening anything
+// in it.
+func MoveData(ctx context.Context, dir string, report io.Writer) string {
 	loc, err := datadir.System()
 	if err != nil || loc.Legacy == "" || !loc.Names(dir) {
 		return dir
 	}
-	for deadline := time.Now().Add(updateSettle); update.Installing(loc.Legacy) && time.Now().Before(deadline); {
+	for deadline := time.Now().Add(updateSettle); update.Pending(loc.Legacy) && time.Now().Before(deadline); {
 		select {
 		case <-ctx.Done():
 			return config.Resolve(dir)
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
-	if update.Installing(loc.Legacy) {
+	if update.Pending(loc.Legacy) {
 		return config.Resolve(dir)
 	}
 	moved, err := loc.Move(ctx, time.Now())
@@ -60,13 +63,16 @@ func (a *App) moveData(ctx context.Context, dir string) string {
 	case errors.Is(err, processlock.ErrBusy):
 		// Another wasync uses the old folder; this command reaches it there.
 	case err != nil:
-		fmt.Fprintf(a.Err, "wasync could not move your data to %s, so it still uses %s: %v\n", loc.Dir, loc.Legacy, err)
+		fmt.Fprintf(report, "wasync could not move your data to %s, so it still uses %s: %v\n", loc.Dir, loc.Legacy, err)
 	case moved != nil && !moved.Copied:
-		fmt.Fprintf(a.Err, "The old wasync folder is now kept as %s; delete it once everything works.\n", moved.Kept)
+		fmt.Fprintf(report, "The old wasync folder is now kept as %s; delete it once everything works.\n", moved.Kept)
 	case moved != nil && moved.Kept != "":
-		fmt.Fprintf(a.Err, "wasync moved your data to %s. The old folder is kept as %s; delete it once everything works.\n", moved.To, moved.Kept)
+		fmt.Fprintf(report, "wasync moved your data to %s. The old folder is kept as %s; delete it once everything works.\n", moved.To, moved.Kept)
 	case moved != nil:
-		fmt.Fprintf(a.Err, "wasync moved your data to %s. The old folder %s is no longer used; delete it once everything works.\n", moved.To, moved.From)
+		fmt.Fprintf(report, "wasync moved your data to %s. The old folder %s is no longer used; delete it once everything works.\n", moved.To, moved.From)
+	}
+	if moved != nil && moved.Kept != "" && loc.KeepIn != "" && filepath.Dir(moved.Kept) != filepath.Clean(loc.KeepIn) {
+		fmt.Fprintf(report, "wasync could not move the old folder into %s, so Windows may still copy it between computers; delete %s once everything works.\n", loc.KeepIn, moved.Kept)
 	}
 	return config.Resolve(dir)
 }

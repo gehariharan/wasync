@@ -34,8 +34,11 @@ the old one:
    file and folder is there with its size, nothing changed in the old folder meanwhile, and each
    SQLite database passes `PRAGMA integrity_check`.
 3. Only then does the copy become the new folder. The old one is renamed to
-   `wasync.moved-DATE` with a note, `MOVED-TO-NEW-FOLDER.txt`, saying where the data went.
-   Delete it once everything works.
+   `wasync.moved-DATE` with a note, `MOVED-TO-NEW-FOLDER.txt`, saying where the data went, and
+   the new folder gets a note, `OLD-FOLDER-KEPT.txt`, saying where the old one is. On Windows it
+   goes to `%LOCALAPPDATA%\wasync.moved-DATE`, so it no longer roams between computers; if it
+   cannot be moved there, it stays beside where it was and wasync says so. On Linux it stays
+   beside where it was. Delete it once everything works.
 
 If anything fails, wasync says why, removes the copy and keeps using the old folder as it was;
 the next start tries again. A login item or script that still passes the old folder with
