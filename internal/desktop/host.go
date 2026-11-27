@@ -205,8 +205,8 @@ func restartAfter(failures int) time.Duration {
 // exited notes how a wasync the app started stopped. One that failed is
 // started again after a pause; one that stopped cleanly (wasync stop, or the
 // phone was unlinked) stays stopped until the person opens the app again.
-// It closes c.done only once the exit is recorded, so whoever sees wasync
-// stopped also sees why.
+// It closes c.done only once the exit is recorded and an update handed over,
+// so whoever sees wasync stopped also sees why and what came of it.
 func (h *Host) exited(c *child, ran time.Duration) {
 	h.mu.Lock()
 	if h.child == c {
@@ -215,11 +215,11 @@ func (h *Host) exited(c *child, ran time.Duration) {
 	if c.err == nil {
 		h.lastExit, h.failures = "", 0
 		quitting := h.quitting
-		close(c.done)
 		h.mu.Unlock()
-		if _, err := os.Stat(update.PlanPath(h.Config.DataDir)); err == nil && !quitting && h.OnUpdate != nil {
+		if !quitting && h.OnUpdate != nil && update.Pending(h.Config.DataDir) {
 			h.OnUpdate()
 		}
+		close(c.done)
 		return
 	}
 	if ran > 2*time.Minute {

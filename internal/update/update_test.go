@@ -500,7 +500,7 @@ func TestTheHelperInstallsRestartsAndRecordsTheResult(t *testing.T) {
 	if err != nil || r == nil || !r.OK || r.From != "1.0.0" || r.To != "1.1.0" || !strings.Contains(r.Restart, "background") {
 		t.Fatalf("result %+v %v", r, err)
 	}
-	if pending(dir) {
+	if Pending(dir) {
 		t.Fatal("the plan must be removed once handled")
 	}
 	if _, err := os.Stat(filepath.Join(Folder(dir), stagingPrefix+"1")); !os.IsNotExist(err) {

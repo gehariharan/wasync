@@ -325,6 +325,29 @@ func TestTheAppQuitsWhenItsWasyncStopsToInstallAnUpdate(t *testing.T) {
 	}
 }
 
+func TestAnUpdatePlanLeftFromHoursAgoDoesNotQuitTheApp(t *testing.T) {
+	h, _, _ := testHost(t, "serve")
+	h.OnUpdate = func() { t.Error("a plan no helper finished hours ago is no update in progress") }
+	if _, err := h.Ensure(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := localfs.EnsureDir(update.Folder(h.Config.DataDir)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(update.PlanPath(h.Config.DataDir), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := time.Now().Add(-3 * time.Hour)
+	if err := os.Chtimes(update.PlanPath(h.Config.DataDir), old, old); err != nil {
+		t.Fatal(err)
+	}
+	h.mu.Lock()
+	c := h.child
+	h.mu.Unlock()
+	_ = c.stdin.Close()
+	<-c.done
+}
+
 func TestAWasyncThatStopsCleanlyWithoutAnUpdateLeavesTheAppRunning(t *testing.T) {
 	h, _, _ := testHost(t, "serve")
 	h.OnUpdate = func() { t.Error("no update is waiting") }
