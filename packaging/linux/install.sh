@@ -16,7 +16,7 @@ skill=no
 hooks=no
 
 usage() {
-  sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'
+  awk 'NR > 1 && !/^#/ { exit } NR > 1 { sub(/^# ?/, ""); print }' "$0"
 }
 
 while [ $# -gt 0 ]; do

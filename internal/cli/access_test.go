@@ -114,7 +114,7 @@ func TestActionsApproveAgentSendShowsTheMessageAndNeedsItsPhrase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, _, err := queue.AddSend(account, "15551234567@s.whatsapp.net", approval.AgentSend{Agent: "co\x1b[2Jdex", AgentID: client.ID, Text: "Hello\x1b[2J there", NewNumber: true})
+	r, _, err := queue.AddSend(account, "15551234567@s.whatsapp.net", approval.AgentSend{Agent: "co\x1b[2Jdex", AgentID: client.ID, Text: "Hello\x1b[2J there\nBring the keys", NewNumber: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,7 +137,7 @@ func TestActionsApproveAgentSendShowsTheMessageAndNeedsItsPhrase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("approve: %v\n%s", err, prompts)
 	}
-	for _, want := range []string{"co[2Jdex", "ONE message", "new number +15551234567", "Hello[2J there", "exactly this message once", code} {
+	for _, want := range []string{"co[2Jdex", "ONE message", "new number +15551234567", "Hello[2J there\nBring the keys", "exactly this message once", code} {
 		if !strings.Contains(prompts, want) {
 			t.Fatalf("prompt lacks %q:\n%s", want, prompts)
 		}
@@ -145,7 +145,7 @@ func TestActionsApproveAgentSendShowsTheMessageAndNeedsItsPhrase(t *testing.T) {
 	if strings.Contains(prompts, "\x1b") {
 		t.Fatalf("control characters reached the terminal: %q", prompts)
 	}
-	if len(*sent) != 1 || (*sent)[0].Text != "Hello\x1b[2J there" || (*sent)[0].To != "15551234567@s.whatsapp.net" {
+	if len(*sent) != 1 || (*sent)[0].Text != "Hello\x1b[2J there\nBring the keys" || (*sent)[0].To != "15551234567@s.whatsapp.net" {
 		t.Fatalf("sent %+v", *sent)
 	}
 }
@@ -183,7 +183,7 @@ func TestServeAnnouncesSendRequestsWithoutNamingTheChatOrTextAndActionsListShows
 	if err != nil {
 		t.Fatal(err)
 	}
-	ask := approval.AgentSend{Agent: "jit", AgentID: "0123abcd", Text: "Secret text", NewNumber: true}
+	ask := approval.AgentSend{Agent: "jit", AgentID: "0123abcd", Text: "Secret text\nline two", NewNumber: true}
 	r, _, err := app.Approvals.AddSend(account, "15551234567@s.whatsapp.net", ask)
 	if err != nil {
 		t.Fatal(err)
@@ -212,7 +212,7 @@ func TestServeAnnouncesSendRequestsWithoutNamingTheChatOrTextAndActionsListShows
 	if err = lister.Run(ctx, args); err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{r.ID, "agent jit: send", "new number +15551234567", `"Secret text"`} {
+	for _, want := range []string{r.ID, "agent jit: send", "new number +15551234567", `"Secret text\nline two"`} {
 		if !strings.Contains(out.String(), want) {
 			t.Fatalf("list lacks %q:\n%s", want, out.String())
 		}

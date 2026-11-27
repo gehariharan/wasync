@@ -78,6 +78,11 @@ HOME="$home" "$stage/install.sh" < /dev/null > /dev/null 2>&1
 [[ -x "$home/.local/bin/wasync" && -x "$home/.local/bin/wasync-axi" ]] || fail "default directory is not ~/.local/bin"
 pass "default install directory is ~/.local/bin"
 
+"$stage/install.sh" --help > "$work/help.out" 2>&1 || fail "--help failed"
+grep -q -- '--axi-skill' "$work/help.out" || fail "--help does not describe the options"
+if grep -qE '^(set |bin_dir=|usage\(\))' "$work/help.out"; then fail "--help printed script code: $(cat "$work/help.out")"; fi
+pass "--help prints the comment header only"
+
 # Older invocations keep working: --with-axi changes nothing, and --axi-skill
 # and --axi-hooks run only the setup they name.
 run withaxi --with-axi || fail "--with-axi was refused"

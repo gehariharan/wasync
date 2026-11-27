@@ -99,6 +99,15 @@ if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hoste
   [[ "$(readlink /usr/local/bin/wasync-axi)" == "$other_axi" ]] || fail "an install after an interrupted one lost another installation's wasync-axi symlink"
   [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
   pass "an install after an interrupted one puts another installation's wasync-axi symlink back"
+
+  # An install that stopped after the payload wrote its own wasync-axi, before
+  # postinstall put the set-aside link back; the next install still restores it.
+  sudo mv /usr/local/bin/wasync-axi /usr/local/bin/.wasync-axi.kept
+  sudo cp "$work/expanded/wasync-axi.pkg/Payload/usr/local/bin/wasync-axi" /usr/local/bin/wasync-axi
+  run_installer
+  [[ "$(readlink /usr/local/bin/wasync-axi)" == "$other_axi" ]] || fail "an install after one stopped past the payload lost another installation's wasync-axi symlink"
+  [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
+  pass "an install after one stopped past the payload puts another installation's wasync-axi symlink back"
 else
   echo "test-macos-pkg: skipped the real install (only run on disposable GitHub-hosted runners)"
 fi

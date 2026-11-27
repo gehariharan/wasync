@@ -53,9 +53,11 @@ func PhoneNumber(chat string) string {
 	return "+" + user
 }
 
-// quotedText is an agent's message, cleaned and shortened for a prompt. The
-// person sees all of it on the approval page; the prompt shows how it starts.
+// quotedText is an agent's message, cleaned and shortened for a prompt, with
+// each line break shown as ⏎. The person sees all of it on the approval page;
+// the prompt shows how it starts.
 func quotedText(text string) string {
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", " ⏎ ")
 	n := humancheck.Clean(text, 200)
 	if n == "" {
 		n = "(no text)"

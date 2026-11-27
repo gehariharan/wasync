@@ -27,14 +27,14 @@ func sendModel() (Model, *fakeBackend) {
 	m.snapshot = b.snapshot
 	m.qrSink = func(string) {}
 	m.confirm, m.confirmID = "agent-action", sendID
-	m.confirmRequest = &approval.Request{ID: sendID, Account: 1, Input: approval.Input{Kind: approval.KindAgentSend, Chat: "ravi@s.whatsapp.net"}, Send: &approval.AgentSend{Agent: "codex", AgentID: "0123abcd", Text: "See you at 6"}}
+	m.confirmRequest = &approval.Request{ID: sendID, Account: 1, Input: approval.Input{Kind: approval.KindAgentSend, Chat: "ravi@s.whatsapp.net"}, Send: &approval.AgentSend{Agent: "codex", AgentID: "0123abcd", Text: "See you at 6\nBring the keys"}}
 	return m, b
 }
 
 func TestSendDialogShowsTheAgentTheChatAndTheMessage(t *testing.T) {
 	m, _ := sendModel()
 	text := m.confirmDescription()
-	for _, want := range []string{"codex", "Ravi", "a chat that was not synced when it asked", "See you at 6", "exactly this message once", "SEND abc123"} {
+	for _, want := range []string{"codex", "Ravi", "a chat that was not synced when it asked", "See you at 6\nBring the keys", "exactly this message once", "SEND abc123"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("dialog lacks %q:\n%s", want, text)
 		}
