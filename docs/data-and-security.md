@@ -134,6 +134,12 @@ page shows message text, so open it only on a computer you trust.
 If you turn it on, your other devices on your Tailscale network can open it too, through
 `tailscale serve`; see [Opening the web app from your other computers](tailscale.md).
 
+wasync asks GitHub for its newest release only when you press **Check for updates** on the
+Set up page; the request carries no credential and nothing about you. Installing an update
+needs your confirmation on the computer running wasync, and the download must match its
+published checksum and signature first; see
+[Updating from the web app](install.md#updating-from-the-web-app).
+
 ## Linked-device identity
 
 New pairings identify the client as **wasync (macOS)**, **wasync (Windows)** or

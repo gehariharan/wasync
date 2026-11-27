@@ -28,6 +28,7 @@ import (
 	"github.com/gehariharan/wasync/internal/service"
 	"github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
+	"github.com/gehariharan/wasync/internal/update"
 	"github.com/gehariharan/wasync/internal/webhook"
 	"github.com/gehariharan/wasync/internal/whatsapp"
 	"go.mau.fi/whatsmeow/types"
@@ -80,7 +81,16 @@ type App struct {
 	Setup *setup.State
 	// NewLink returns a one-time link to a page of the running owner's local web page.
 	NewLink func(page string) string
+	// UpdateSource, UpdatePlatform and UpdateLaunch replace where updates come
+	// from, how they are checked and installed, and how the installing helper
+	// starts, for tests.
+	UpdateSource   update.Source
+	UpdatePlatform update.Platform
+	UpdateLaunch   func(dataDir string) error
 
+	// runArgs are the arguments this command was started with, so an update
+	// can start the same command again.
+	runArgs []string
 	// ownerRec is what this process has recorded about itself as the owner of
 	// the data directory; ownerClient is its WhatsApp connection, nil offline.
 	ownerRec    processlock.Owner
@@ -161,6 +171,7 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 			result = nil
 		}
 	}()
+	a.runArgs = append([]string(nil), args...)
 	cfg, err := config.Default()
 	if err != nil {
 		return err
@@ -217,6 +228,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	cfg, err = cfg.Validate()
 	if err != nil {
 		return err
+	}
+	if args[0] == updateApplyCommand {
+		return a.runUpdateApply(parent, cfg, args[1:])
 	}
 	if args[0] == "actions" {
 		return a.runActionStatus(parent, cfg, args[1:])

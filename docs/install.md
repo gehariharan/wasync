@@ -119,6 +119,31 @@ Stop wasync before upgrading (`wasync stop`), and start it again afterwards with
 chat choices and pairing state remain in the per-user data directory
 (see [Data, files and security](data-and-security.md)).
 
+### Updating from the web app
+
+The **Updates** section of the Set up page shows the version you have. **Check for
+updates** asks GitHub for the newest published release; wasync never checks by itself.
+On a copy installed by Windows Setup, and on the macOS app in your Applications folder,
+**Update and restart…** asks you to confirm (Touch ID, your password or Windows Hello),
+downloads the installer for your computer and checks its SHA-256 against the release's
+`checksums.txt` and against GitHub's own digest of the file. Then:
+
+- Windows: when your installed `wasync.exe` is signed, the new Setup must be signed by the
+  same publisher (Windows previews are not signed yet, so the checksum is the check). Setup
+  runs silently, in the same folder and with the choices you made before.
+- macOS: wasync copies the app out of the release's disk image
+  (`wasync_VERSION_darwin_ARCH.dmg`), requires it to be notarized and signed by the same Apple
+  developer team as the app you have, and puts it in place of your app.
+
+wasync then stops; a short-lived helper installs the update once it has, and starts wasync
+again the way it was running: through its login item, as the same background command, or
+by opening the app. A terminal UI is left for you to start again. If the install fails,
+the version you had starts again, and the Set up page says what happened. Updating is only
+offered on the computer running wasync, never to an agent or from another device.
+
+Homebrew, the Linux archive, the Microsoft Store, the Windows ZIP and the macOS
+command-line package update the way you installed them; the page says how.
+
 ## Homebrew
 
 The source repository is also the Homebrew tap. Existing users should run the

@@ -115,6 +115,22 @@ it is a privileged credential, not a read-only API key. See
 [Data, files and security](data-and-security.md#credentials-and-the-keychain) for all three
 credentials.
 
+## Web app update routes
+
+The web app's update routes are for the owner's signed-in browser session only (the
+one-time link or **Sign in**); the archive token, the signed owner credentials and agent
+credentials are all refused. `POST` routes need the page's form token as the `csrf` form
+field or the `X-Wasync-CSRF` header. They answer with JSON.
+
+| Route | What it does |
+| --- | --- |
+| `GET /ui/update/progress` | Where updates stand: `current`, `channel` (`kind`, `one_click`, `note`), `state` (`idle`, `checking`, `up-to-date`, `available`, `downloading`, `verifying`, `installing` or `failed`), `checked_at` (when the last check finished), `latest` (`version`, `page`, `published_at`, `asset`, `size`), `can_install`, `note`, `progress` (`done`, `total` bytes), `error` and `last_result` (how the last installed update ended: `from`, `to`, `ok`, `error`, `restart`, `finished`; kept across the restart while it still describes the running version) |
+| `POST /ui/update/check` | Asks GitHub for the newest published release now and returns the same object |
+| `POST /ui/update/start` | Asks the person to confirm with the system prompt, then downloads, checks and installs the update and restarts wasync; `202` with the object, `409` when there is nothing to install, `403` when not confirmed or asked from another device, `503` without a system prompt |
+
+See [Updating from the web app](install.md#updating-from-the-web-app) for what each kind of
+install does.
+
 ## Pull data into your own database
 
 The archive is local SQLite. You can query it while wasync runs using a read-only

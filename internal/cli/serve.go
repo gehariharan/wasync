@@ -53,6 +53,9 @@ func (a *App) withAPI(ctx context.Context, cfg config.Config, store *storage.Sto
 			owner.Service, owner.ServiceSpec = a.Service, spec
 		}
 	}
+	if u := a.updater(runCtx, cfg, owner.Stop); u != nil {
+		owner.Update = u
+	}
 	if len(sender) > 0 {
 		owner.Sender = sender[0]
 	}
