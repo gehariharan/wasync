@@ -52,16 +52,27 @@ npm run check   # builds exactly what a deploy uploads, and uploads nothing
 
 ## Publish
 
-Deploys use the `cf` CLI (pinned in `package.json`) and need a Cloudflare API
-token for the account that owns `gehariharan.com`, with these permissions and no
-others:
+The GitHub Actions workflow `.github/workflows/deploy-website.yml` publishes the
+site with the `cf` CLI pinned in `package.json`. It runs on every push to `main`
+that changes `website/` or the design files it copies from
+`internal/api/webassets/`, and on demand from the Actions tab (Run workflow). It
+installs from the lockfile, runs the tests, deploys, then checks that both pages
+answer.
 
-- Account: Workers Scripts, Edit
-- Zone `gehariharan.com`: Workers Routes, Edit
-- Zone `gehariharan.com`: Zone, Read
+It needs two repository secrets on `gehariharan/wasync`:
 
-The first publish is done by hand, from a clean clone of `main`, in a shell where
-`CLOUDFLARE_API_TOKEN` holds that token:
+- `CLOUDFLARE_API_TOKEN`: a Cloudflare API token for the account that owns
+  `gehariharan.com`, with these permissions and no others:
+  - Account: Workers Scripts, Edit
+  - Zone `gehariharan.com`: Workers Routes, Edit
+  - Zone `gehariharan.com`: Zone, Read
+- `CLOUDFLARE_ACCOUNT_ID`: that account's ID.
+
+Until both exist, the workflow stops after its first step with a notice saying
+nothing was deployed; the run does not fail.
+
+To publish by hand instead, from a clean clone of `main` in a shell where both
+values are set as environment variables:
 
 ```sh
 cd website
@@ -71,9 +82,5 @@ npm run deploy
 curl -sI https://gehariharan.com/wasync/
 ```
 
-Once that works, add a GitHub Actions workflow that runs the same `npm ci` and
-`npm run deploy` on pushes to `main` that change `website/` or
-`internal/api/webassets/`, with the token as the repository secret
-`CLOUDFLARE_API_TOKEN`. Never commit tokens, `.cloudflare/` or `.wrangler/`
-state. Application releases use their own workflows; website changes never start
-one.
+Never commit tokens, `.cloudflare/` or `.wrangler/` state. Application releases
+use their own workflows; website changes never start one.
