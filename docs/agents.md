@@ -12,7 +12,8 @@ wasync checks every request against what you allowed. This page explains how tha
 in an interactive terminal and type the agent's name; there is no `--yes`, and none of these
 commands is available over the API. On a computer with a system confirmation (Touch ID or
 password on macOS, Windows Hello or the account password on Windows), wasync also asks you to
-confirm there. The web app's **Set up** page can connect an agent without a terminal
+confirm there. The web app's **Connect an agent** page (setup's last step, or **Agents > Connect another
+agent**) can connect an agent without a terminal
 (see below).
 
 Scopes are `read.chats`, `read.messages`, `read.media`, `observe`, `send`, `react`, `edit.own`,
@@ -36,7 +37,7 @@ credential without asking, and never accepts its own `api.token`, `send.token` o
 ## Which chats an agent uses
 
 A connected agent uses every chat you sync in wasync, now and later. Press **Connect** on the
-web app's **Set up** page, or run:
+web app's **Connect an agent** page, or run:
 
 ```sh
 wasync agents grant helper --scope read.chats,read.messages,send,react --synced-chats
@@ -49,7 +50,7 @@ add that scope in a terminal; other scopes and an expiry also need `wasync agent
 wasync keeps the agent's chat list equal to your synced chats by itself: before each request from
 the agent, when wasync starts, and when the Agents page opens. Each change is recorded in the
 audit log as `synced_chats`. To widen or narrow what the agent can use, sync or unsync a chat:
-in the chat picker on the Set up page, with `wasync chats enable` or `wasync chats disable`, or in
+in **Choose chats to sync** (setup's second step, or **Settings > Chats > Change**), with `wasync chats enable` or `wasync chats disable`, or in
 the [terminal UI](tui.md). The agent cannot sync a chat itself.
 
 If you would rather fix the list, `--chat "Family"` pre-approves a chat by the name in your
@@ -111,7 +112,7 @@ your computer cannot show that prompt (Linux, or a session with no screen), wasy
 when it starts, the page only lists requests, and approvals stay in the terminal, where the
 typed phrase is the only check. Creating or revoking an agent credential
 (`wasync agents grant`, `agents revoke`) asks for the same confirmation after you type the
-agent's name. The [threat model](architecture/threat-model.md) explains what this does and
+agent's name, and so do Remove and Disconnect on the web app's Agents page and Connect screen. The [threat model](architecture/threat-model.md) explains what this does and
 does not protect.
 
 On macOS the approval credential (`approve.token`) is kept in your login Keychain; see
@@ -135,8 +136,8 @@ agent, every synced chat and how many there are now. From there you can:
 - Approve a list of **approved numbers** for one agent (below).
 - Switch **open sending** on for an hour (below).
 
-On a computer with no system confirmation the page is read-only for anything that gives an agent
-more power; stopping things still works.
+On a computer with no system confirmation the page cannot give an agent more power or remove an
+agent; turning off sending or open sending, and pausing or removing a list, still work.
 
 ### Approved numbers
 
@@ -198,7 +199,7 @@ open sending cannot be switched on.
 
 Every send, by you or by an agent, is noted in `sent-log.jsonl` in the data folder (who, which
 chat, when, the WhatsApp message ID and the outcome, never the text) and listed on the web app's
-**Sent** page, which reads the text back from your archive. "Sent" means WhatsApp accepted the
+**Sent** page (from **Agents > What was sent**, or the chats list), which reads the text back from your archive. "Sent" means WhatsApp accepted the
 message, not that it was delivered or read.
 
 A message wasync sends is kept in its chat as your outgoing message only when that chat is

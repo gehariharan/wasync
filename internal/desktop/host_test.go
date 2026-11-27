@@ -21,7 +21,9 @@ import (
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/firstopen"
 	"github.com/gehariharan/wasync/internal/localfs"
+	"github.com/gehariharan/wasync/internal/prefs"
 	"github.com/gehariharan/wasync/internal/processlock"
+	"github.com/gehariharan/wasync/internal/uninstall"
 	"github.com/gehariharan/wasync/internal/update"
 )
 
@@ -225,12 +227,30 @@ func TestStartLinkOpensTheChatsOnceTheWasyncItStartsSaysAPhoneIsLinked(t *testin
 	if err := firstopen.Done(h.Config.DataDir, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	// An installation from before the setup steps has no setup-done value.
 	link, err := h.StartLink(context.Background())
 	if err != nil || !strings.HasSuffix(link, "next=chats") {
 		t.Fatalf("a linked phone opens on the chats: %q %v", link, err)
 	}
 	if *starts != 1 {
 		t.Fatalf("wasync started %d times", *starts)
+	}
+}
+
+func TestStartLinkReopensSetupWhenThePersonQuitAfterLinking(t *testing.T) {
+	h, _, _ := testHost(t, "linked")
+	if err := firstopen.Done(h.Config.DataDir, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// Step 1 is done: the phone is linked and how wasync is used is saved,
+	// but the person quit before finishing or skipping the other steps.
+	notDone := false
+	if _, err := prefs.Open(h.Config.DataDir).Update(func(s *prefs.Settings) { s.Use, s.SetupDone = prefs.UseChats, &notDone }); err != nil {
+		t.Fatal(err)
+	}
+	link, err := h.StartLink(context.Background())
+	if err != nil || !strings.HasSuffix(link, "next=setup") {
+		t.Fatalf("a linked phone with setup unfinished opens: %q %v", link, err)
 	}
 }
 
@@ -388,5 +408,55 @@ func TestDescribe(t *testing.T) {
 func TestRestartWaitsLongerAfterEachFailureUpToAMinute(t *testing.T) {
 	if restartAfter(1) != 2*time.Second || restartAfter(3) != 8*time.Second || restartAfter(20) != time.Minute {
 		t.Fatal(restartAfter(1), restartAfter(3), restartAfter(20))
+	}
+}
+
+// markRemoval records that wasync is being removed, as uninstall.Start does.
+func markRemoval(t *testing.T, dir string) {
+	t.Helper()
+	if err := localfs.EnsureDir(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(uninstall.MarkerPath(dir), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestTheAppQuitsWhenItsWasyncStopsToBeRemoved(t *testing.T) {
+	h, _, _ := testHost(t, "serve")
+	quit := make(chan struct{}, 1)
+	h.OnUpdate = func() { t.Error("no update is waiting") }
+	h.OnRemove = func() { quit <- struct{}{} }
+	if _, err := h.Ensure(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	markRemoval(t, h.Config.DataDir)
+	h.mu.Lock()
+	c := h.child
+	h.mu.Unlock()
+	_ = c.stdin.Close() // wasync stops cleanly, as it does for a removal
+	select {
+	case <-quit:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the app must quit so the removal can move or uninstall it")
+	}
+}
+
+func TestAWasyncThatFailsWhileBeingRemovedIsNotStartedAgain(t *testing.T) {
+	h, _, starts := testHost(t, "fail")
+	quit := make(chan struct{}, 1)
+	h.OnRemove = func() { quit <- struct{}{} }
+	markRemoval(t, h.Config.DataDir)
+	if _, err := h.Ensure(context.Background()); err == nil {
+		t.Fatal("the fake wasync fails to start")
+	}
+	select {
+	case <-quit:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the app must quit rather than start wasync again")
+	}
+	time.Sleep(2500 * time.Millisecond) // longer than the first restart pause
+	if *starts != 1 {
+		t.Fatalf("wasync was started %d times; starting it again would hold the data the removal waits for", *starts)
 	}
 }

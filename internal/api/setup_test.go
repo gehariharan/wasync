@@ -15,6 +15,7 @@ import (
 	"github.com/gehariharan/wasync/internal/axicred"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
+	"github.com/gehariharan/wasync/internal/prefs"
 	"github.com/gehariharan/wasync/internal/service"
 	linking "github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
@@ -61,13 +62,18 @@ func newSetupFixture(t *testing.T, withPrompt bool) (setupFixture, *pageClient, 
 		gate = humancheck.NewGate(sf.stub)
 	}
 	sf.accessFixture = setupAccessOwner(t, gate, func(o *Owner) {
+		// A setup begun on this version: the phone was linked in step 1.
+		notDone := false
+		if _, err := prefs.Open(o.Dir).Update(func(s *prefs.Settings) { s.SetupDone = &notDone }); err != nil {
+			t.Fatal(err)
+		}
 		o.Setup, o.Service, o.ServiceSpec = sf.state, sf.item, service.Spec{Exe: "/opt/wasync", DataDir: "/data/wasync"}
 		o.AxiPath = func() (string, error) { return sf.axiFile, nil }
 	})
 	sf.state.SetPaired()
 	c := newPageClient(t, sf.accessFixture)
 	c.get(linkPath(t, sf.accessFixture))
-	_, page, _ := c.get("/ui/setup")
+	_, page, _ := c.get("/ui/settings")
 	return sf, c, csrfOf(t, page)
 }
 
@@ -113,21 +119,43 @@ func TestSetupPageShowsTheQRCodeAsAnImageUntilTheScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { server.Close() })
+	// A new computer with no phone linked has the setup steps ahead of it.
+	if s, _ := prefs.Open(dir).Get(); !s.SettingUp() {
+		t.Fatalf("a new installation did not record a setup in progress: %+v", s)
+	}
 	c := &pageClient{t: t, base: server.URL, http: newPageClient(t, accessFixture{server: server}).http}
 	c.get(strings.TrimPrefix(server.NewLink("setup"), server.URL))
 
-	_, page, _ := c.get("/ui/setup")
-	if strings.Contains(page, qrImage) || !strings.Contains(page, "Waiting for WhatsApp") || !strings.Contains(page, `http-equiv="refresh"`) {
+	// A new computer opens on the First open screen, once.
+	code, _, hd := c.get("/ui/setup")
+	if code != 303 || hd.Get("Location") != welcomePath {
+		t.Fatalf("first open: %d %q", code, hd.Get("Location"))
+	}
+	_, welcome, _ := c.get(welcomePath)
+	for _, want := range []string{"Welcome to wasync", `href="https://gehariharan.com"`, "@gehariharan", "not made by", "I understand"} {
+		if !strings.Contains(welcome, want) {
+			t.Fatalf("welcome lacks %q:\n%s", want, welcome)
+		}
+	}
+	if code, _, hd = c.post(welcomePath, url.Values{"csrf": {csrfOf(t, welcome)}}); code != 303 || hd.Get("Location") != "/ui/setup/link" {
+		t.Fatalf("I understand: %d %q", code, hd.Get("Location"))
+	}
+	if _, _, hd = c.get("/ui/setup"); hd.Get("Location") != "/ui/setup/link" {
+		t.Fatalf("the First open screen showed twice: %q", hd.Get("Location"))
+	}
+
+	_, page, _ := c.get("/ui/setup/link")
+	if strings.Contains(page, qrImage) || !strings.Contains(page, "Getting a code from WhatsApp") || !strings.Contains(page, `http-equiv="refresh"`) {
 		t.Fatalf("before any code:\n%s", page)
 	}
 	const secret = "2@PAIRINGSECRETPAIRINGSECRET,abc,def"
 	state.SetQR(secret)
-	_, page, _ = c.get("/ui/setup")
+	_, page, _ = c.get("/ui/setup/link")
 	if !strings.Contains(page, qrImage) || strings.Contains(page, "PAIRINGSECRET") || !strings.Contains(page, `http-equiv="refresh"`) {
 		t.Fatalf("with a code: the page must show an image, never the code as text:\n%.600s", page)
 	}
 	state.SetFailure("Linking stopped: phone said no")
-	_, page, _ = c.get("/ui/setup")
+	_, page, _ = c.get("/ui/setup/link")
 	if !strings.Contains(page, "phone said no") || strings.Contains(page, qrImage) || !strings.Contains(page, "Get a new code") {
 		t.Fatalf("after failure:\n%.600s", page)
 	}
@@ -153,8 +181,8 @@ func TestSetupPageShowsTheQRCodeAsAnImageUntilTheScan(t *testing.T) {
 	}
 	state.SetQR(secret)
 	state.SetPaired()
-	_, page, _ = c.get("/ui/setup")
-	if !strings.Contains(page, "Linked.") || strings.Contains(page, qrImage) || strings.Contains(page, "PAIRINGSECRET") {
+	_, page, _ = c.get("/ui/setup/link")
+	if !strings.Contains(page, "Linked.") || !strings.Contains(page, "How will you use wasync?") || strings.Contains(page, qrImage) || strings.Contains(page, "PAIRINGSECRET") {
 		t.Fatalf("after pairing:\n%.600s", page)
 	}
 }
@@ -170,39 +198,96 @@ func TestSetupShowsTheCodeAgainForAnArchiveWhoseDeviceWasUnlinked(t *testing.T) 
 	c := &pageClient{t: t, base: server.URL, http: newPageClient(t, accessFixture{server: server}).http}
 	c.get(strings.TrimPrefix(server.NewLink("setup"), server.URL))
 	state.SetQR("2@RELINKCODE,abc,def")
-	_, page, _ := c.get("/ui/setup")
-	if strings.Contains(page, "Linked.") || !strings.Contains(page, qrImage) || strings.Contains(page, `action="/ui/setup/chats"`) {
+	if _, _, hd := c.get("/ui/setup"); hd.Get("Location") != "/ui/setup/link" {
+		t.Fatalf("an unlinked archive was not sent to linking: %q", hd.Get("Location"))
+	}
+	_, page, _ := c.get("/ui/setup/link")
+	if strings.Contains(page, "Linked.") || !strings.Contains(page, qrImage) {
 		t.Fatalf("an old archive hid the code to scan:\n%.600s", page)
 	}
 	state.SetPaired()
-	if _, page, _ = c.get("/ui/setup"); !strings.Contains(page, "Linked.") || !strings.Contains(page, "3 chats found") {
+	if _, page, _ = c.get("/ui/setup/link"); !strings.Contains(page, "Linked.") {
 		t.Fatalf("after linking again:\n%.600s", page)
 	}
 
 	// Outside setup the running owner's archive account is what says linked.
 	running := newPageClient(t, f)
 	running.get(linkPath(t, f))
-	if _, page, _ = running.get("/ui/setup"); !strings.Contains(page, "Linked.") {
+	if _, page, _ = running.get("/ui/setup/link"); !strings.Contains(page, "Linked.") {
 		t.Fatalf("running owner:\n%.600s", page)
 	}
 }
 
-func TestSetupPointsAtTheChatPickerAndOffersAFreshStart(t *testing.T) {
-	sf, c, csrf := newSetupFixture(t, false)
-	_, page, _ := c.get("/ui/setup")
-	if !strings.Contains(page, `href="/ui/chats/pick"`) || strings.Contains(page, `name="chat"`) || strings.Contains(page, "Start fresh") {
-		t.Fatalf("first run should point at the picker with nothing ticked:\n%s", page)
+func TestSetupStepsLeadFromLinkingToHome(t *testing.T) {
+	sf, c, csrf := newSetupFixture(t, true)
+	if _, _, hd := c.get("/ui/setup"); hd.Get("Location") != "/ui/setup/link" {
+		t.Fatalf("a linked phone with setup not done: %q", hd.Get("Location"))
 	}
-	// Chats still syncing from before a re-link are called out, with a way to start over.
-	if err := sf.store.SetEnabled(context.Background(), sf.account, []string{familyChat}, true); err != nil {
-		t.Fatal(err)
+	_, page, _ := c.get("/ui/setup/link")
+	for _, want := range []string{`aria-current="step"`, "</span> Link", "</span> Chats", "</span> Keep running", "</span> Agent", `name="use" value="agents" checked`} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("step 1 lacks %q:\n%s", want, page)
+		}
 	}
-	if _, page, _ = c.get("/ui/setup"); !strings.Contains(page, "1 of 3 chats are syncing") || !strings.Contains(page, "Start fresh") {
-		t.Fatalf("re-link banner:\n%s", page)
+	if code, _, _ := c.post("/ui/setup/use", url.Values{"csrf": {csrf}, "use": {"everything"}}); code != 303 {
+		t.Fatalf("bad choice: %d", code)
 	}
-	code, _, _ := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "action": {"clearall"}})
-	if code != 303 || sf.group(t, familyChat).Enabled {
-		t.Fatalf("start fresh: %d, family still syncing: %v", code, sf.group(t, familyChat).Enabled)
+	if _, _, hd := c.post("/ui/setup/use", url.Values{"csrf": {csrf}, "use": {"agents"}}); hd.Get("Location") != "/ui/setup/chats" {
+		t.Fatalf("use: %q", hd.Get("Location"))
+	}
+	if s, _ := prefs.Open(sf.dir).Get(); s.Use != prefs.UseAgents {
+		t.Fatalf("use was not saved: %+v", s)
+	}
+
+	// Step 2 is Choose chats with nothing ticked, and Next goes on to step 3.
+	_, page, _ = c.get("/ui/setup/chats")
+	if !strings.Contains(page, "Choose chats to sync") || !strings.Contains(page, "Selected · <span data-count>0<") || !strings.Contains(page, `src="/ui/picker.js"`) {
+		t.Fatalf("step 2:\n%s", page)
+	}
+	if _, _, hd := c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "sync": {familyChat}}); !strings.HasPrefix(hd.Get("Location"), "/ui/setup/chats") || !sf.group(t, familyChat).Enabled {
+		t.Fatalf("tick in setup: %q", hd.Get("Location"))
+	}
+	if _, _, hd := c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "action": {"next"}, "save_media": {"on"}}); hd.Get("Location") != "/ui/setup/running" {
+		t.Fatalf("next: %q", hd.Get("Location"))
+	}
+
+	// Step 3 turns start-at-login on, and stays on the step.
+	_, page, _ = c.get("/ui/setup/running")
+	if !strings.Contains(page, "Start wasync when I log in") || !strings.Contains(page, `role="switch" aria-checked="false"`) {
+		t.Fatalf("step 3:\n%s", page)
+	}
+	if _, _, hd := c.post("/ui/setup/service", url.Values{"csrf": {csrf}, "action": {"install"}, "back": {"/ui/setup/running"}}); !strings.HasPrefix(hd.Get("Location"), "/ui/setup/running?n=loginon") || !sf.item.installed {
+		t.Fatalf("start at login: %q", hd.Get("Location"))
+	}
+
+	// Step 4 offers the apps; skipping it finishes setup on Home.
+	_, page, _ = c.get("/ui/setup/agent")
+	for _, want := range []string{"Connect your AI app", "ChatGPT &amp; Codex", "Claude Code", "Claude Desktop", "Other", "Skip for now"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("step 4 lacks %q:\n%s", want, page)
+		}
+	}
+	if code, _, _ := c.post("/ui/setup/finish", url.Values{"csrf": {"forged"}}); code != 403 {
+		t.Fatalf("forged finish: %d", code)
+	}
+	if _, _, hd := c.post("/ui/setup/finish", url.Values{"csrf": {csrf}}); hd.Get("Location") != "/ui/home" {
+		t.Fatalf("finish: %q", hd.Get("Location"))
+	}
+	if _, _, hd := c.get("/ui/setup"); hd.Get("Location") != "/ui/settings" {
+		t.Fatalf("after setup, Set up opens Settings: %q", hd.Get("Location"))
+	}
+	if _, _, hd := c.get("/ui/"); hd.Get("Location") != "/ui/home" {
+		t.Fatalf("agent-only start page: %q", hd.Get("Location"))
+	}
+	// Agents only: the chats are not shown in wasync.
+	for _, path := range []string{"/ui/chats", "/ui/chats/new"} {
+		if code, _, hd := c.get(path); code != 303 || hd.Get("Location") != "/ui/home" {
+			t.Fatalf("%s in agent-only mode: %d %q", path, code, hd.Get("Location"))
+		}
+	}
+	_, page, _ = c.get("/ui/home")
+	if !strings.Contains(page, `href="/ui/home"`) || strings.Contains(page, `<a class="rail-i" href="/ui/chats"`) || !strings.Contains(page, "Family Group") {
+		t.Fatalf("home:\n%s", page)
 	}
 }
 
@@ -270,8 +355,8 @@ func TestSetupConnectsAnAgentOnlyWhenThePersonConfirms(t *testing.T) {
 
 func TestSetupCannotConnectAnAgentWithoutASystemPrompt(t *testing.T) {
 	sf, c, csrf := newSetupFixture(t, false)
-	_, page, _ := c.get("/ui/setup")
-	if strings.Contains(page, `action="/ui/setup/agent"`) || !strings.Contains(page, "wasync agents grant") {
+	_, page, _ := c.get("/ui/setup/agent?app=other")
+	if strings.Contains(page, `action="/ui/setup/agent"`) || !strings.Contains(page, "cannot show a system confirmation") {
 		t.Fatalf("page offers a form it cannot honour:\n%s", page)
 	}
 	_, _, hd := c.post("/ui/setup/agent", url.Values{"csrf": {csrf}, "name": {"codex-axi"}})
@@ -281,26 +366,82 @@ func TestSetupCannotConnectAnAgentWithoutASystemPrompt(t *testing.T) {
 	if got, _ := agentauth.ActiveByName(sf.dir, "codex-axi"); got != nil {
 		t.Fatal("agent created with no check available")
 	}
-	_, _, hd = c.post("/ui/setup/service", url.Values{"csrf": {csrf}, "action": {"install"}})
-	if !strings.Contains(hd.Get("Location"), "n=nogate") || sf.item.installed {
-		t.Fatalf("login item installed with no check available: %v", hd)
+}
+
+func TestSetupLoginItemTurnsOnAndOffWithoutAPrompt(t *testing.T) {
+	sf, c, csrf := newSetupFixture(t, true)
+	_, _, hd := c.post("/ui/setup/service", url.Values{"csrf": {csrf}, "action": {"install"}})
+	if !strings.Contains(hd.Get("Location"), "n=loginon") || !sf.item.installed || sf.item.spec.Exe != "/opt/wasync" {
+		t.Fatalf("on: %v %+v", hd, sf.item)
+	}
+	_, _, hd = c.post("/ui/setup/service", url.Values{"csrf": {csrf}, "action": {"remove"}})
+	if !strings.Contains(hd.Get("Location"), "n=loginoff") || sf.item.installed {
+		t.Fatalf("off: %v", hd)
+	}
+	if len(sf.stub.seen()) != 0 {
+		t.Fatalf("start-at-login asked for a confirmation: %q", sf.stub.seen())
+	}
+	if code, _, _ := c.post("/ui/setup/service", url.Values{"csrf": {"forged"}, "action": {"install"}}); code != 403 || sf.item.installed {
+		t.Fatalf("forged form: %d", code)
 	}
 }
 
-func TestSetupLoginItemNeedsThePersonToTurnOnButNotOff(t *testing.T) {
+func TestTheAppReopensOnTheSetupStepsUntilTheyAreFinished(t *testing.T) {
 	sf, c, csrf := newSetupFixture(t, true)
-	_, _, hd := c.post("/ui/setup/service", url.Values{"csrf": {csrf}, "action": {"install"}})
-	if !strings.Contains(hd.Get("Location"), "n=declined") || sf.item.installed {
-		t.Fatalf("declined: %v", hd)
+	if _, _, hd := c.get("/ui/"); hd.Get("Location") != "/ui/setup" {
+		t.Fatalf("a linked phone with setup not done opens: %q", hd.Get("Location"))
 	}
-	sf.stub.set(true)
-	_, _, hd = c.post("/ui/setup/service", url.Values{"csrf": {csrf}, "action": {"install"}})
-	if !strings.Contains(hd.Get("Location"), "n=loginon") || !sf.item.installed || sf.item.spec.Exe != "/opt/wasync" {
-		t.Fatalf("confirmed: %v %+v", hd, sf.item)
+	if _, _, hd := c.post("/ui/setup/use", url.Values{"csrf": {csrf}, "use": {"chats"}}); hd.Get("Location") != "/ui/setup/chats" {
+		t.Fatalf("use: %q", hd.Get("Location"))
 	}
-	asked := len(sf.stub.seen())
-	_, _, hd = c.post("/ui/setup/service", url.Values{"csrf": {csrf}, "action": {"remove"}})
-	if !strings.Contains(hd.Get("Location"), "n=loginoff") || sf.item.installed || len(sf.stub.seen()) != asked {
-		t.Fatalf("removing should not prompt: %v", hd)
+
+	// The person quits after step 1; opening the app again, in a new
+	// browser session, goes back to the step they reached.
+	again := newPageClient(t, sf.accessFixture)
+	again.get(linkPath(t, sf.accessFixture))
+	if _, _, hd := again.get("/ui/"); hd.Get("Location") != "/ui/setup" {
+		t.Fatalf("reopened after step 1: %q", hd.Get("Location"))
+	}
+	if _, _, hd := again.get("/ui/setup"); hd.Get("Location") != "/ui/setup/chats" {
+		t.Fatalf("setup resumes at: %q", hd.Get("Location"))
+	}
+
+	// The person goes on to step 4 and quits there; it resumes at step 4.
+	for _, step := range []string{"/ui/setup/chats", "/ui/setup/running", "/ui/setup/agent"} {
+		if code, _, _ := c.get(step); code != 200 {
+			t.Fatalf("%s: %d", step, code)
+		}
+	}
+	c.get("/ui/setup/chats") // going back does not lose the furthest step
+	third := newPageClient(t, sf.accessFixture)
+	third.get(linkPath(t, sf.accessFixture))
+	if _, _, hd := third.get("/ui/setup"); hd.Get("Location") != "/ui/setup/agent" {
+		t.Fatalf("quit at step 4, setup resumes at: %q", hd.Get("Location"))
+	}
+
+	if _, _, hd := c.post("/ui/setup/finish", url.Values{"csrf": {csrf}}); hd.Get("Location") != "/ui/chats" {
+		t.Fatalf("finish: %q", hd.Get("Location"))
+	}
+	if _, _, hd := again.get("/ui/"); hd.Get("Location") != "/ui/chats" {
+		t.Fatalf("after finishing, the app opens: %q", hd.Get("Location"))
+	}
+}
+
+func TestAnInstallationLinkedBeforeTheSetupStepsNeverSeesThem(t *testing.T) {
+	// setupAccess is a computer that ran an earlier wasync: a linked phone,
+	// the First open screen seen, and no setup-done value.
+	f := setupAccess(t)
+	for i := 0; i < 2; i++ {
+		c := newPageClient(t, f)
+		c.get(linkPath(t, f))
+		if _, _, hd := c.get("/ui/"); hd.Get("Location") != "/ui/chats" {
+			t.Fatalf("open %d after upgrading: %q", i+1, hd.Get("Location"))
+		}
+		if _, _, hd := c.get("/ui/setup"); hd.Get("Location") != "/ui/settings" {
+			t.Fatalf("Set up after upgrading: %q", hd.Get("Location"))
+		}
+	}
+	if s, _ := prefs.Open(f.dir).Get(); s.SetupDone == nil || !*s.SetupDone {
+		t.Fatalf("the upgrade was not recorded as set up: %+v", s)
 	}
 }

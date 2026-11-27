@@ -8,9 +8,10 @@ Linux, wasync stays a terminal program (`wasync setup`).
 
 ## What it does
 
-- **Opening the app** shows its window. The window opens on the setup pages until
-  the First open screen has been seen and a phone is linked, and on the chats after
-  that. Each window signs in with a fresh one-time link, as `wasync web` does.
+- **Opening the app** shows its window. The window opens on the setup steps until
+  the First open screen has been seen, a phone is linked and the steps are finished or
+  skipped (a setup left part-way opens again at the furthest step reached), and after that on Home
+  (when wasync is for your AI agents only) or the chats. Each window signs in with a fresh one-time link, as `wasync web` does.
 - **The icon's menu** has *Open wasync*, a status line ("Syncing 12 chats", "Not
   linked to WhatsApp yet", "Connecting to WhatsApp…") and *Quit wasync*. On Windows a
   click on the icon opens the window; the menu is on the right button.
@@ -42,7 +43,9 @@ A wasync that fails is started again after a pause that grows to a minute. One t
 stops cleanly (`wasync stop`, or a phone that was unlinked) stays stopped until the
 app is opened again. One that stops to install an update (**Update and restart…**)
 makes the app quit too; once the update is in place, the helper opens the new app,
-which starts its own wasync as usual.
+which starts its own wasync as usual. One that stops because you chose **Settings >
+Remove wasync** makes the app quit as well, and is not started again, so the removal
+can take the app away (see [Removing wasync](install.md#removing-wasync)).
 
 If another wasync already holds the data directory (a `wasync serve` login item, or
 `wasync tui` in a terminal), the app shows that one's pages instead of starting its
@@ -64,9 +67,20 @@ the icon. It is separate from the `wasync service install` item, which starts
 - Windows: the value `wasync-app` under
   `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. Uninstalling removes it.
 
-When the app started wasync, the setup page's start-at-login button adds this item
-instead of the `wasync serve` one. Turning it on asks for Touch ID or your password
-(macOS) or Windows Hello (Windows), as before; turning it off does not.
+When the app started wasync, the **Start wasync when I log in** switch (setup's Keep
+running step, or Settings) adds this item instead of the `wasync serve` one. Turning it
+on or off asks for no confirmation: the item only starts wasync for your own account and
+gives nothing new access. It can only be changed on the computer running wasync, never
+from another device on the tailnet.
+
+With both items, whichever starts first holds the data directory and the other cannot
+run. So when the app starts and finds a `wasync service install` item that starts
+wasync for the same data directory as the app, it moves you to its own item: it adds
+the app's item if it is not there yet, then removes the old one. You already chose to
+start at login, so it asks nothing, and `desktop.log` says what it did. On macOS,
+removing the old item also stops the `wasync serve` it started; on Windows the app asks
+that `wasync serve` to stop cleanly, as `wasync stop` does, so the app can start its own.
+An old item for a different data directory is left alone.
 
 ## Settings the setup screens use
 
@@ -75,14 +89,14 @@ this computer (a device signed in through the tailnet gets 403). Each answer is 
 JSON:
 
 ```json
-{"first_open": true, "start_at_login": {"available": true, "on": false, "where": "a macOS login item", "confirm": "Touch ID or your account password"}}
+{"first_open": true, "start_at_login": {"available": true, "on": false, "where": "a macOS login item"}}
 ```
 
 | Request | Effect |
 | --- | --- |
-| `GET /ui/desktop` | Reads both settings. `first_open` is true until the First open screen has been seen for this data directory. `confirm` names the prompt turning start-at-login on asks for; it is empty, and turning it on is refused, where the computer cannot show one. |
+| `GET /ui/desktop` | Reads both settings. `first_open` is true until the First open screen has been seen for this data directory. `confirm` is kept for older app builds and is always left out: start-at-login asks for no confirmation. |
 | `POST /ui/desktop/first-open` with the page's `csrf` field | Records that the First open screen was seen (`first-open.done` in the data directory). |
-| `POST /ui/desktop/start-at-login` with `csrf` and `on=true` or `on=false` | Turns start-at-login on (after the system prompt; 403 if declined) or off. |
+| `POST /ui/desktop/start-at-login` with `csrf` and `on=true` or `on=false` | Turns start-at-login on or off. |
 
 The app itself reads the First open flag from the data directory to choose its first
 page.
@@ -102,9 +116,3 @@ page.
 The pictures (app icons, menu-bar glyph, Setup's side pictures and the disk image
 background) are drawn from logo D by `packaging/desktop/assetgen`; see the comment at
 the top of its `main.go` to draw them again.
-
-## Not yet
-
-- The First open screen, and the setup steps that use the settings above, are built
-  on the shared design system in a later change; until then the app opens the setup
-  page.

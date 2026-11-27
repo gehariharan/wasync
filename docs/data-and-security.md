@@ -14,7 +14,7 @@ All commands use the same private data directory, normally:
 - Windows Microsoft Store build: `%USERPROFILE%\.wasync` (see
   [Store archive location and migration](windows.md#store-archive-location-and-migration))
 
-The **Storage** section of the Set up page says where it is, and **Show folder** opens it in
+The **Storage** section of Settings says where it is, and **Show folder** opens it in
 Finder, File Explorer or your file manager.
 
 Override it using `WASYNC_DATA_DIR` or the global `--data-dir` flag; flags win.
@@ -68,7 +68,7 @@ encrypt data at rest.
 | `agent-connections.json` | Apps connected from the setup page: which credential each got, the settings file wasync changed, its backup, the entry wasync wrote and any entry it replaced, so Disconnect undoes exactly that |
 | `codex-marketplace/` | The WhatsApp plugin as a local Codex marketplace, written from the copy built into wasync when Codex is connected; removed again on Disconnect |
 | `access-mode.json` | Only in data folders from earlier releases, for the removed access mode; no longer read, and safe to delete |
-| `settings.json` | Everyday settings: "For my AI agents only" or "Also read my chats here", and whether photos, videos and files are saved; absent until one is changed |
+| `settings.json` | Everyday settings: "For my AI agents only" or "Also read my chats here", whether photos, videos and files are saved, and whether the setup steps are finished and the furthest one reached, so an unfinished setup opens where it was left |
 | `pending-approvals.json` | Requests waiting for a person, so a restart does not lose them |
 | `send-lists.json` | Approved phone-number lists for agents, their pacing, the numbers each list dropped after a STOP (so its agent's list status can name them), and for up to 30 days who a removed list already messaged |
 | `send-record.json` | Kept for good: when each number first and last got a list message, and the numbers that replied STOP (numbers and times only, never message text) |
@@ -86,6 +86,8 @@ encrypt data at rest.
 | `wasync.log` | Structured lifecycle logs from the terminal UI and interactive login, including warnings and errors from the WhatsApp encryption library, which never print to the terminal |
 | `service.log` | Output of the macOS login item's `wasync serve` |
 | `desktop.log` | The [wasync app](desktop.md)'s messages and what the `wasync` it started says for a person |
+| `remove.pending` | Says wasync is stopping to be removed, so the wasync app quits; cleared once the removal is done or given up ([Removing wasync](install.md#removing-wasync)) |
+| `remove.log` | What **Settings > Remove wasync** did, when you kept your data |
 | `first-open.done` | Says the wasync app's First open screen was seen |
 | `device.lock` | Process ownership lock, retained after exit |
 | `owner.json` | Who holds the lock right now (command, PID, start time, how it was started, API address); removed when that wasync exits, and ignored when it names a process that no longer runs |
@@ -169,8 +171,8 @@ page shows message text, so open it only on a computer you trust.
 If you turn it on, your other devices on your Tailscale network can open it too, through
 `tailscale serve`; see [Opening the web app from your other computers](tailscale.md).
 
-wasync asks GitHub for its newest release only when you press **Check for updates** on the
-Set up page; the request carries no credential and nothing about you. Installing an update
+wasync asks GitHub for its newest release only when you press **Check for updates** in
+Settings; the request carries no credential and nothing about you. Installing an update
 needs your confirmation on the computer running wasync, and the download must match its
 published checksum and signature first; see
 [Updating from the web app](install.md#updating-from-the-web-app).

@@ -22,7 +22,7 @@ func TestSettingsShowWhereTheDataIsAndOpenTheFolder(t *testing.T) {
 	})
 	c := newPageClient(t, f)
 	c.get(linkPath(t, f))
-	code, page, _ := c.get("/ui/setup")
+	code, page, _ := c.get("/ui/settings")
 	if code != 200 {
 		t.Fatalf("setup page: %d", code)
 	}
@@ -45,7 +45,7 @@ func TestSettingsShowWhereTheDataIsAndOpenTheFolder(t *testing.T) {
 	// would show it to nobody, so it cannot.
 	allowTailnet(t, f)
 	remote := newTailnetClient(t, f, tailnetLogin)
-	code, page, _ = remote.get("/ui/setup")
+	code, page, _ = remote.get("/ui/settings")
 	if code != 200 || !strings.Contains(page, "Your data is stored in") || strings.Contains(page, "Show folder") {
 		t.Fatalf("remote setup page: %d\n%s", code, page)
 	}

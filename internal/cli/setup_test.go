@@ -308,11 +308,24 @@ func TestSetupLinksWhatsAppFromThePageAndOpensItByItself(t *testing.T) {
 		t.Fatalf("enter: %d", code)
 	}
 	base := "http://" + api
+	// A new data folder opens on the First open screen; "I understand" goes on to linking.
+	_, welcome := get(base + "/ui/setup")
+	if !strings.Contains(welcome, "/ui/welcome") {
+		t.Fatalf("setup did not open the First open screen first:\n%.500s", welcome)
+	}
+	_, welcome = get(base + "/ui/welcome")
+	wi := strings.Index(welcome, `name="csrf" value="`) + len(`name="csrf" value="`)
+	res, err := browser.PostForm(base+"/ui/welcome", url.Values{"csrf": {welcome[wi : wi+strings.Index(welcome[wi:], `"`)]}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	path := "/ui/setup/link"
 	waitFor := func(want string) string {
 		t.Helper()
 		var page string
 		for i := 0; i < 100; i++ {
-			_, page = get(base + "/ui/setup")
+			_, page = get(base + path)
 			if strings.Contains(page, want) {
 				return page
 			}
@@ -344,7 +357,8 @@ func TestSetupLinksWhatsAppFromThePageAndOpensItByItself(t *testing.T) {
 	}
 	close(client.scanned)
 	waitFor("Linked.")
-	waitFor("2 chats found") // chat discovery finished after linking
+	path = "/ui/setup/chats"
+	waitFor(`All<span class="n">2<`) // chat discovery finished after linking
 	cancel()
 	if err := <-done; err != nil {
 		t.Fatal(err)

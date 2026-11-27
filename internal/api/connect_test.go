@@ -32,7 +32,7 @@ type connectFixture struct {
 
 // newConnectFixture starts an owner whose "computer" is scratch folders:
 // a home with no apps, wasync and wasync-axi side by side, and a fake codex.
-func newConnectFixture(t *testing.T, withCodex bool) (connectFixture, *pageClient, string) {
+func newConnectFixture(t *testing.T, withCodex bool, more ...func(*Owner)) (connectFixture, *pageClient, string) {
 	t.Helper()
 	home := t.TempDir()
 	bin := filepath.Join(home, "app")
@@ -60,7 +60,7 @@ func newConnectFixture(t *testing.T, withCodex bool) (connectFixture, *pageClien
 			return "", errors.New("not found")
 		},
 		Run: func(_ context.Context, env []string, name string, args ...string) ([]byte, error) {
-			*ran = append(*ran, filepath.Base(name)+" "+strings.Join(args, " "))
+			*ran = append(*ran, strings.TrimSuffix(filepath.Base(name), ".exe")+" "+strings.Join(args, " ")) // the same on every system
 			return nil, nil
 		},
 	}
@@ -70,10 +70,13 @@ func newConnectFixture(t *testing.T, withCodex bool) (connectFixture, *pageClien
 		o.Setup = state
 		o.AxiPath = func() (string, error) { return filepath.Join(f.axiDir, axicred.FileName), nil }
 		o.AgentConnect = &f.env
+		for _, tweak := range more {
+			tweak(o)
+		}
 	})
 	c := newPageClient(t, f.accessFixture)
 	c.get(linkPath(t, f.accessFixture))
-	_, page, _ := c.get("/ui/setup")
+	_, page, _ := c.get("/ui/settings")
 	return f, c, csrfOf(t, page)
 }
 
@@ -82,7 +85,7 @@ var digestField = regexp.MustCompile(`name="digest" value="([0-9a-f]+)"`)
 // preview opens the Connect preview for kind and returns the page and its digest.
 func preview(t *testing.T, c *pageClient, kind string) (string, string) {
 	t.Helper()
-	_, page, _ := c.get("/ui/setup?connect=" + kind)
+	_, page, _ := c.get("/ui/setup/agent?app=" + kind)
 	m := digestField.FindStringSubmatch(page)
 	if m == nil {
 		t.Fatalf("no Connect form in the preview:\n%s", page)
@@ -197,7 +200,7 @@ func TestConnectCodexWritesItsSettingsOnlyAfterThePersonConfirms(t *testing.T) {
 	if b, _ := os.ReadFile(backups[0]); string(b) != before {
 		t.Fatalf("backup holds %q", b)
 	}
-	_, page, _ = c.get("/ui/setup")
+	_, page, _ = c.get("/ui/settings")
 	if strings.Contains(page, secret) {
 		t.Fatal("the secret reached the page")
 	}
@@ -217,19 +220,26 @@ func TestConnectCodexWritesItsSettingsOnlyAfterThePersonConfirms(t *testing.T) {
 		t.Fatalf("second connect: %v", hd)
 	}
 
-	// Disconnect needs no prompt, and undoes everything.
+	// Disconnect asks like revoking does, and undoes everything.
 	prompts := len(f.stub.seen())
 	f.stub.set(false)
 	*f.ran = nil
+	if _, _, hd := c.post("/ui/setup/disconnect", url.Values{"csrf": {csrf}, "agent": {"codex"}}); !strings.Contains(hd.Get("Location"), "n=declined") {
+		t.Fatalf("declined disconnect: %v", hd)
+	}
+	if code, _ := f.do(t, "GET", "/api/v1/chats", secret, nil); code != 200 || len(*f.ran) != 0 {
+		t.Fatalf("a declined disconnect changed something: %d %q", code, *f.ran)
+	}
+	f.stub.set(true)
 	_, _, hd := c.post("/ui/setup/disconnect", url.Values{"csrf": {csrf}, "agent": {"codex"}})
 	if !strings.Contains(hd.Get("Location"), "n=agentdisconnected") {
 		t.Fatalf("disconnect: %v", hd)
 	}
-	if _, page, _ := c.get(hd.Get("Location")); strings.Contains(page, `name="digest"`) {
-		t.Fatalf("the page after Disconnect offers to connect again:\n%s", page)
+	if _, page, _ := c.get(hd.Get("Location")); strings.Contains(page, "is connected") || !strings.Contains(page, "Disconnected") {
+		t.Fatalf("the page after Disconnect still shows the app connected:\n%s", page)
 	}
-	if len(f.stub.seen()) != prompts {
-		t.Fatal("disconnect asked for a confirmation")
+	if seen := f.stub.seen()[prompts:]; len(seen) != 2 || !strings.Contains(seen[1], "revoke agent") {
+		t.Fatalf("disconnect prompts: %q", seen)
 	}
 	if b, _ := os.ReadFile(cfg); string(b) != before {
 		t.Fatalf("config after disconnect: %q", b)
@@ -310,7 +320,7 @@ func TestConnectRefusesASettingsFileItCannotEdit(t *testing.T) {
 	if err := os.WriteFile(path, []byte("{not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	_, page, _ := c.get("/ui/setup?connect=claude-code")
+	_, page, _ := c.get("/ui/setup/agent?app=claude-code")
 	if !strings.Contains(page, "cannot change") || strings.Contains(page, `name="digest"`) {
 		t.Fatalf("preview:\n%s", page)
 	}

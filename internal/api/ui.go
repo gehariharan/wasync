@@ -10,11 +10,12 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gehariharan/wasync/internal/approval"
+	"github.com/gehariharan/wasync/internal/firstopen"
 )
 
 // The approval page is a plain server-rendered page on the same loopback
@@ -250,6 +251,7 @@ var notices = map[string]struct {
 	"badname":    {"The name must be 1 to 32 characters: a to z, 0 to 9 and dashes.", false},
 	"connected":  {"Connected. The credential was saved where wasync-axi reads it and is not shown anywhere.", true},
 	"loginon":    {"On. wasync starts at every login.", true},
+	"loginhere":  {"Start-at-login is about the computer running wasync. Change it there.", false},
 	"loginoff":   {"wasync will no longer start by itself when you log in.", true},
 	"updstart":   {"Updating. wasync downloads and checks the update, installs it and restarts.", true},
 	"updnone":    {"There is no update to install. Check for updates again.", false},
@@ -259,17 +261,20 @@ var notices = map[string]struct {
 	"folderhere": {"Open the folder on the computer running wasync.", false},
 }
 
+// pagePolicy runs no script. A page that lists Scripts (only Choose chats)
+// gets scriptPolicy instead, which runs wasync's own files and no others.
+const (
+	pagePolicy   = "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+	scriptPolicy = "default-src 'none'; script-src 'self'; connect-src 'self'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
+)
+
 func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 	hd := w.Header()
-	hd.Set("Content-Security-Policy", "default-src 'none'; style-src 'self'; font-src 'self'; img-src 'self'; media-src 'self'; manifest-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'")
+	hd.Set("Content-Security-Policy", pagePolicy)
 	hd.Set("X-Frame-Options", "DENY")
 	hd.Set("Referrer-Policy", "same-origin")
 	login := remoteLogin(r)
 	switch {
-	case r.Method == http.MethodGet && (r.URL.Path == "/ui/" || r.URL.Path == "/ui"):
-		// The app opens on Chats; approvals have their own page.
-		http.Redirect(w, r, "/ui/chats", http.StatusSeeOther)
-		return
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/enter" && login != "":
 		http.Redirect(w, r, "/ui/", http.StatusSeeOther)
 		return
@@ -316,7 +321,45 @@ func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
 
 // uiDispatch runs the page or form a signed-in request names.
 func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	get, post := r.Method == http.MethodGet, r.Method == http.MethodPost
+	if get && h.agentOnly() && (r.URL.Path == "/ui/chats" || r.URL.Path == "/ui/chats/new") {
+		// For AI agents only: wasync's own chat screens are hidden.
+		http.Redirect(w, r, "/ui/home", http.StatusSeeOther)
+		return
+	}
 	switch {
+	case get && (r.URL.Path == "/ui/" || r.URL.Path == "/ui"):
+		h.uiStart(w, r, sess)
+	case get && r.URL.Path == welcomePath:
+		h.welcomePage(w, r, sess)
+	case post && r.URL.Path == welcomePath:
+		h.welcomeDone(w, r, sess)
+	case get && r.URL.Path == "/ui/home":
+		h.homePage(w, r, sess)
+	case get && r.URL.Path == "/ui/settings":
+		h.settingsPage(w, r, sess)
+	case post && r.URL.Path == "/ui/settings":
+		h.settingsChange(w, r, sess)
+	case get && r.URL.Path == removePath:
+		h.removePage(w, r, sess)
+	case post && r.URL.Path == removePath:
+		h.removeAct(w, r, sess)
+	case get && r.URL.Path == "/ui/agents/connect":
+		h.agentsConnect(w, r, sess)
+	case get && r.URL.Path == "/ui/setup/link":
+		h.linkStep(w, r, sess)
+	case post && r.URL.Path == "/ui/setup/use":
+		h.setupUse(w, r, sess)
+	case get && r.URL.Path == pickSetupPath:
+		h.chatsStep(w, r, sess)
+	case post && r.URL.Path == pickSetupPath:
+		h.pickSave(w, r, sess)
+	case get && r.URL.Path == "/ui/setup/running":
+		h.runningStep(w, r, sess)
+	case get && r.URL.Path == "/ui/setup/agent":
+		h.agentStep(w, r, sess)
+	case post && r.URL.Path == "/ui/setup/finish":
+		h.setupFinish(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == uiApprovalsPath:
 		h.uiHome(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/decide":
@@ -352,7 +395,7 @@ func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSess
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/avatar":
 		h.avatar(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/setup":
-		h.setupHome(w, r, sess)
+		h.setupRoute(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/link" && h.setup != nil:
 		h.setupLink(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/agent":
@@ -379,7 +422,25 @@ func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSess
 }
 
 // signInPages are the pages a sign-in may return to.
-var signInPages = map[string]bool{"/ui/": true, uiApprovalsPath: true, "/ui/chats": true, "/ui/sent": true, "/ui/agents": true, "/ui/setup": true}
+var signInPages = map[string]bool{"/ui/": true, uiApprovalsPath: true, "/ui/chats": true, "/ui/sent": true, "/ui/agents": true, "/ui/setup": true, "/ui/home": true, "/ui/settings": true}
+
+// uiStart opens the app's first page: the setup steps until the First open
+// screen was seen, a phone is linked and the steps were finished or skipped,
+// then Home or the chats.
+func (h *handler) uiStart(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	account, err := h.store.Account(r.Context())
+	if err != nil {
+		http.Error(w, "archive unavailable", http.StatusInternalServerError)
+		return
+	}
+	pending, _ := firstopen.Pending(h.dataDir)
+	settings, _ := h.prefs.Get()
+	if account == nil || (pending || settings.SettingUp()) && remoteLogin(r) == "" {
+		http.Redirect(w, r, "/ui/setup", http.StatusSeeOther)
+		return
+	}
+	http.Redirect(w, r, h.homePath(), http.StatusSeeOther)
+}
 
 // signedOut answers a request with no session: the page says how to sign in
 // again, and on this computer offers to do it with the system confirmation.
@@ -458,12 +519,28 @@ func (h *handler) uiFormLimit(w http.ResponseWriter, r *http.Request, sess uiSes
 	return true
 }
 
+// uiBack returns a form to its page with a notice: the approvals for a
+// decision, and for setup and settings forms the page the form names (see
+// formBack), keeping the app it was about.
 func (h *handler) uiBack(w http.ResponseWriter, r *http.Request, notice string) {
 	to := uiApprovalsPath
-	if strings.HasPrefix(r.URL.Path, "/ui/setup") {
-		to = "/ui/setup"
+	switch {
+	case r.URL.Path == "/ui/home":
+		to = "/ui/home"
+	case strings.HasPrefix(r.URL.Path, "/ui/setup") || strings.HasPrefix(r.URL.Path, "/ui/settings"):
+		to = formBack(r)
 	}
-	http.Redirect(w, r, to+"?n="+url.QueryEscape(notice), http.StatusSeeOther)
+	v := url.Values{}
+	if app := r.PostForm.Get("app"); app != "" && (app == otherApp || validApp(app)) && to != "/ui/settings" {
+		v.Set("app", app)
+	}
+	if notice != "" {
+		v.Set("n", notice)
+	}
+	if len(v) > 0 {
+		to += "?" + v.Encode()
+	}
+	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
 func noticeFor(err error) string {
@@ -487,6 +564,9 @@ func noticeFor(err error) string {
 func (h *handler) uiDecide(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	if !h.uiForm(w, r, sess) {
 		return
+	}
+	if r.PostForm.Get("back") == "/ui/home" {
+		r.URL.Path = "/ui/home" // Home's rows return to Home
 	}
 	account, err := h.store.Account(r.Context())
 	if err != nil || account == nil || h.approvals == nil {
@@ -526,13 +606,15 @@ type uiRequest struct {
 	Minutes   int
 }
 
-// uiAgentRequest is one agent send request, with the whole message.
+// uiAgentRequest is one agent send request, with the whole message. Kind is
+// the agent's app, for its icon; Asked says how long ago it asked.
 type uiAgentRequest struct {
-	ID, Short string
-	Agent     string
-	Where     string
-	Text      string
-	Minutes   int
+	ID, Short   string
+	Agent, Kind string
+	Where       string
+	Text        string
+	Minutes     int
+	Asked       string
 }
 
 type uiData struct {
@@ -557,6 +639,19 @@ type uiData struct {
 	// requests waiting for approval, shown on the rail.
 	Page    string
 	Waiting int
+	// AgentOnly is "For my AI agents only": the rail offers Home instead of
+	// Chats, and no screen shows message text.
+	AgentOnly bool
+	// Setup is set on the setup steps, which show a plain top bar and the
+	// stepper instead of the rail.
+	Setup *setupFrame
+	// Welcome is the First open screen, which has neither.
+	Welcome bool
+	// Scripts are wasync's own scripts the page runs; every page works
+	// without them.
+	Scripts []string
+	// UpdateNote says a newer wasync is ready to install, on every page.
+	UpdateNote string
 }
 
 func (d *uiData) frame() *uiData { return d }
@@ -570,7 +665,8 @@ type framed interface{ frame() *uiData }
 // or a wasync whose start cannot be told and that has one, shows nothing.
 func (h *handler) warnBackground(data any) {
 	f, ok := data.(framed)
-	if !ok || f.frame().Signedout || h.service == nil || h.service.Where() == "" || h.info.StartedBy == "login item" {
+	if !ok || f.frame().Signedout || f.frame().Welcome || f.frame().Setup != nil || h.service == nil || h.service.Where() == "" || h.info.StartedBy == "login item" || h.info.StartedBy == appStarted {
+		// The wasync app keeps the wasync it started running behind its icon.
 		return
 	}
 	d := f.frame()
@@ -579,7 +675,7 @@ func (h *handler) warnBackground(data any) {
 	case !installed:
 		d.Warn, d.WarnSetup = "wasync stops when its terminal closes.", true
 	case h.info.StartedBy != "":
-		d.Warn = "Not in the background: wasync stops when its terminal closes. Run wasync service restart."
+		d.Warn = "Not in the background: wasync stops when its terminal closes. It runs by itself from your next login."
 	}
 }
 
@@ -588,8 +684,12 @@ func (h *handler) warnBackground(data any) {
 func railPage(path string) string {
 	first, _, _ := strings.Cut(strings.TrimPrefix(path, "/ui/"), "/")
 	switch first {
-	case "chats", "sent", "agents", "approvals", "setup":
+	case "chats", "agents", "approvals", "home", "settings":
 		return first
+	case "sent":
+		return "agents" // what was sent is reached from Agents
+	case "setup":
+		return "settings"
 	}
 	return ""
 }
@@ -604,6 +704,11 @@ func (h *handler) frameFor(r *http.Request, data any) {
 	}
 	d := f.frame()
 	d.Page = railPage(r.URL.Path)
+	d.AgentOnly = h.agentOnly()
+	if d.Page == "chats" && d.AgentOnly && strings.HasPrefix(r.URL.Path, "/ui/chats/pick") {
+		d.Page = "home" // choosing chats belongs to Home when the chats are hidden
+	}
+	d.UpdateNote = h.updateNote(r)
 	if h.approvals == nil {
 		return
 	}
@@ -613,7 +718,7 @@ func (h *handler) frameFor(r *http.Request, data any) {
 }
 
 func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	data := &uiData{CSRF: sess.csrf, Gate: h.confirmName(r), Title: "wasync approvals", Remote: remoteLogin(r) != ""}
+	data := &uiData{CSRF: sess.csrf, Gate: h.confirmName(r), Title: "Approvals · wasync", Remote: remoteLogin(r) != ""}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		data.Notice, data.NoticeOK = n.text, n.ok
 	}
@@ -623,18 +728,10 @@ func (h *handler) uiHome(w http.ResponseWriter, r *http.Request, sess uiSession)
 		return
 	}
 	if account != nil && h.approvals != nil {
-		for _, p := range h.agentRequests(r.Context(), account.ID) {
-			v := uiAgentRequest{ID: p.ID, Short: p.ID[len(p.ID)-6:], Agent: p.Agent, Text: p.Text, Minutes: int(time.Until(p.ExpiresAt).Round(time.Minute) / time.Minute)}
-			switch {
-			case p.NewNumber:
-				v.Where = "the new number " + p.Phone
-			case p.ChatName != "":
-				v.Where = "“" + p.ChatName + "”, " + approval.AgentSend{Synced: p.Synced}.Target()
-			default:
-				v.Where = p.Chat + ", " + approval.AgentSend{Synced: p.Synced}.Target()
-			}
-			data.AgentPending = append(data.AgentPending, v)
-		}
+		// Grouped by agent, oldest first within each.
+		reqs := h.agentRequestRows(r.Context(), account.ID)
+		sort.SliceStable(reqs, func(i, j int) bool { return reqs[i].Agent < reqs[j].Agent })
+		data.AgentPending = reqs
 		for _, p := range h.approvals.PendingList(account.ID) {
 			if p.IsAgentRequest() {
 				continue
@@ -664,67 +761,59 @@ const uiHead = `{{define "head"}}<!doctype html>
 <meta name="theme-color" content="#f6f7f5" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#111513" media="(prefers-color-scheme: dark)">
 <link rel="preload" href="/ui/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/ui/tokens.css?v={{tokensv}}"><link rel="stylesheet" href="/ui/components.css?v={{componentsv}}">
-{{if .Script}}<script src="/ui/passkey.js" defer></script>{{end}}
-</head><body class="{{if .Signedout}}bare{{else}}app-shell{{end}}">
-{{if not .Signedout}}{{template "rail" .}}{{end}}<main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
-{{if .Warn}}<p class="notice warn" role="status"><strong>{{.Warn}}</strong>{{if .WarnSetup}} <a href="/ui/setup#login">Start at login</a>{{end}}</p>{{end}}{{end}}
+{{if .Script}}<script src="/ui/passkey.js" defer></script>{{end}}{{range .Scripts}}<script src="{{.}}" defer></script>{{end}}
+</head><body class="{{if .Signedout}}bare{{else if .Welcome}}bare welcome-shell{{else if .Setup}}setup-shell{{else}}app-shell{{end}}{{if .Refresh}} refreshing{{end}}">
+{{if .Signedout}}{{else if .Welcome}}{{else if .Setup}}{{template "topbar" .}}{{else}}{{template "rail" .}}{{end}}<main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
+{{with .Setup}}{{template "stepper" .}}{{end}}{{if .Warn}}<p class="notice warn" role="status"><strong>{{.Warn}}</strong>{{if .WarnSetup}} <a href="/ui/settings#login">Start at login</a>{{end}}</p>{{end}}{{if .UpdateNote}}<p class="notice ok" role="status"><strong>{{.UpdateNote}}</strong> <a href="/ui/settings#update">Update</a></p>{{end}}{{end}}
 {{define "notice"}}{{if .Notice}}<p role="status" class="notice {{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}{{end}}
 {{define "rail"}}<nav class="rail" aria-label="wasync">
-<a class="rail-logo" href="/ui/chats" title="{{if .Warn}}{{.Warn}}{{else}}wasync is running{{end}}"><img src="/ui/icon.svg" alt="wasync" width="36" height="36"><span class="rail-dot{{if .Warn}} warn{{end}}"></span></a>
-<a class="rail-i" href="/ui/chats" title="Chats" aria-label="Chats"{{if eq .Page "chats"}} aria-current="page"{{end}}>{{template "icon" "chats"}}</a>
-<a class="rail-i" href="/ui/sent" title="Sent" aria-label="Sent"{{if eq .Page "sent"}} aria-current="page"{{end}}>{{template "icon" "sent"}}</a>
-<a class="rail-i" href="/ui/agents" title="Agents" aria-label="Agents"{{if eq .Page "agents"}} aria-current="page"{{end}}>{{template "icon" "agents"}}</a>
+<a class="rail-logo" href="/ui/" title="{{if .Warn}}{{.Warn}}{{else}}wasync is running{{end}}"><img src="/ui/icon.svg" alt="wasync" width="36" height="36"><span class="rail-dot{{if .Warn}} warn{{end}}"></span></a>
+{{if .AgentOnly}}<a class="rail-i" href="/ui/home" title="Home" aria-label="Home"{{if eq .Page "home"}} aria-current="page"{{end}}>{{template "icon" "home"}}</a>
+{{else}}<a class="rail-i" href="/ui/chats" title="Chats" aria-label="Chats"{{if eq .Page "chats"}} aria-current="page"{{end}}>{{template "icon" "chats"}}</a>
+{{end}}<a class="rail-i" href="/ui/agents" title="Agents" aria-label="Agents"{{if eq .Page "agents"}} aria-current="page"{{end}}>{{template "icon" "agents"}}</a>
 <a class="rail-i" href="/ui/approvals" title="Approvals{{if .Waiting}}: {{.Waiting}} waiting{{end}}" aria-label="Approvals{{if .Waiting}}, {{.Waiting}} waiting{{end}}"{{if eq .Page "approvals"}} aria-current="page"{{end}}>{{template "icon" "approvals"}}{{if .Waiting}}<span class="rail-badge" aria-hidden="true">{{.Waiting}}</span>{{end}}</a>
 <span class="rail-sp"></span>
-<a class="rail-i" href="/ui/setup" title="Set up and settings" aria-label="Set up and settings"{{if eq .Page "setup"}} aria-current="page"{{end}}>{{template "icon" "settings"}}</a>
+<a class="rail-i" href="/ui/settings" title="Settings" aria-label="Settings"{{if eq .Page "settings"}} aria-current="page"{{end}}>{{template "icon" "settings"}}</a>
 </nav>{{end}}
+{{define "topbar"}}<header class="topbar"><span class="brand"><img src="/ui/icon.svg" alt="" width="28" height="28">wasync</span>{{with .Setup}}{{if .Status}}<span class="pill {{.Tone}}" role="status">{{.Status}}</span>{{end}}{{end}}</header>{{end}}
+{{define "stepper"}}<ol class="stepper" aria-label="Setup steps">{{range .Steps}}<li{{if .Done}} class="done"{{end}}{{if .Current}} aria-current="step"{{end}}>{{if .Href}}<a href="{{.Href}}">{{end}}<span class="dot">{{if .Done}}✓{{else}}{{.N}}{{end}}</span> {{.Label}}{{if .Href}}</a>{{end}}</li>{{end}}</ol>{{end}}
 ` + uiIcons
 
 // uiIcons are the line icons the rail and the chats tools use, drawn inline
 // so they follow the text colour. Each is decorative: its link names it.
-const uiIcons = `{{define "icon"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">{{if eq . "chats"}}<path d="M4 5h16v11H9l-5 4z"/>{{else if eq . "sent"}}<path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/>{{else if eq . "agents"}}<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3.5" r="1"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/>{{else if eq . "approvals"}}<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="m9 12 2 2 4-4"/>{{else if eq . "settings"}}<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>{{else if eq . "all"}}<path d="M4 6h16M4 12h16M4 18h16"/>{{else if eq . "pick"}}<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>{{else if eq . "new"}}<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>{{end}}</svg>{{end}}`
+const uiIcons = `{{define "icon"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">{{if eq . "chats"}}<path d="M4 5h16v11H9l-5 4z"/>{{else if eq . "home"}}<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>{{else if eq . "sent"}}<path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/>{{else if eq . "agents"}}<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3.5" r="1"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/>{{else if eq . "approvals"}}<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="m9 12 2 2 4-4"/>{{else if eq . "settings"}}<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>{{else if eq . "all"}}<path d="M4 6h16M4 12h16M4 18h16"/>{{else if eq . "pick"}}<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>{{else if eq . "new"}}<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>{{end}}</svg>{{end}}`
 
 // uiFuncs are the helpers every page template may call.
 var uiFuncs = template.FuncMap{
 	"tokensv":     func() string { return tokensCSSVersion },
 	"componentsv": func() string { return componentsCSSVersion },
+	"requests": func(reqs []uiAgentRequest, csrf, gate, back string) requestsView {
+		return requestsView{Requests: reqs, CSRF: csrf, Gate: gate, Back: back}
+	},
 }
 
-var uiTemplate = template.Must(template.New("ui").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
-{{if .Signedout}}<div class="brand-head"><img src="/ui/icon.svg" alt="" width="40" height="40"><h1>wasync approvals</h1></div>
+var uiTemplate = template.Must(template.New("ui").Funcs(uiFuncs).Parse(uiHead + uiAgentIcons + uiRequestRows + `{{template "head" .}}
+{{if .Signedout}}<div class="brand-head"><img src="/ui/icon.svg" alt="" width="40" height="40"><h1>wasync</h1></div>
 {{template "notice" .}}<section class="card">{{if .Remote}}
 <p>Signed out. Reload the page.</p>{{else}}
 <p>Signed out.</p>
-{{if .Gate}}<form method="post" action="/ui/signin" class="btn-row"><input type="hidden" name="next" value="{{.Next}}"><button class="go">Sign in…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></form>
-<p class="mut">Or run <code>wasync web</code> in a terminal.</p>{{else}}
-<p>Run <code>wasync web</code> in a terminal to sign in.</p>{{end}}{{end}}</section>
+{{if .Gate}}<form method="post" action="/ui/signin" class="btn-row"><input type="hidden" name="next" value="{{.Next}}"><button class="go">Sign in</button> <span class="mut">Asks for {{.Gate}}.</span></form>
+<p class="mut">Or open wasync again from its icon, or run <code>wasync web</code> in a terminal.</p>{{else}}
+<p>Open wasync again from its icon, or run <code>wasync web</code> in a terminal, to sign in.</p>{{end}}{{end}}</section>
 {{else}}
-<h1>wasync approvals</h1>
+<h1>Approvals</h1>
 {{template "notice" .}}
-{{if .Gate}}<p class="mut">Every approval here asks you for {{.Gate}} on this {{if .Remote}}device{{else}}computer{{end}}, showing exactly what you are approving. This page cannot approve anything by itself.</p>
-{{else if .Remote}}<p class="notice bad">To approve from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Or approve on the computer running wasync.</p>
+{{if .Gate}}<p class="mut">Each approval asks for {{.Gate}} on this {{if .Remote}}device{{else}}computer{{end}}, showing exactly what you approve. This page cannot approve anything by itself.</p>
+{{else if .Remote}}<p class="notice bad">To approve from this device, <a href="/ui/settings#devices">set it up with a passkey</a> once. Or approve on the computer running wasync.</p>
 {{else}}<p class="notice bad">This computer cannot show a system confirmation, so this page only shows requests. Approve in a terminal with <code>wasync actions approve REQUEST_ID</code>.</p>{{end}}
-<h2>Agents asking to send</h2>
-{{range .AgentPending}}<section class="card">
-<form method="post" action="/ui/decide">
-<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}">
-<p><strong>{{.Agent}}</strong> wants to send a message to {{.Where}}. <span class="mut">Request {{.Short}}, about {{.Minutes}} min left.</span></p>
-<blockquote>{{.Text}}</blockquote>
-<p class="mut">Approving sends exactly this message once. The agent gets no other access.</p>
-<div class="btn-row">{{if $.Gate}}<button class="go" name="action" value="approve">Approve…</button>{{end}}
-<button name="action" value="reject">Not now</button></div>
-</form></section>
+<div class="label label-row"><span>Agents asking to send{{with .AgentPending}} · {{len .}}{{end}}</span>{{if gt (len .AgentPending) 1}}<form method="post" action="/ui/decide"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="ghost" name="action" value="decline-all">Not now to all</button></form>{{end}}</div>
+{{if .AgentPending}}{{template "requests" (requests .AgentPending .CSRF .Gate "")}}
+<p class="sub">Approving sends exactly that message once. The agent gets no other access.</p>
 {{else}}<p class="card mut">No agent is asking to send anything.</p>{{end}}
-{{if gt (len .AgentPending) 1}}<form method="post" action="/ui/decide" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="action" value="decline-all">Not now to all</button></form>{{end}}
-<h2>Your delete confirmations</h2>
-{{range .Pending}}<section class="card">
-<form method="post" action="/ui/decide">
-<input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}">
-<p><strong>{{.Effect}}</strong> <span class="mut">Request {{.Short}}, about {{.Minutes}} min left.</span></p>
-<div class="btn-row">{{if $.Gate}}<button class="go" name="action" value="approve">Approve…</button>{{end}}
-<button name="action" value="reject">Reject</button></div>
-</form></section>
-{{else}}<p class="card mut">Nothing is waiting.</p>{{end}}
+<p class="label">Your delete confirmations</p>
+{{if .Pending}}<div class="card rows">{{range .Pending}}<div class="item"><div class="grow"><strong>{{.Effect}}</strong><div class="meta">Request {{.Short}}, about {{.Minutes}} min left</div></div>
+<form method="post" action="/ui/decide"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="id" value="{{.ID}}"><button class="ghost" name="action" value="reject">Reject</button>{{if $.Gate}}<button class="go" name="action" value="approve">Approve</button>{{end}}</form></div>
+{{end}}</div>{{else}}<p class="card mut">Nothing is waiting.</p>{{end}}
 <p><a href="/ui/approvals">Refresh</a></p>
 {{end}}
 </main></body></html>

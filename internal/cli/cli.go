@@ -28,6 +28,7 @@ import (
 	"github.com/gehariharan/wasync/internal/service"
 	"github.com/gehariharan/wasync/internal/setup"
 	"github.com/gehariharan/wasync/internal/storage"
+	"github.com/gehariharan/wasync/internal/uninstall"
 	"github.com/gehariharan/wasync/internal/update"
 	"github.com/gehariharan/wasync/internal/webhook"
 	"github.com/gehariharan/wasync/internal/whatsapp"
@@ -90,6 +91,9 @@ type App struct {
 	UpdateSource   update.Source
 	UpdatePlatform update.Platform
 	UpdateLaunch   func(dataDir string) error
+	// RemoveSystem replaces what the removal helper (remove-apply) does to the
+	// computer, for tests.
+	RemoveSystem *uninstall.System
 
 	// runArgs are the arguments this command was started with, so an update
 	// can start the same command again.
@@ -235,6 +239,9 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	}
 	if args[0] == updateApplyCommand {
 		return a.runUpdateApply(parent, cfg, args[1:])
+	}
+	if args[0] == removeApplyCommand {
+		return a.runRemoveApply(parent, args[1:])
 	}
 	if args[0] == "actions" {
 		return a.runActionStatus(parent, cfg, args[1:])

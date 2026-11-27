@@ -42,7 +42,7 @@ func TestEveryPageUsesTheSharedStylesheetsAndNoInlineStyles(t *testing.T) {
 	c.get(linkPath(t, f))
 	pages := map[string]string{"signed out": signedOut}
 	headers := map[string]string{"signed out": signedOutHd.Get("Content-Security-Policy")}
-	for _, path := range []string{"/ui/approvals", "/ui/chats", "/ui/chats/pick", "/ui/chats/new", "/ui/sent", "/ui/agents", "/ui/setup"} {
+	for _, path := range []string{"/ui/approvals", "/ui/chats", "/ui/chats/pick", "/ui/chats/new", "/ui/sent", "/ui/agents", "/ui/settings", "/ui/home", "/ui/setup/link", "/ui/setup/chats", "/ui/setup/running", "/ui/setup/agent", "/ui/agents/connect", "/ui/settings/remove"} {
 		code, page, hd := c.get(path)
 		if code != 200 {
 			t.Fatalf("%s: %d", path, code)
@@ -73,7 +73,7 @@ func TestTheRailMarksTheCurrentPageAndCountsWaitingRequests(t *testing.T) {
 		t.Fatal("the signed-out page shows the app's navigation")
 	}
 	c.get(linkPath(t, f))
-	for path, item := range map[string]string{"/ui/chats": "Chats", "/ui/chats/pick": "Chats", "/ui/sent": "Sent", "/ui/agents": "Agents", "/ui/approvals": "Approvals", "/ui/setup": "Set up and settings"} {
+	for path, item := range map[string]string{"/ui/chats": "Chats", "/ui/chats/pick": "Chats", "/ui/sent": "Agents", "/ui/agents": "Agents", "/ui/agents/connect": "Agents", "/ui/approvals": "Approvals", "/ui/settings": "Settings", "/ui/settings/remove": "Settings"} {
 		_, page, _ := c.get(path)
 		if strings.Count(page, `aria-current="page"`) != 1 {
 			t.Fatalf("%s: want exactly one current rail item:\n%s", path, page)
@@ -82,10 +82,19 @@ func TestTheRailMarksTheCurrentPageAndCountsWaitingRequests(t *testing.T) {
 		if current == nil || current[1] != item {
 			t.Fatalf("%s: current rail item %v, want %q", path, current, item)
 		}
-		for _, link := range []string{"/ui/chats", "/ui/sent", "/ui/agents", "/ui/approvals", "/ui/setup"} {
+		// Sent is reached from Agents and the chats list, not the rail.
+		if strings.Contains(page, `<a class="rail-i" href="/ui/sent"`) {
+			t.Fatalf("%s: Sent is back on the rail", path)
+		}
+		for _, link := range []string{"/ui/chats", "/ui/agents", "/ui/approvals", "/ui/settings"} {
 			if !strings.Contains(page, `<a class="rail-i" href="`+link+`"`) {
 				t.Fatalf("%s: the rail does not reach %s", path, link)
 			}
+		}
+	}
+	for _, path := range []string{"/ui/agents", "/ui/chats"} {
+		if _, page, _ := c.get(path); !strings.Contains(page, `href="/ui/sent"`) {
+			t.Fatalf("%s does not reach Sent:\n%s", path, page)
 		}
 	}
 	if _, page, _ := c.get("/ui/chats"); strings.Contains(page, `class="rail-badge"`) {

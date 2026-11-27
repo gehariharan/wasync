@@ -69,11 +69,11 @@ the CLI use stay on the loopback address, and agent credentials work there exact
 Set each device up once. You need the computer running wasync for it, so that nobody who only
 reaches your tailnet, and no program on that computer, can add a device:
 
-1. On the computer running wasync, open the web app (`wasync web`), go to **Set up** and choose
+1. On the computer running wasync, open the web app (`wasync web`), go to **Settings** and choose
    **Add a device** under *Approve from your other devices*. Confirm the system prompt (Touch ID
    or your password). The page shows a one-time code, such as `K7QP-M2XD-9HTA`. It works once,
    for 10 minutes.
-2. On the other device, open `https://machine.example.ts.net/ui/setup`, enter the code and a
+2. On the other device, open `https://machine.example.ts.net/ui/settings`, enter the code and a
    name for the device, and choose **Set up this device**. Your browser makes a passkey for
    wasync and asks you to confirm with Touch ID, Face ID, Windows Hello or the device's PIN.
 
@@ -85,7 +85,7 @@ A passkey your password manager syncs (for example iCloud Keychain to your iPhon
 those devices too, since each of them still asks for your face, fingerprint or PIN. A phone
 nearby can also answer for a computer through the browser's "use a phone" option.
 
-The Set up page on either computer lists the devices, when each was added and last used, with a
+Settings on either computer lists the devices, when each was added and last used, with a
 **Remove** button that takes effect at once and needs no confirmation. Allowing another tailnet name or login forgets the devices set up for the old
 one, and `wasync tailnet off` forgets them all.
 

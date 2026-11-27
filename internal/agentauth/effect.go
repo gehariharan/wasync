@@ -32,3 +32,8 @@ func GrantEffect(name string, scopes, chats []string, synced bool, expires time.
 	}
 	return text
 }
+
+// RevokeEffect is the prompt sentence for revoking an agent credential.
+func RevokeEffect(name string) string {
+	return "Approve: revoke agent " + QuotedName(name) + "; its credential stops working at once"
+}

@@ -25,8 +25,9 @@ const agentRequestsPath = "/api/agent-requests"
 // ChatName and Text come from agents and WhatsApp, so they are untrusted text,
 // cleaned for display.
 type agentRequestView struct {
-	ID        string    `json:"id"`
-	Agent     string    `json:"agent"`
+	ID        string `json:"id"`
+	Agent     string `json:"agent"`
+	agentID   string
 	Chat      string    `json:"chat"`
 	ChatName  string    `json:"chat_name,omitempty"`
 	Phone     string    `json:"phone,omitempty"` // the number, for a phone-number chat
@@ -54,7 +55,7 @@ func (h *handler) agentRequests(ctx context.Context, account int64) []agentReque
 	for _, r := range h.approvals.AgentRequests(account) {
 		name := names[r.Chat]
 		out = append(out, agentRequestView{
-			ID: r.ID, Agent: humancheck.Clean(r.Send.Agent, 60), Chat: r.Chat, ChatName: humancheck.Clean(name, 80), Phone: approval.PhoneNumber(r.Chat),
+			ID: r.ID, Agent: humancheck.Clean(r.Send.Agent, 60), agentID: r.Send.AgentID, Chat: r.Chat, ChatName: humancheck.Clean(name, 80), Phone: approval.PhoneNumber(r.Chat),
 			NewNumber: r.Send.NewNumber, Synced: r.Send.Synced, Text: humancheck.CleanLines(r.Send.Text), AskedAt: r.Expires.Add(-approval.RequestTTL), ExpiresAt: r.Expires, Effect: r.Effect(name),
 		})
 	}

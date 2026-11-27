@@ -394,8 +394,8 @@ func passkeyBack(path string) string {
 	switch {
 	case strings.HasPrefix(path, "/ui/agents"):
 		return "/ui/agents"
-	case strings.HasPrefix(path, "/ui/setup"):
-		return "/ui/setup"
+	case strings.HasPrefix(path, "/ui/setup"), strings.HasPrefix(path, "/ui/settings"):
+		return "/ui/settings"
 	}
 	return uiApprovalsPath
 }
@@ -523,7 +523,7 @@ func (h *handler) setupDevices(w http.ResponseWriter, r *http.Request, sess uiSe
 		}
 		code := h.passkeys.newCode(s)
 		audit("tailnet_device_code", "")
-		h.setupView(w, r, sess, func(d *setupData) { d.DeviceCode = code })
+		h.settingsView(w, r, sess, func(d *settingsData) { d.DeviceCode = code })
 	case "remove":
 		removed, found, err := tailnet.RemoveDevice(h.dataDir, r.PostForm.Get("id"))
 		if err != nil || !found {
@@ -574,7 +574,7 @@ func (h *handler) passkeyBegin(w http.ResponseWriter, r *http.Request, sess uiSe
 	d := &passkeyData{uiData: uiData{CSRF: sess.csrf, Title: "Set up this device", Remote: true, Script: true}, Mode: "create"}
 	d.RPID, d.Challenge, d.Allow, d.Ask = s.Host, base64.RawURLEncoding.EncodeToString(challenge), credentialIDs(devices), id
 	d.User, d.Login, d.DeviceName, d.DeviceCount = base64.RawURLEncoding.EncodeToString(user[:16]), s.Login, name, len(devices)
-	d.Back, d.ExpiresMinutes = "/ui/setup", int(passkeyTTL/time.Minute)
+	d.Back, d.ExpiresMinutes = "/ui/settings", int(passkeyTTL/time.Minute)
 	h.passkeyRender(w, r, d)
 }
 
@@ -612,10 +612,10 @@ func (h *handler) passkeyRegister(w http.ResponseWriter, r *http.Request, sess u
 
 // devicesBack returns to the devices on the Set up page with a notice.
 func devicesBack(w http.ResponseWriter, r *http.Request, notice string) {
-	http.Redirect(w, r, "/ui/setup?n="+url.QueryEscape(notice)+"#devices", http.StatusSeeOther)
+	http.Redirect(w, r, "/ui/settings?n="+url.QueryEscape(notice)+"#devices", http.StatusSeeOther)
 }
 
-// deviceRow is one device on the Set up page.
+// deviceRow is one device in Settings.
 type deviceRow struct {
 	ID, Name, Added, Used string
 }

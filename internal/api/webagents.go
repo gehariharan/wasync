@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/agentconnect"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/opensend"
 	"github.com/gehariharan/wasync/internal/sendlist"
@@ -67,18 +68,22 @@ type listsView struct {
 
 type agentsData struct {
 	uiData
+	// Cards are the active agents as Home lists them, with Disconnect for an
+	// app wasync connected and Remove for an agent connected by name.
+	Cards  []homeAgent
 	Agents []agentRow
 	Open   openView
 	Lists  listsView
 }
 
 func (h *handler) agentsPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	d := &agentsData{uiData: uiData{CSRF: sess.csrf, Title: "wasync agents", Wide: true, Remote: remoteLogin(r) != ""}}
+	d := &agentsData{uiData: uiData{CSRF: sess.csrf, Title: "Agents · wasync", Wide: true, Remote: remoteLogin(r) != ""}}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		d.Notice, d.NoticeOK = n.text, n.ok
 	}
 	now := time.Now()
 	_ = h.syncAgentChats(r.Context()) // best effort: show the chats as they are synced now
+	d.Cards = h.homeAgents(now)
 	clients, err := agentauth.List(h.dataDir)
 	if err != nil {
 		http.Error(w, "agent registry unavailable", http.StatusInternalServerError)
@@ -316,6 +321,45 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 		back("listoff")
 	case "listresume":
 		h.listResume(w, r, name, back, audit)
+	case "revoke":
+		// Revoking asks like granting does, because revoking one agent and
+		// granting another is how a credential is swapped. An app wasync
+		// connected is disconnected instead, which also takes wasync's entry
+		// out of its settings.
+		if err := agentauth.ValidName(name); err != nil {
+			back("invalid")
+			return
+		}
+		if !h.canConfirm(r) {
+			back(noGate(r))
+			return
+		}
+		if err := h.confirmError(r.Context(), agentauth.RevokeEffect(name)); err != nil {
+			h.uiRefused(w, r, err, back)
+			return
+		}
+		active, err := agentauth.ActiveByName(h.dataDir, name)
+		if err != nil || active == nil {
+			back("failed")
+			return
+		}
+		if conns, err := agentconnect.Connections(h.dataDir); err == nil {
+			for _, c := range conns {
+				if c.ClientID == active.ID {
+					h.connectMu.Lock()
+					notice := h.disconnect(r.Context(), c)
+					h.connectMu.Unlock()
+					back(notice)
+					return
+				}
+			}
+		}
+		if _, err := agentauth.Revoke(h.dataDir, name, time.Now()); err != nil {
+			back("failed")
+			return
+		}
+		audit("revoke", name)
+		back("agentremoved")
 	case "openoff":
 		if err := opensend.Stop(h.dataDir); err != nil {
 			back("failed")
@@ -449,10 +493,15 @@ func (h *handler) listResume(w http.ResponseWriter, r *http.Request, name string
 	back("listresume")
 }
 
-var agentsTemplate = template.Must(template.New("agents").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
+var agentsTemplate = template.Must(template.New("agents").Funcs(uiFuncs).Parse(uiHead + uiAgentIcons + `{{template "head" .}}
 <h1>Agents</h1>
 {{template "notice" .}}
-{{if not .Open.Gate}}{{if .Remote}}<p class="notice bad">To give agents more power from this device, <a href="/ui/setup#devices">set it up with a passkey</a> once. Stopping things works without it.</p>{{else}}<p class="notice bad">This computer cannot show a system confirmation, so this page is read-only. Anything that gives an agent more power cannot be done here; stopping things still can.</p>{{end}}{{end}}
+<div class="card rows">{{range .Cards}}<div class="item">{{template "agenticon" .Kind}}<div class="grow"><strong>{{.Title}}</strong><div class="meta">{{.Can}} · {{.Used}}</div></div>
+<form method="post" action="/ui/agents"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Name}}"><button name="action" value="revoke">{{if .Kind}}Disconnect{{else}}Remove{{end}}</button></form></div>
+{{else}}<div class="item"><div class="grow mut">No agent is connected yet.</div></div>{{end}}</div>
+<p class="btn-row"><a class="btn go" href="/ui/agents/connect">Connect another agent</a> <a class="btn" href="/ui/sent">What was sent</a></p>
+{{range .Cards}}{{if and .Waiting .Next}}<p class="notice warn">{{.Title}} has never called wasync. {{.Next}}</p>{{end}}{{end}}
+{{if not .Open.Gate}}{{if .Remote}}<p class="notice bad">To give agents more power from this device, <a href="/ui/settings#devices">set it up with a passkey</a> once. Turning off an agent's sending or open sending, and pausing or removing a list, work without it; removing an agent does not.</p>{{else}}<p class="notice bad">This computer cannot show a system confirmation, so this page is read-only for anything that gives an agent more power or removes an agent. Turning off an agent's sending or open sending, and pausing or removing a list, still can.</p>{{end}}{{end}}
 
 <h2>Open sending</h2>
 {{if .Open.On}}
@@ -482,12 +531,12 @@ var agentsTemplate = template.Must(template.New("agents").Funcs(uiFuncs).Parse(u
 <p class="btn-row"><button class="go">Approve list…</button> <span class="mut">Asks you to confirm with {{.Open.GateName}}. Approving again replaces the agent's list and keeps who was messaged.</span></p></form>
 {{else}}<p class="mut">Allow sending for an agent first.</p>{{end}}{{end}}
 
-<h2>Agents</h2>
+<h2>What each agent may do</h2>
 {{if .Agents}}<div class="table-wrap"><table class="table"><thead><tr><th>Name</th><th>Allowed to</th><th>Sending</th></tr></thead><tbody>
 {{range .Agents}}<tr><td>🤖 {{.Name}}{{if .Expires}} <span class="mut">expires {{.Expires}}</span>{{end}}</td><td>{{.Scopes}}{{if .ReadsAll}} <span class="mut">(reads every chat)</span>{{else if .Synced}} <span class="mut">(every synced chat: {{.Chats}} now)</span>{{else}} <span class="mut">({{.Chats}} chat(s) approved earlier; connect it again to use every synced chat)</span>{{end}}</td>
 <td>{{if .CanSend}}On <form method="post" action="/ui/agents" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="stopsend"><input type="hidden" name="agent" value="{{.Name}}"><button>Stop sending</button></form>
 {{else}}Off{{if $.Open.Gate}}{{if not .ReadsAll}} <form method="post" action="/ui/agents" class="inline"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="action" value="allowsend"><input type="hidden" name="agent" value="{{.Name}}"><button>Allow sending…</button></form>{{else}} <span class="mut">reads every chat, so set it up again in a terminal to allow sending</span>{{end}}{{end}}{{end}}</td></tr>
 {{end}}</tbody></table></div>
-{{else}}<p class="mut">No agents yet. Add one from <a href="/ui/setup">Set up</a>.</p>{{end}}
+{{else}}<p class="mut">No agents yet. <a href="/ui/agents/connect">Connect one</a>.</p>{{end}}
 </main></body></html>
 `))

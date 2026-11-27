@@ -162,6 +162,9 @@ type Owner struct {
 	// PhoneOf returns the "+digits" number of a direct chat when WhatsApp has
 	// shared it, or ""; nil while there is no WhatsApp connection.
 	PhoneOf func(context.Context, string) string
+	// Remover starts the helper that removes wasync (Settings, Remove
+	// wasync); the zero value uses the real one.
+	Remover Remover
 }
 
 // StartOwner starts the local API for a running owner.
@@ -184,6 +187,7 @@ func StartOwner(o Owner) (*Server, error) {
 	h.setup, h.service, h.serviceSpec, h.axiPath, h.agentEnv = o.Setup, o.Service, o.ServiceSpec, o.AxiPath, o.AgentConnect
 	h.info, h.paired, h.unlink, h.stop = o.Info, o.Paired, o.Unlink, o.Stop
 	h.update = o.Update
+	h.remover = o.Remover
 	h.showFolder = o.ShowFolder
 	if h.showFolder == nil {
 		h.showFolder = datadir.Show
@@ -209,6 +213,7 @@ func StartOwner(o Owner) (*Server, error) {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		_ = markEarlierListChats(ctx, store, dir) // best effort: tried again before any agent's chats are set
 		_ = h.syncAgentChats(ctx)                 // best effort: every request from such an agent tries again
+		h.recordSetupStart(ctx)
 		cancel()
 	}
 	srv := &http.Server{Handler: h.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
@@ -272,6 +277,8 @@ type handler struct {
 	prefs            *prefs.Store
 	avatars          *avatars.Cache
 	phoneOf          func(context.Context, string) string
+	remover          Remover
+	removal          removal
 }
 
 func (h *handler) routes() http.Handler {

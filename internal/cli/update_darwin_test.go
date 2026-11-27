@@ -150,7 +150,8 @@ func TestOneClickUpdateEndToEnd(t *testing.T) {
 	res.Body.Close()
 	jar, _ := cookiejar.New(nil)
 	browser := &http.Client{Jar: jar}
-	page := get(t, browser, link.URL)
+	get(t, browser, link.URL)
+	page := get(t, browser, "http://"+api+"/ui/settings")
 	i := strings.Index(page, `name="csrf" value="`)
 	if i < 0 || !strings.Contains(page, `id="update"`) {
 		t.Fatalf("setup page:\n%s", page)

@@ -84,30 +84,39 @@ once to migrate. Upgrading, trust and PATH details are in [docs/install.md](docs
 wasync setup
 ```
 
-`wasync setup` starts wasync and opens a setup page in your browser:
+`wasync setup` starts wasync and opens the setup steps in your browser (the
+[wasync app](docs/desktop.md) opens the same steps in its window). The very first time, a
+welcome screen says that wasync is an independent project, not made by WhatsApp or Meta, and
+waits for **I understand**. Then four steps:
 
-1. **Link WhatsApp.** Scan the QR code with WhatsApp on your phone (*Linked devices → Link a
+1. **Link.** Scan the QR code with WhatsApp on your phone (*Settings → Linked devices → Link a
    device*). The code refreshes by itself; if it expires, the page offers **Get a new code**.
-2. **Choose chats.** Tick the chats wasync should keep on this computer. Nothing else is
-   archived, and agents see none of them until you connect one.
-3. **Connect an agent** (optional). Pick ChatGPT & Codex, Claude Code or Claude Desktop. The
-   page first shows the exact lines it will add to that app's own settings file. When you
-   confirm, wasync gives the app its own credential (read, reply and react in every chat you
-   sync, now and later; editing is off; to message any other chat or a new number it asks you
-   to approve each message), saves it where only that app's WhatsApp tools read it,
-   keeps a copy of the settings file, and adds the tools; for Codex it also adds the WhatsApp
-   plugin. Restart the app, and the page shows when it last called wasync. **Disconnect** takes
-   the entry out and revokes the credential. For any other agent, pick a name instead; wasync
-   creates a credential with the same abilities and saves it straight to where `wasync-axi`
-   reads it, never showing it. Sending anywhere else needs your approval.
-4. **Start at login** (optional, macOS and Windows). Adds a login item for your account only,
-   with no administrator rights, that runs `wasync serve` (or, when the
-   [wasync app](docs/desktop.md#start-when-i-log-in) started wasync, opens the app).
+   Once linked, choose how you will use wasync: **For my AI agents only** (the default: wasync
+   hides its own chat screens and opens on Home) or **Also read my chats here**. You can change
+   it later in Settings.
+2. **Chats.** Tick the chats wasync should keep on this computer, with search, Groups and People
+   tabs, and the chats you chose listed beside them. Nothing else is archived, and agents see
+   none of them until you connect one. Untick **Also save photos, videos and files** to keep
+   text only.
+3. **Keep running.** Turn on **Start wasync when I log in** (macOS and Windows). It adds a login
+   item for your account only, with no administrator rights, that runs `wasync serve` (or, when
+   the [wasync app](docs/desktop.md#start-when-i-log-in) started wasync, opens the app). Turning
+   it on or off asks nothing, and only works on the computer running wasync.
+4. **Agent** (optional). Pick ChatGPT & Codex, Claude Code or Claude Desktop. **Show the lines
+   it adds** shows the exact lines wasync will add to that app's own settings file. When you
+   press **Connect** and confirm, wasync gives the app its own credential (read, reply and react
+   in every chat you sync, now and later; editing is off; to message any other chat or a new
+   number it asks you to approve each message), saves it where only that app's WhatsApp tools
+   read it, keeps a copy of the settings file, and adds the tools; for Codex it also adds the
+   WhatsApp plugin. Restart the app, and the page shows when it last called wasync.
+   **Disconnect** takes the entry out and revokes the credential. For any other app, pick
+   **Other**: wasync creates a credential with the same abilities, saves it straight to where
+   `wasync-axi` reads it, never showing it, and shows the block to paste into the app.
 
-Steps 3 and 4 widen what runs on your behalf, so each asks your computer to confirm (Touch ID or
-password on macOS, Windows Hello or password on Windows). Where a computer cannot show that
-prompt, the page shows the terminal command instead. `setup` keeps running as the active wasync
-until you press Ctrl-C; if wasync is already running, it opens that copy's setup page.
+Connecting an agent widens what runs on your behalf, so it asks your computer to confirm (Touch
+ID or password on macOS, Windows Hello or password on Windows). Where a computer cannot show
+that prompt, the page says so. `setup` keeps running as the active wasync until you press
+Ctrl-C; if wasync is already running, it opens that copy's setup steps.
 
 wasync only captures while it is running. Once you enable a chat, wasync also asks your phone for
 its older messages, best effort. See [History and capture](docs/history.md) for what is stored
@@ -121,20 +130,24 @@ wasync web
 
 With wasync running, `wasync web` opens the web app in your browser through a one-time link
 that works for two minutes and is never printed. It stays signed in while you use it; if a page
-signs you out, press **Sign in** and confirm. Its five pages are icons on the rail down the left
+signs you out, press **Sign in** and confirm. Its pages are icons on the rail down the left
 side:
 
-- **Chats**: your synced chats and their messages, side by side. A small robot marks chats an
-  agent can read. Write to an open chat from the box under its messages, or start a message to
-  a new number with the pencil icon; messages you send go out once, as you. Use the tick-box icon
-  to choose which chats sync, and the chat header's **Downloads** setting to choose how
-  attachments download ([Media](docs/media.md)).
-- **Sent**: what was sent from this computer, by you or by an agent.
-- **Agents**: each agent's access; allow or stop sending, approve a paced list of phone numbers
-  for one agent, or switch on open sending for an hour.
+- **Home** (when wasync is for your AI agents only): what needs you (agents asking to send a
+  message), your connected agents and the chats they can use. Message text is not shown.
+- **Chats** (when you also read your chats here): your synced chats and their messages, side by
+  side. A small robot marks chats an agent can read. Write to an open chat from the box under
+  its messages, or start a message to a new number with the pencil icon; messages you send go
+  out once, as you. Use the tick-box icon to choose which chats sync, the paper-plane icon for
+  what was sent, and the chat header's **Downloads** setting to choose how attachments download
+  ([Media](docs/media.md)).
+- **Agents**: your connected agents, **Connect another agent**, **What was sent** (by you or by
+  an agent), and each agent's access; allow or stop sending, approve a paced list of phone
+  numbers for one agent, or switch on open sending for an hour.
 - **Approvals**: messages agents are asking to send (also `wasync approvals`), each approved on
   its own, and your own delete confirmations.
-- **Set up and settings** (the gear at the foot of the rail): the setup page above.
+- **Settings** (the gear at the foot of the rail): how you use wasync, chats and media,
+  start at login, agents, other devices, storage, updates, and **Remove wasync**.
 
 Anything that gives an agent more power asks your computer to confirm, and the operating-system
 prompt names exactly what you are approving. Stopping things never needs confirmation. The page
@@ -311,10 +324,13 @@ an AI service; an agent you connect yourself reads only what you grant it.
 The archive, session and downloaded files are plaintext with restrictive OS
 permissions; software running as your user can access them. Shared or exported
 copies are your responsibility. Local cleanup and WhatsApp remote deletion have
-different scopes and require explicit confirmation. Uninstalling keeps the data
-directory; stop the application and remove that directory
-if you want to delete the remaining local archive and pairing credentials. Use
-`wasync logout` before removal to unlink the device. Questions can be raised via
+different scopes and require explicit confirmation. **Settings > Remove wasync**, after
+you confirm with Touch ID, your password or Windows Hello, disconnects your agents, unlinks
+the device, removes the start-at-login items and then removes the program the way you
+installed it; it keeps the data directory unless you tick **Also delete my chats and data** ([Removing wasync](docs/install.md#removing-wasync)). Uninstalling any
+other way keeps the data directory too; stop wasync and remove that directory if you
+want to delete the local archive and pairing credentials, and use `wasync logout`
+first to unlink the device. Questions can be raised via
 our public GitHub issue tracker; do not post private messages or credentials there.
 
 ## Documentation

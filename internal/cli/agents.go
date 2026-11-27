@@ -407,7 +407,7 @@ func (a *App) agentsRevoke(ctx context.Context, cfg config.Config, args []string
 	if line != name {
 		return fmt.Errorf("confirmation did not match; nothing revoked")
 	}
-	if err := a.confirmHuman(ctx, "Approve: revoke agent "+agentauth.QuotedName(name)+"; its credential stops working at once"); err != nil {
+	if err := a.confirmHuman(ctx, agentauth.RevokeEffect(name)); err != nil {
 		return fmt.Errorf("%w; nothing revoked", err)
 	}
 	client, err := agentauth.Revoke(cfg.DataDir, name, time.Now())

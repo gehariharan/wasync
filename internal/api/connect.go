@@ -42,6 +42,8 @@ func init() {
 		"pluginleft":        {"Disconnected, but the WhatsApp plugin could not be removed from Codex. Remove it there if you no longer want it.", true},
 		"disconnectleft":    {"Its credential no longer works, but wasync could not take its entry out of the app's settings file. Fix or restore that file, then press Disconnect again.", false},
 		"notconnected":      {"That app is not connected.", false},
+		"revokefailed":      {"wasync could not revoke that agent's credential, so it still works and nothing else changed. Try again.", false},
+		"agentremoved":      {"Removed. That agent's credential no longer works.", true},
 	} {
 		notices[k] = v
 	}
@@ -259,11 +261,11 @@ func (h *handler) setupConnections(w http.ResponseWriter, r *http.Request, sess 
 }
 
 func (h *handler) connectBack(w http.ResponseWriter, r *http.Request, notice, kind string) {
-	to := "/ui/setup?n=" + url.QueryEscape(notice)
+	v := url.Values{"n": {notice}}
 	if kind != "" {
-		to += "&connect=" + url.QueryEscape(kind)
+		v.Set("app", kind)
 	}
-	http.Redirect(w, r, to+"#connect", http.StatusSeeOther)
+	http.Redirect(w, r, connectBackTo(r)+"?"+v.Encode(), http.StatusSeeOther)
 }
 
 // setupConnect connects an app after the person confirms it.
@@ -384,7 +386,7 @@ func (h *handler) connect(ctx context.Context, p *connectPlan, req agentauth.Gra
 }
 
 // setupDisconnect takes an app's entry out of its settings and revokes its
-// credential. It needs no confirmation: it only takes power away.
+// credential after the person confirms it, like revoking any agent.
 func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	if !h.uiForm(w, r, sess) {
 		return
@@ -395,18 +397,26 @@ func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess u
 		http.Error(w, "unknown agent", http.StatusBadRequest)
 		return
 	}
+	if !h.canConfirm(r) {
+		h.connectBack(w, r, noGate(r), kind)
+		return
+	}
 	h.connectMu.Lock()
 	defer h.connectMu.Unlock()
 	c, err := agentconnect.Find(h.dataDir, a.Kind)
 	if err != nil {
-		h.connectBack(w, r, "failed", "")
+		h.connectBack(w, r, "failed", kind)
 		return
 	}
 	if c == nil {
-		h.connectBack(w, r, "notconnected", "")
+		h.connectBack(w, r, "notconnected", kind)
 		return
 	}
-	h.connectBack(w, r, h.disconnect(r.Context(), *c), "")
+	if err := h.confirmError(r.Context(), agentauth.RevokeEffect(c.Client)); err != nil {
+		h.uiRefused(w, r, err, func(n string) { h.connectBack(w, r, n, kind) })
+		return
+	}
+	h.connectBack(w, r, h.disconnect(r.Context(), *c), kind)
 }
 
 // disconnect undoes a connection as far as it can and returns the notice.
@@ -415,10 +425,15 @@ func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess u
 func (h *handler) disconnect(ctx context.Context, c agentconnect.Connection) string {
 	env := h.connectEnv()
 	audit := agentauth.NewAuditLog(h.dataDir)
-	if active, err := agentauth.ActiveByName(h.dataDir, c.Client); err == nil && active != nil && active.ID == c.ClientID {
-		if _, err := agentauth.Revoke(h.dataDir, c.Client, time.Now()); err == nil {
-			_ = audit.Append(agentauth.AuditEntry{Event: "revoke", ClientID: c.ClientID, ClientName: c.Client, Outcome: agentauth.OutcomeAllowed})
+	active, err := agentauth.ActiveByName(h.dataDir, c.Client)
+	if err != nil {
+		return "revokefailed"
+	}
+	if active != nil && active.ID == c.ClientID {
+		if _, err := agentauth.Revoke(h.dataDir, c.Client, time.Now()); err != nil {
+			return "revokefailed"
 		}
+		_ = audit.Append(agentauth.AuditEntry{Event: "revoke", ClientID: c.ClientID, ClientName: c.Client, Outcome: agentauth.OutcomeAllowed})
 	}
 	if c.CredentialDir != "" {
 		_ = os.Remove(filepath.Join(c.CredentialDir, axicred.FileName))

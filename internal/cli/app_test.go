@@ -98,7 +98,12 @@ func TestSetupForTheAppAnswersOnItsPipesAndStopsWhenTheAppGoes(t *testing.T) {
 
 	// The app's status line and, for a wasync it did not start, its links.
 	cfg := config.Config{DataDir: dir, APIAddr: "127.0.0.1:1", Timeout: 10 * time.Second}
+	// Linking runs in the background after the API answers, so wait for it to finish.
 	st := app.Status(context.Background(), cfg)
+	for deadline := time.Now().Add(10 * time.Second); (st.Paired == nil || !*st.Paired) && time.Now().Before(deadline); {
+		time.Sleep(20 * time.Millisecond)
+		st = app.Status(context.Background(), cfg)
+	}
 	if !st.Running || !st.Answered || st.PID != ready.PID || st.Paired == nil || !*st.Paired || st.Kind != "setup" {
 		t.Fatalf("status %+v", st)
 	}
@@ -120,7 +125,7 @@ func TestSetupForTheAppAnswersOnItsPipesAndStopsWhenTheAppGoes(t *testing.T) {
 		t.Fatal(err)
 	}
 	res.Body.Close()
-	res, err = browser.Get("http://" + api + "/ui/setup")
+	res, err = browser.Get("http://" + api + "/ui/settings")
 	if err != nil {
 		t.Fatal(err)
 	}

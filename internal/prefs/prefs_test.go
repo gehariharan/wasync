@@ -62,6 +62,22 @@ func TestUpdateSavesPrivatelyAndKeepsUnknownKeys(t *testing.T) {
 	if _, err = store.Update(func(s *Settings) { s.Use = "robots" }); err == nil {
 		t.Fatal("an unknown use was saved")
 	}
+	// Nothing recorded is not a setup in progress; one begun is, with the
+	// furthest step reached, until it is finished.
+	if s.SetupDone != nil || s.SettingUp() {
+		t.Fatalf("no setup recorded: %+v", s)
+	}
+	notDone, done := false, true
+	if s, err = store.Update(func(s *Settings) { s.SetupDone, s.SetupStep = &notDone, 3 }); err != nil || !s.SettingUp() || s.SetupStep != 3 {
+		t.Fatalf("setup begun: %+v %v", s, err)
+	}
+	if s, err = store.Update(func(s *Settings) { s.SetupDone = &done }); err != nil || s.SettingUp() {
+		t.Fatalf("setup done: %+v %v", s, err)
+	}
+	// Finishing setup is remembered by every store on the folder.
+	if got, _ := Open(dir).Get(); got.SetupDone == nil || !*got.SetupDone || got.SettingUp() || got.SetupStep != 3 {
+		t.Fatalf("setup done was not saved: %+v", got)
+	}
 }
 
 func TestADamagedFileGivesDefaultsAndIsNotOverwritten(t *testing.T) {

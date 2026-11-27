@@ -10,8 +10,8 @@ import (
 
 // The web app's shared assets: the design system's two stylesheets and its
 // bundled typeface, the manifest and icons, so a browser can pin it as an app
-// (Add to Dock in Safari, Install in Chrome), and the one script the passkey
-// pages run. They hold nothing private and are served without a session:
+// (Add to Dock in Safari, Install in Chrome), the script the passkey pages run
+// and the one that saves each tick on Choose chats without reloading it. They hold nothing private and are served without a session:
 // browsers fetch a manifest and the signed-out page's styles without cookies.
 // There is no service worker: the app is only useful while this computer is
 // reachable.
@@ -32,6 +32,7 @@ var webAssets = map[string]struct{ file, kind string }{
 	"/ui/apple-touch-icon.png": {"apple-touch-icon.png", "image/png"},
 	"/ui/favicon.ico":          {"favicon.ico", "image/x-icon"},
 	"/ui/passkey.js":           {"passkey.js", "text/javascript; charset=utf-8"},
+	"/ui/picker.js":            {"picker.js", "text/javascript; charset=utf-8"},
 }
 
 // assetVersion is a short hash of a stylesheet's bytes. Pages link it as a

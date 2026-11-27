@@ -104,9 +104,13 @@ func run() error {
 	log.Info("wasync app starting", "version", buildinfo.Version, "data_dir", cfg.DataDir, "background", *background)
 
 	host := &desktop.Host{Wasync: *wasync, App: self, Config: cfg, Log: logOut, CLI: &cli.App{Out: io.Discard, Err: logOut}, Command: wasyncCommand}
-	d := &desktopApp{host: host, log: log, logOut: logOut, held: logFile == nil}
+	d := &desktopApp{host: host, log: log, logOut: logOut, held: logFile == nil, moved: make(chan struct{})}
 	host.OnUpdate = func() {
 		log.Info("wasync stopped to install an update; the update opens the app again")
+		d.app.Quit()
+	}
+	host.OnRemove = func() {
+		log.Info("wasync stopped because it is being removed; the app quits so it can be removed too")
 		d.app.Quit()
 	}
 	return d.run(*background)
@@ -187,7 +191,10 @@ type desktopApp struct {
 	// held is set when another wasync held the old data folder as the app
 	// started, so its log is not open yet.
 	held bool
-	app  *application.App
+	// moved is closed once the app has checked for the `wasync service
+	// install` login item (see moveLoginItem); wasync is started only after.
+	moved chan struct{}
+	app   *application.App
 
 	mu     sync.Mutex
 	window *application.WebviewWindow
@@ -249,9 +256,11 @@ func (d *desktopApp) run(background bool) error {
 		if d.held {
 			go d.openLog()
 		}
+		go d.moveLoginItem()
 		go d.keepStatus()
 		if background {
 			go func() {
+				<-d.moved
 				if _, err := d.host.Ensure(context.Background()); err != nil {
 					d.log.Warn("starting wasync", "error", err)
 				}
@@ -261,6 +270,19 @@ func (d *desktopApp) run(background bool) error {
 		d.openWindow()
 	})
 	return d.app.Run()
+}
+
+// moveLoginItem moves the person from the `wasync service install` login
+// item to the app's own when the old one starts wasync for the app's data
+// directory, so only one of them starts wasync at login. The person chose to
+// start at login already, so it asks nothing.
+func (d *desktopApp) moveLoginItem() {
+	defer close(d.moved)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	if _, err := d.host.MoveLoginItem(ctx, service.System(), service.App(), d.log); err != nil {
+		d.log.Warn("moving to the app's own login item", "error", err)
+	}
 }
 
 // openLog opens the app's log once the wasync that held the old data folder
@@ -360,6 +382,7 @@ func (d *desktopApp) openWindow() {
 
 // load starts wasync if needed and opens its start page in w.
 func (d *desktopApp) load(w *application.WebviewWindow) {
+	<-d.moved
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	link, err := d.host.StartLink(ctx)

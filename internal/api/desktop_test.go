@@ -30,7 +30,8 @@ func readDesktop(t *testing.T, code int, body string) desktopSettings {
 }
 
 func TestDesktopSettingsFirstOpenIsShownOnceAndSaved(t *testing.T) {
-	_, c, csrf := newSetupFixture(t, true)
+	f, c, csrf := newSetupFixture(t, true)
+	firstOpenAgain(t, f.accessFixture)
 	code, body, hd := c.get(desktopPath)
 	d := readDesktop(t, code, body)
 	if !d.FirstOpen || hd.Get("Content-Type") != "application/json" || hd.Get("Cache-Control") != "no-store" {
@@ -54,41 +55,29 @@ func TestDesktopSettingsFirstOpenIsShownOnceAndSaved(t *testing.T) {
 	}
 }
 
-func TestDesktopStartAtLoginAsksToTurnOnButNotOff(t *testing.T) {
-	sf, c, csrf := newSetupFixture(t, true)
-	d := desktopJSON(t)(c.get(desktopPath))
-	if want := (desktopLoginItem{Available: true, Where: "a test login item", Confirm: "the test prompt"}); d.StartAtLogin != want {
-		t.Fatalf("before: %+v", d.StartAtLogin)
-	}
-	if code, body, _ := c.post(desktopLoginPath, url.Values{"csrf": {csrf}, "on": {"yes"}}); code != 400 || !strings.Contains(body, "error") {
-		t.Fatalf("a bad value: %d %s", code, body)
-	}
-	if code, body, _ := c.post(desktopLoginPath, url.Values{"csrf": {csrf}, "on": {"true"}}); code != 403 || sf.item.installed {
-		t.Fatalf("declined at the prompt: %d %s", code, body)
-	}
-	sf.stub.set(true)
-	d = desktopJSON(t)(c.post(desktopLoginPath, url.Values{"csrf": {csrf}, "on": {"true"}}))
-	if !d.StartAtLogin.On || !sf.item.installed || sf.item.spec.Exe != "/opt/wasync" {
-		t.Fatalf("confirmed: %+v %+v", d, sf.item)
-	}
-	if got := sf.stub.seen(); got[len(got)-1] != loginItemPrompt {
-		t.Fatalf("prompt %q", got)
-	}
-	asked := len(sf.stub.seen())
-	d = desktopJSON(t)(c.post(desktopLoginPath, url.Values{"csrf": {csrf}, "on": {"false"}}))
-	if d.StartAtLogin.On || sf.item.installed || len(sf.stub.seen()) != asked {
-		t.Fatalf("turning it off must not prompt: %+v", d)
-	}
-}
-
-func TestDesktopStartAtLoginNeedsASystemPromptToTurnOn(t *testing.T) {
-	sf, c, csrf := newSetupFixture(t, false)
-	d := desktopJSON(t)(c.get(desktopPath))
-	if !d.StartAtLogin.Available || d.StartAtLogin.Confirm != "" {
-		t.Fatalf("no prompt here: %+v", d.StartAtLogin)
-	}
-	if code, _, _ := c.post(desktopLoginPath, url.Values{"csrf": {csrf}, "on": {"true"}}); code != 403 || sf.item.installed {
-		t.Fatalf("turned on with no prompt: %d", code)
+// Start-at-login is the person's switch on this computer, like the
+// installer's tick box: it turns on and off without a system prompt.
+func TestDesktopStartAtLoginTurnsOnAndOffWithoutAPrompt(t *testing.T) {
+	for _, withPrompt := range []bool{true, false} {
+		sf, c, csrf := newSetupFixture(t, withPrompt)
+		d := desktopJSON(t)(c.get(desktopPath))
+		if want := (desktopLoginItem{Available: true, Where: "a test login item"}); d.StartAtLogin != want {
+			t.Fatalf("before: %+v", d.StartAtLogin)
+		}
+		if code, body, _ := c.post(desktopLoginPath, url.Values{"csrf": {csrf}, "on": {"yes"}}); code != 400 || !strings.Contains(body, "error") {
+			t.Fatalf("a bad value: %d %s", code, body)
+		}
+		d = desktopJSON(t)(c.post(desktopLoginPath, url.Values{"csrf": {csrf}, "on": {"true"}}))
+		if !d.StartAtLogin.On || !sf.item.installed || sf.item.spec.Exe != "/opt/wasync" {
+			t.Fatalf("turned on: %+v %+v", d, sf.item)
+		}
+		d = desktopJSON(t)(c.post(desktopLoginPath, url.Values{"csrf": {csrf}, "on": {"false"}}))
+		if d.StartAtLogin.On || sf.item.installed {
+			t.Fatalf("turned off: %+v", d)
+		}
+		if got := sf.stub.seen(); len(got) != 0 {
+			t.Fatalf("start-at-login asked for a prompt: %q", got)
+		}
 	}
 }
 
