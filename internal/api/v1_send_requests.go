@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,7 +12,6 @@ import (
 
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
-	"github.com/gehariharan/wasync/internal/opensend"
 	"github.com/gehariharan/wasync/internal/query"
 	"github.com/gehariharan/wasync/internal/sendlist"
 	"github.com/gehariharan/wasync/internal/whatsapp"
@@ -124,7 +124,7 @@ func (h *handler) v1RequestSend(w http.ResponseWriter, r *http.Request, id strin
 	if a == nil {
 		return
 	}
-	if h.mayAlreadySend(c, target) {
+	if h.mayAlreadySend(r.Context(), c, target) {
 		v1OK(w, id, sendRequestView{Status: "already_allowed", Chat: target}, nil)
 		return
 	}
@@ -149,16 +149,16 @@ func (h *handler) v1RequestSend(w http.ResponseWriter, r *http.Request, id strin
 
 // mayAlreadySend reports whether POST /api/v1/messages would let c send to
 // chat without asking: a chat it may use, a number on its approved list, or
-// any chat while open sending is on.
-func (h *handler) mayAlreadySend(c *agentauth.Client, chat string) bool {
+// any chat open sending has room for right now.
+func (h *handler) mayAlreadySend(ctx context.Context, c *agentauth.Client, chat string) bool {
 	if c.AllowsChatScope(agentauth.ScopeSend, chat) {
 		return true
 	}
 	if list, on := sendlist.For(h.dataDir, c.ID, time.Now()); on && list.Find(chat) != nil {
 		return true
 	}
-	_, on := opensend.ActiveNow(h.dataDir, time.Now())
-	return on
+	_, no := h.openSendCheck(ctx, chat)
+	return no == nil
 }
 
 func (h *handler) v1SendRequestStatus(w http.ResponseWriter, r *http.Request, id string) {

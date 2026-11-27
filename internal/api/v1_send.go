@@ -222,18 +222,33 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 // openSendRoom enforces open sending's hourly caps and marks the sent-log entry.
 // It answers 429 itself when there is no room.
 func (h *handler) openSendRoom(w http.ResponseWriter, r *http.Request, id, chat string, entry *sentlog.Entry) bool {
-	if _, on := opensend.ActiveNow(h.dataDir, time.Now()); !on {
-		v1Fail(w, id, 403, query.CodeForbidden, "open sending has just been switched off", "ask the person to approve this chat or switch open sending on again")
+	newNumber, no := h.openSendCheck(r.Context(), chat)
+	if no != nil {
+		v1Fail(w, id, no.status, no.code, no.message, no.help)
 		return false
 	}
+	entry.Open, entry.NewNumber = true, newNumber
+	return true
+}
+
+// openSendRefusal is why open sending will not take a message right now.
+type openSendRefusal struct {
+	status              int
+	code, message, help string
+}
+
+// openSendCheck reports whether open sending has room for a message to chat
+// right now, and whether chat would count as a new number.
+func (h *handler) openSendCheck(ctx context.Context, chat string) (newNumber bool, no *openSendRefusal) {
+	if _, on := opensend.ActiveNow(h.dataDir, time.Now()); !on {
+		return false, &openSendRefusal{403, query.CodeForbidden, "open sending has just been switched off", "ask the person to approve this chat or switch open sending on again"}
+	}
 	if h.sent == nil {
-		v1Fail(w, id, 503, query.CodeInternal, "the sent log is unavailable, so open sending is refused", "restart wasync")
-		return false
+		return false, &openSendRefusal{503, query.CodeInternal, "the sent log is unavailable, so open sending is refused", "restart wasync"}
 	}
 	recent, err := h.sent.Recent(1000)
 	if err != nil {
-		v1Fail(w, id, 503, query.CodeInternal, "the sent log cannot be read, so open sending is refused", "check the permissions of the wasync data directory")
-		return false
+		return false, &openSendRefusal{503, query.CodeInternal, "the sent log cannot be read, so open sending is refused", "check the permissions of the wasync data directory"}
 	}
 	since := time.Now().Add(-opensend.Window)
 	messages, fresh := 0, map[string]bool{}
@@ -247,20 +262,16 @@ func (h *handler) openSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 		}
 	}
 	if messages >= opensend.MaxMessages {
-		v1Fail(w, id, 429, query.CodeRateLimited, fmt.Sprintf("open sending allows %d messages an hour and they are used up", opensend.MaxMessages), "wait for the hour to pass, or ask the person to approve this chat")
-		return false
+		return false, &openSendRefusal{429, query.CodeRateLimited, fmt.Sprintf("open sending allows %d messages an hour and they are used up", opensend.MaxMessages), "wait for the hour to pass, or ask the person to approve this chat"}
 	}
-	known, _, err := h.knownChat(r.Context(), chat)
+	known, _, err := h.knownChat(ctx, chat)
 	if err != nil {
-		v1Fail(w, id, 503, query.CodeInternal, "the archive is unavailable, so open sending is refused", "")
-		return false
+		return false, &openSendRefusal{503, query.CodeInternal, "the archive is unavailable, so open sending is refused", ""}
 	}
 	if !known && !fresh[chat] && len(fresh) >= opensend.MaxNewNumbers {
-		v1Fail(w, id, 429, query.CodeRateLimited, fmt.Sprintf("open sending allows %d new numbers an hour and they are used up", opensend.MaxNewNumbers), "message a number from an existing chat, wait for the hour to pass, or ask the person to approve this one")
-		return false
+		return false, &openSendRefusal{429, query.CodeRateLimited, fmt.Sprintf("open sending allows %d new numbers an hour and they are used up", opensend.MaxNewNumbers), "message a number from an existing chat, wait for the hour to pass, or ask the person to approve this one"}
 	}
-	entry.Open, entry.NewNumber = true, !known
-	return true
+	return !known, nil
 }
 
 // knownChat reports whether the archive already has this chat, and whether

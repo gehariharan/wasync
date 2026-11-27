@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -14,8 +15,10 @@ import (
 	"github.com/gehariharan/wasync/internal/agentauth"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/humancheck"
+	"github.com/gehariharan/wasync/internal/opensend"
 	"github.com/gehariharan/wasync/internal/query"
 	"github.com/gehariharan/wasync/internal/sendlist"
+	"github.com/gehariharan/wasync/internal/sentlog"
 	"github.com/gehariharan/wasync/internal/storage"
 )
 
@@ -410,5 +413,47 @@ func TestANewArchiveKeepsAPersonSyncedChatSharedWhenItGoesOnAList(t *testing.T) 
 	}
 	if g := f.group(t, phoneChat); !g.PersonSynced() {
 		t.Fatalf("the person's chat was marked as list capture: %+v", g)
+	}
+}
+
+// While open sending is on, an agent may ask the person to send once
+// open sending's hourly limits are used up, as the send refusal tells it to.
+func TestAnAgentMayAskToSendOnceOpenSendingsHourlyLimitsAreUsedUp(t *testing.T) {
+	f := setupAccessWith(t, humancheck.NewGate(&promptStub{}))
+	codex := f.connect(t, "codex")
+	if _, err := opensend.Start(f.dir, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	log := sentlog.New(f.dir)
+	openSend := func(chat string, newNumber bool) {
+		t.Helper()
+		e := sentlog.Entry{Time: time.Now(), Actor: "codex", Kind: "send", Chat: chat, Outcome: sentlog.OutcomeSent, Open: true, NewNumber: newNumber}
+		if err := log.Append(e); err != nil {
+			t.Fatal(err)
+		}
+	}
+	freshNumber := map[string]string{"to": "+1 555 000 2222", "text": "Hello"}
+	if got := f.askToSend(t, codex, freshNumber, 200); got.Data.Status != "already_allowed" {
+		t.Fatalf("with room left: %+v", got)
+	}
+
+	for i := 0; i < opensend.MaxNewNumbers; i++ {
+		openSend(fmt.Sprintf("1555000%04d@s.whatsapp.net", i), true)
+	}
+	if got := f.askToSend(t, codex, freshNumber, 202); got.Data.Status != "pending" || !got.Data.NewNumber {
+		t.Fatalf("new numbers used up, a new number: %+v", got)
+	}
+	if got := f.askToSend(t, codex, map[string]string{"chat": otherChat, "text": "Hi"}, 200); got.Data.Status != "already_allowed" {
+		t.Fatalf("new numbers used up, a chat the archive has: %+v", got)
+	}
+
+	for i := opensend.MaxNewNumbers; i < opensend.MaxMessages; i++ {
+		openSend(otherChat, false)
+	}
+	if got := f.askToSend(t, codex, map[string]string{"chat": otherChat, "text": "Hi"}, 202); got.Data.Status != "pending" || got.Data.NewNumber {
+		t.Fatalf("messages used up, a chat the archive has: %+v", got)
+	}
+	if n := len(f.queue.PendingList(f.account)); n != 2 {
+		t.Fatalf("requests waiting for the person: %d, want 2", n)
 	}
 }
