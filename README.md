@@ -174,7 +174,9 @@ the setup page does) so they start with no chats; a read-only agent granted with
 1. **Install** wasync and AXI for agents (see [Install](#install)).
 2. **Pair your phone** with `wasync setup`, and keep wasync running (`wasync serve` or the login
    item) whenever an agent should use it.
-3. **Create the agent's credential**, either with **Connect** on the setup page (read only), or
+3. **Create the agent's credential**, either with **Connect** on the setup page (see
+   [Pair your phone](#pair-your-phone): ChatGPT & Codex, Claude Code and Claude Desktop may also
+   reply and react, any other named agent is read only), or
    in a terminal, with any name:
 
    ```sh
