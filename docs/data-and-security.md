@@ -161,4 +161,5 @@ permission before archiving or sharing conversations. wasync posts to conversati
 asked: `send`, `reply`, `react` and `edit` (and the web app's message box) act on your command,
 or on an agent credential you granted the matching scope, and deletions are never sent
 automatically. There is no cloud service and no AI processing in wasync itself; the web app and
-API run only on your computer. Attachment downloads are opt-in.
+API run only on your computer. Attachments of synced chats download by default; see
+[Media](media.md) to keep text only.
