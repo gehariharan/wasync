@@ -17,6 +17,12 @@ svg { fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round
 .topbar .gh svg { width: 1.5rem; height: 1.5rem; fill: currentColor; stroke: none; }
 .topbar nav a { color: var(--fg-2); text-decoration: none; }
 .topbar nav a:hover { color: var(--fg); }
+/* Small phones (320px): keep the header on one row; padding offset by negative margin keeps taps at least 40px tall. */
+@media (max-width: 359px) {
+  .topbar { gap: var(--s3); padding-inline: var(--s3); }
+  .topbar nav { gap: var(--s3); }
+  .topbar nav a { white-space: nowrap; padding-block: .625rem; margin-block: -.625rem; }
+}
 .foot { flex-wrap: wrap; justify-content: center; text-align: center; padding: var(--s5) var(--s4) var(--s6); font-size: var(--fs-sm); color: var(--mut); }
 .foot a { color: var(--fg-2); }
 
