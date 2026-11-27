@@ -464,3 +464,30 @@ func TestHeaderSaysTheScreenIsBeingRetiredWhereThereIsRoom(t *testing.T) {
 		t.Fatalf("a narrow screen should keep its header unchanged:\n%s", view)
 	}
 }
+
+// A chat archived only for an agent's approved list is not one the person
+// synced: it shows unticked and is not counted, and Space syncs it for the
+// person instead of switching it off.
+func TestTUISpaceSyncsAChatArchivedOnlyForAnAgentsList(t *testing.T) {
+	f := &fakeBackend{snapshot: Snapshot{Account: 1, Groups: []storage.Group{{ID: "15551230000@s.whatsapp.net", Name: "Listed", Enabled: true, ListCapture: true}}}}
+	m := NewModel(f)
+	m.snapshot = f.snapshot
+	m.qrSink = func(string) {}
+	m.chatType = "all"
+	m.enabledOnly = true
+	if len(m.filtered()) != 0 {
+		t.Fatal("the enabled-only filter showed a chat the person did not sync")
+	}
+	m.enabledOnly = false
+	m, cmd := update(m, key("space"))
+	if cmd == nil {
+		t.Fatal("space did nothing")
+	}
+	cmd()
+	if f.toggled != "15551230000@s.whatsapp.net" || !f.enabled {
+		t.Fatalf("space on a list-only chat toggled %q to %v, want it synced", f.toggled, f.enabled)
+	}
+	if g := m.snapshot.Groups[0]; !g.PersonSynced() {
+		t.Fatalf("the chat does not show as synced after space: %+v", g)
+	}
+}

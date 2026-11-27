@@ -270,12 +270,12 @@ func (a *App) runQuery(ctx context.Context, cfg config.Config, args []string) (r
 		}
 		status.ChatCount = len(groups)
 		for _, g := range groups {
-			if g.Enabled {
+			if g.PersonSynced() {
 				status.EnabledChats++
 			}
 			if storage.ChatKind(g.ID) == "group" {
 				status.GroupCount++
-				if g.Enabled {
+				if g.PersonSynced() {
 					status.EnabledGroups++
 				}
 			}

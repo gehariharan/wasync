@@ -102,7 +102,7 @@ func (m Model) filtered() []storage.Group {
 		if m.chatType != "all" && storage.ChatKind(g.ID) != m.chatType {
 			continue
 		}
-		if m.enabledOnly && !g.Enabled {
+		if m.enabledOnly && !g.PersonSynced() {
 			continue
 		}
 		if m.filter != "" && !strings.Contains(strings.ToLower(g.Name+" "+g.ID), strings.ToLower(m.filter)) {
@@ -143,7 +143,7 @@ func (m Model) tabSegments(detail int) []string {
 	for _, g := range m.snapshot.Groups {
 		for _, kind := range []string{storage.ChatKind(g.ID), "all"} {
 			total[kind]++
-			if g.Enabled {
+			if g.PersonSynced() {
 				on[kind]++
 			}
 		}
@@ -637,13 +637,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if g, ok := m.selected(); ok {
 					m.writeBusy = true
 					account := m.snapshot.Account
+					want := !g.PersonSynced()
 					// Optimistic visual feedback; the next snapshot restores DB truth on failure.
 					for i := range m.snapshot.Groups {
 						if m.snapshot.Groups[i].ID == g.ID {
-							m.snapshot.Groups[i].Enabled = !g.Enabled
+							m.snapshot.Groups[i].Enabled, m.snapshot.Groups[i].ListCapture = want, false
 						}
 					}
-					return m, func() tea.Msg { return operationMsg{"toggle", m.session.Toggle(account, g.ID, !g.Enabled)} }
+					return m, func() tea.Msg { return operationMsg{"toggle", m.session.Toggle(account, g.ID, want)} }
 				}
 			}
 		case "m":
@@ -848,7 +849,7 @@ func (m Model) View() tea.View {
 	} else {
 		enabled, total := 0, int64(0)
 		for _, g := range m.snapshot.Groups {
-			if g.Enabled {
+			if g.PersonSynced() {
 				enabled++
 			}
 			total += g.MessageCount
@@ -953,14 +954,18 @@ func (m Model) groupsView(width, height int) string {
 	for i := start; i < min(start+rows, len(groups)); i++ {
 		g := groups[i]
 		mark := "[ ]"
-		if g.Enabled {
+		if g.PersonSynced() {
 			mark = "[✓]"
 		}
 		cursor := "  "
 		if i == m.cursor {
 			cursor = "› "
 		}
-		line := clip(fmt.Sprintf("%s%s  %s", cursor, mark, oneLine(g.DisplayName())), listWidth-16) + fmt.Sprintf("  %d", g.MessageCount)
+		name := oneLine(g.DisplayName())
+		if g.ListCapture {
+			name += " (agent's list)"
+		}
+		line := clip(fmt.Sprintf("%s%s  %s", cursor, mark, name), listWidth-16) + fmt.Sprintf("  %d", g.MessageCount)
 		if i == m.cursor {
 			line = selectedStyle.Render(clip(line, listWidth-4))
 		}
@@ -988,8 +993,11 @@ func (m Model) groupsView(width, height int) string {
 	details := "Choose a group to inspect capture state.\n\nSpace enables only that group."
 	if g, ok := m.selected(); ok {
 		enabled := "Disabled"
-		if g.Enabled {
+		switch {
+		case g.PersonSynced():
 			enabled = "Enabled — capturing when online"
+		case g.ListCapture:
+			enabled = "Not synced by you - archived only for an agent's approved list; Space syncs it for your agents"
 		}
 		last := "No messages archived yet"
 		if g.LastMessage != nil {

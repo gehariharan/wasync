@@ -527,7 +527,7 @@ func (a *App) parse(args []string) (action, error) {
 				}
 				enabled := 0
 				for _, g := range groups {
-					if g.Enabled {
+					if g.PersonSynced() {
 						enabled++
 					}
 				}
@@ -689,7 +689,7 @@ func (a *App) printGroups(groups []storage.Group, jsonOut bool) error {
 	w := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "#\tGROUP ID\tENABLED\tNAME")
 	for i, g := range groups {
-		fmt.Fprintf(w, "%d\t%s\t%t\t%s\n", i+1, g.ID, g.Enabled, strconv.Quote(g.Name))
+		fmt.Fprintf(w, "%d\t%s\t%t\t%s\n", i+1, g.ID, g.PersonSynced(), strconv.Quote(g.Name))
 	}
 	if len(groups) == 0 {
 		fmt.Fprintln(w, "No groups returned by discovery.")
