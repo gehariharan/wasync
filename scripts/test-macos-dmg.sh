@@ -82,11 +82,17 @@ if [[ ( "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hos
     code="$(curl -s -o /dev/null -w '%{http_code}' "$base$page")"
     [[ "$code" == 401 ]] || fail "$page answered $code without a sign-in link; expected 401"
   done
-  # Read the whole status before matching: grep -q leaves at the first line
-  # that matches, and status, still writing its later lines, would then die
-  # of a broken pipe and fail the check under pipefail.
-  status="$("$app/Contents/MacOS/wasync" --data-dir "$data" status)" || fail "wasync status failed"
-  grep -qF 'started by the wasync app' <<<"$status" || { echo "$status" >&2; fail "wasync does not say the app started it"; }
+  # wasync can answer on its address a moment before status names who started
+  # it, which on a slow runner is longer than one try.
+  named=0
+  for _ in $(seq 60); do
+    status_code=0
+    status="$("$app/Contents/MacOS/wasync" --data-dir "$data" status 2>&1)" || status_code=$?
+    if [[ "$status_code" == 0 ]] && grep -qF 'started by the wasync app' <<<"$status"; then named=1; break; fi
+    kill -0 "$desktop_pid" 2>/dev/null || { cat "$data/desktop.log" >&2 2>/dev/null || true; fail "the app quit before wasync said the app started it"; }
+    sleep 0.5
+  done
+  [[ "$named" == 1 ]] || { echo "$status" >&2; fail "wasync status (exit $status_code) does not say the app started it"; }
   pass "the app started wasync for its data directory, with its pages closed to visitors"
 
   # A second copy hands over to the first and leaves.
