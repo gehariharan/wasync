@@ -8,9 +8,9 @@
       "data": {
         "api_minor": 0,
         "api_version": 1,
-        "archive_schema_version": 7,
+        "archive_schema_version": 8,
         "features": "<features>",
-        "schema_version": 7,
+        "schema_version": 8,
         "wasync_version": "<wasync_version>"
       },
       "request_id": "<request_id>"

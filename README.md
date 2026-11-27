@@ -291,7 +291,9 @@ you explicitly send are exchanged with WhatsApp under its own service policies.
 You choose which chats have content captured. Chat discovery metadata is cached
 for selection; disabled chats' message bodies are discarded. Enabled chats can
 store sender identifiers, timestamps, message text and attachment metadata.
-Downloading attachment files (images, documents, video, audio, stickers) is opt-in. Search,
+Attachment files (images, documents, video, audio, stickers) of enabled chats download by
+default; untick **Also save photos, videos and files** to keep text only
+([Media](docs/media.md)). Search,
 the web app and the authenticated loopback API operate on your computer. wasync sends nothing to
 an AI service; an agent you connect yourself reads only what you grant it.
 

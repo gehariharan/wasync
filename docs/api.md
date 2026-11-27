@@ -131,6 +131,19 @@ field or the `X-Wasync-CSRF` header. They answer with JSON.
 See [Updating from the web app](install.md#updating-from-the-web-app) for what each kind of
 install does.
 
+## Web app data (`/ui/api`)
+
+wasync's own pages read and change a few things through `/ui/api`. These routes need the web
+app's browser session, like every `/ui` page, and every change needs that session's form token
+in a `csrf` form field; no token above opens them. They are for wasync's pages, not for scripts.
+
+| Route | What it does |
+| --- | --- |
+| `GET /ui/api/chats` | One page of Choose chats. `tab` is `all`, `groups`, `people`, `unnamed` (the direct chats WhatsApp gives no name for, folded under People as one `unnamed` entry while nothing is searched) or `selected` (the chats that sync). `q` searches names and phone numbers. Chats come most recently active first, then A to Z; `offset` and `limit` (50 by default, at most 200) page them, and `next_offset` is null on the last page. Tab counts follow the search. |
+| `POST /ui/api/chats/sync` | Saves one change at once: `chat` (one or more), `sync=on` or `off`, and optionally `history=yes` or `no` (asking the phone for older messages of a chat that starts syncing; the default is yes, or no in agent-only mode). `all=1` with `sync=off` stops syncing every chat. |
+| `GET`, `POST /ui/api/settings` | `use` (`agents` for "For my AI agents only", or `chats`) and `save_media` (`on` or `off`, the "Also save photos, videos and files" box, on by default). |
+| `GET /ui/avatar?c=CHAT` | The chat's small profile picture, fetched from WhatsApp only when a page asks for it, at most one request every half second, and cached for a day; otherwise its initials as an image. |
+
 ## Pull data into your own database
 
 The archive is local SQLite. You can query it while wasync runs using a read-only

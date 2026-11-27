@@ -4,7 +4,6 @@ import (
 	"context"
 	"html/template"
 	"net/http"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -24,13 +23,9 @@ import (
 // still sees nothing it has not been given.
 
 const (
-	maxChatRows   = 300
-	threadLimit   = 100
-	maxBodyRunes  = 4000
-	pickTabAll    = "all"
-	pickTabGroups = "groups"
-	pickTabPeople = "people"
-	pickTabNumber = "numbers"
+	maxChatRows  = 300
+	threadLimit  = 100
+	maxBodyRunes = 4000
 )
 
 type chatRow struct {
@@ -66,28 +61,6 @@ type chatsData struct {
 	CanDownload    bool
 }
 
-type pickRow struct {
-	ID, Name, Kind string
-	Syncing        bool
-	Count          int64
-}
-
-type pickTab struct {
-	Key, Label string
-	N          int
-	Current    bool
-}
-
-type pickData struct {
-	uiData
-	Paired         bool
-	Tabs           []pickTab
-	Tab, Query     string
-	Rows           []pickRow
-	More           int
-	Syncing, Total int
-}
-
 func initials(name string) string {
 	var out []rune
 	for _, w := range strings.Fields(name) {
@@ -105,21 +78,6 @@ func initials(name string) string {
 		return "#"
 	}
 	return string(out)
-}
-
-// numberName reports whether a direct chat is known only by its number.
-func numberName(id, name string) bool {
-	return name == id || strings.HasPrefix(name, "+") || strings.Contains(name, "@")
-}
-
-func chatTab(id, name string) string {
-	switch {
-	case storage.ChatKind(id) == "group":
-		return pickTabGroups
-	case numberName(id, name):
-		return pickTabNumber
-	}
-	return pickTabPeople
 }
 
 // bodyText makes message text safe to show: control characters other than line
@@ -313,141 +271,6 @@ func senderName(names map[string]string, m storage.Message) string {
 	return "Member"
 }
 
-func pickTabKey(s string) string {
-	switch s {
-	case pickTabGroups, pickTabPeople, pickTabNumber:
-		return s
-	}
-	return pickTabAll
-}
-
-func (h *handler) pickPage(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	d := &pickData{uiData: uiData{CSRF: sess.csrf, Title: "wasync chats to sync", Wide: true}}
-	if n, ok := notices[r.URL.Query().Get("n")]; ok {
-		d.Notice, d.NoticeOK = n.text, n.ok
-	}
-	d.Tab = pickTabKey(r.URL.Query().Get("tab"))
-	d.Query = humancheck.Clean(r.URL.Query().Get("q"), 60)
-	account, err := h.store.Account(r.Context())
-	if err != nil {
-		http.Error(w, "archive unavailable", http.StatusInternalServerError)
-		return
-	}
-	if account == nil {
-		h.webRender(w, r, pickTemplate, d)
-		return
-	}
-	d.Paired = true
-	groups, err := h.store.GroupSummaries(r.Context(), account.ID)
-	if err != nil {
-		http.Error(w, "archive unavailable", http.StatusInternalServerError)
-		return
-	}
-	counts := map[string]int{}
-	needle := strings.ToLower(d.Query)
-	d.Total = len(groups)
-	for _, g := range groups {
-		name := humancheck.Clean(g.Name, 80)
-		if g.Enabled {
-			d.Syncing++
-		}
-		tab := chatTab(g.ID, name)
-		if needle != "" && !strings.Contains(strings.ToLower(name+" "+g.ID), needle) {
-			continue
-		}
-		counts[pickTabAll]++
-		counts[tab]++
-		if d.Tab != pickTabAll && d.Tab != tab {
-			continue
-		}
-		if len(d.Rows) == maxChatRows {
-			d.More++
-			continue
-		}
-		d.Rows = append(d.Rows, pickRow{ID: g.ID, Name: name, Kind: tab, Syncing: g.Enabled, Count: g.MessageCount})
-	}
-	for _, t := range []pickTab{{Key: pickTabAll, Label: "All"}, {Key: pickTabGroups, Label: "Groups"}, {Key: pickTabPeople, Label: "People"}, {Key: pickTabNumber, Label: "Numbers"}} {
-		t.N, t.Current = counts[t.Key], t.Key == d.Tab
-		d.Tabs = append(d.Tabs, t)
-	}
-	h.webRender(w, r, pickTemplate, d)
-}
-
-// pickSave changes which chats are synced. It acts only on the chats the page
-// showed, so searching and then saving never touches the chats that were hidden.
-func (h *handler) pickSave(w http.ResponseWriter, r *http.Request, sess uiSession) {
-	if !h.uiForm(w, r, sess) {
-		return
-	}
-	back := func(notice string) {
-		q := url.Values{"n": {notice}, "tab": {pickTabKey(r.PostForm.Get("tab"))}}
-		if s := humancheck.Clean(r.PostForm.Get("q"), 60); s != "" {
-			q.Set("q", s)
-		}
-		http.Redirect(w, r, "/ui/chats/pick?"+q.Encode(), http.StatusSeeOther)
-	}
-	account, err := h.store.Account(r.Context())
-	if err != nil || account == nil {
-		back("unpaired")
-		return
-	}
-	groups, err := h.store.GroupSummaries(r.Context(), account.ID)
-	if err != nil {
-		back("failed")
-		return
-	}
-	enabled := make(map[string]bool, len(groups))
-	for _, g := range groups {
-		enabled[g.ID] = g.Enabled
-	}
-	action := r.PostForm.Get("action")
-	want := map[string]bool{}
-	var scope []string
-	switch action {
-	case "clearall":
-		for _, g := range groups {
-			scope = append(scope, g.ID)
-		}
-	case "save", "tickshown", "clearshown":
-		for _, id := range r.PostForm["shown"] {
-			if _, known := enabled[id]; known {
-				scope = append(scope, id)
-			}
-		}
-		for _, id := range r.PostForm["chat"] {
-			want[id] = true
-		}
-		if action == "tickshown" {
-			for _, id := range scope {
-				want[id] = true
-			}
-		}
-	default:
-		http.Error(w, "unknown action", http.StatusBadRequest)
-		return
-	}
-	history := r.PostForm.Get("history") == "yes"
-	var off []string
-	for _, id := range scope {
-		switch {
-		case want[id] && !enabled[id]:
-			if err := h.store.EnableCapture(r.Context(), account.ID, id, history); err != nil {
-				back("failed")
-				return
-			}
-		case !want[id] && enabled[id]:
-			off = append(off, id)
-		}
-	}
-	if len(off) > 0 {
-		if err := h.store.SetEnabled(r.Context(), account.ID, off, false); err != nil {
-			back("failed")
-			return
-		}
-	}
-	back("saved")
-}
-
 type sentRow struct {
 	Time, Who, To, Text, Outcome          string
 	Agent, Problem, Open, List, NewNumber bool
@@ -588,29 +411,6 @@ var sentTemplate = template.Must(template.New("sent").Funcs(uiFuncs).Parse(uiHea
 {{range .Rows}}<tr{{if .Problem}} class="problem"{{end}}><td>{{.Time}}</td><td>{{if .Agent}}🤖 {{end}}{{.Who}}</td><td>{{.To}}</td><td>{{if .Text}}{{.Text}}{{else}}<span class="mut">text not kept</span>{{end}}{{if eq .Kind "reply"}} <span class="mut">(reply)</span>{{end}}{{if .Open}} <span class="mut">(open sending{{if .NewNumber}}, new number{{end}})</span>{{end}}{{if .List}} <span class="mut">(approved list{{if .NewNumber}}, first message{{end}})</span>{{end}}</td><td>{{.Outcome}}</td></tr>
 {{else}}<tr><td colspan="5" class="mut">Nothing has been sent from this computer yet.</td></tr>{{end}}
 </tbody></table></div>
-{{end}}
-</main></body></html>
-`))
-
-var pickTemplate = template.Must(template.New("pick").Funcs(uiFuncs).Parse(uiHead + `{{template "head" .}}
-<h1>Choose chats to sync</h1>
-{{template "notice" .}}
-{{if not .Paired}}<p class="card mut">No WhatsApp is linked yet. Link it on the <a href="/ui/setup">Set up</a> page first.</p>
-{{else}}
-<p class="mut"><strong>{{.Syncing}} of {{.Total}} syncing.</strong> wasync keeps only the chats you tick, on this computer. Search first, then tick the ones you want.</p>
-<form class="search" method="get" action="/ui/chats/pick" role="search"><input type="hidden" name="tab" value="{{.Tab}}"><input type="search" name="q" value="{{.Query}}" placeholder="Search chats" aria-label="Search chats"> <button>Search</button></form>
-<div class="tabs">{{range .Tabs}}<a href="/ui/chats/pick?tab={{.Key}}{{if $.Query}}&amp;q={{$.Query}}{{end}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}} {{.N}}</a>{{end}}</div>
-<form method="post" action="/ui/chats/pick">
-<input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="tab" value="{{.Tab}}"><input type="hidden" name="q" value="{{.Query}}">
-<div class="pickbox">
-{{range .Rows}}<label class="pickrow"><input type="checkbox" name="chat" value="{{.ID}}"{{if .Syncing}} checked{{end}}><span>{{.Name}}</span><span class="sub">{{.Count}} messages</span><input type="hidden" name="shown" value="{{.ID}}"></label>
-{{else}}<p class="empty">No chats match.</p>{{end}}
-</div>
-{{if .More}}<p class="mut">{{.More}} more match. Narrow the search to see them.</p>{{end}}
-<label><input type="checkbox" name="history" value="yes" checked> Also ask your phone for older messages when a chat is newly ticked (best effort)</label>
-<div class="btn-row"><button class="go" name="action" value="save">Save</button> <button name="action" value="tickshown">Tick all shown</button> <button name="action" value="clearshown">Clear all shown</button> <button name="action" value="clearall">Stop syncing everything</button></div>
-</form>
-<p><a href="/ui/chats">Back to chats</a></p>
 {{end}}
 </main></body></html>
 `))

@@ -43,6 +43,9 @@ type Client struct {
 	mediaRoot       string
 	listDir         string
 	mediaEnabled    bool
+	saveMedia       func() bool  // the owner's media setting; nil leaves only mediaEnabled
+	mediaWrites     atomic.Int64 // files written to the media folders by this process
+	mediaEmptyAt    atomic.Int64 // 1 + mediaWrites when a sweep last found the folders empty; 0 unknown
 	mediaQueue      chan mediaJob
 	mediaCancel     context.CancelFunc
 	mediaDone       chan struct{}
@@ -71,6 +74,8 @@ type Client struct {
 	unlinked        atomic.Bool                                                // WhatsApp rejected the saved login; it must be replaced
 	groupInfo       func(context.Context, types.JID) (*types.GroupInfo, error) // test seam; nil uses the whatsmeow client
 	outbound        outbound                                                   // test seam; nil sends through the whatsmeow client
+	pictureInfo     pictureInfo                                                // test seam; nil asks the whatsmeow client
+	pictureGet      pictureGet                                                 // test seam; nil downloads from WhatsApp's picture server
 }
 
 func Open(ctx context.Context, path string, log *slog.Logger) (*Client, error) {

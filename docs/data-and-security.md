@@ -31,7 +31,7 @@ encrypt data at rest.
 | File | Purpose |
 | --- | --- |
 | `session.db` | Whatsmeow credentials and protocol state; protect as a secret |
-| `archive.db` | Accounts, chats, messages, FTS5, sync progress, history jobs, gap records and the change journal |
+| `archive.db` | Accounts, chats, messages, FTS5, sync progress, history jobs, gap records, the change journal, and when each chat was last active (a time only, also for chats that are not synced, so Choose chats can list recent chats first) |
 | `api.token` | Archive API bearer token; keep private |
 | `send.token` | Separate send/action-request credential; keep private |
 | `approve.token` | Approval credential (on macOS kept in the login Keychain instead); never give it to agents |
@@ -39,6 +39,7 @@ encrypt data at rest.
 | `agent-connections.json` | Apps connected from the setup page: which credential each got, the settings file wasync changed, its backup, the entry wasync wrote and any entry it replaced, so Disconnect undoes exactly that |
 | `codex-marketplace/` | The WhatsApp plugin as a local Codex marketplace, written from the copy built into wasync when Codex is connected; removed again on Disconnect |
 | `access-mode.json` | Whether agents' chat requests are asked each time or synced all |
+| `settings.json` | Everyday settings: "For my AI agents only" or "Also read my chats here", and whether photos, videos and files are saved; absent until one is changed |
 | `pending-approvals.json` | Requests waiting for a person, so a restart does not lose them |
 | `send-lists.json` | Approved phone-number lists for agents, their pacing, the numbers each list dropped after a STOP (so its agent's list status can name them), and for up to 30 days who a removed list already messaged |
 | `send-record.json` | Kept for good: when each number first and last got a list message, and the numbers that replied STOP (numbers and times only, never message text) |
@@ -52,6 +53,7 @@ encrypt data at rest.
 | `webhook-state.json` | Per-endpoint delivery position (journal sequence and retry timing) |
 | `webhook-deadletter.jsonl` | Events webhooks gave up on: identifiers and outcomes only |
 | `media/`, `media-refs/` | Downloaded attachments and their download keys (see [Media](media.md)) |
+| `avatars/` | Small profile pictures of chats, fetched only when a wasync page shows that chat, and asked about again at most once a day |
 | `wasync.log` | Structured lifecycle logs from the terminal UI and interactive login, including warnings and errors from the WhatsApp encryption library, which never print to the terminal |
 | `service.log` | Output of the macOS login item's `wasync serve` |
 | `device.lock` | Process ownership lock, retained after exit |
@@ -159,4 +161,5 @@ permission before archiving or sharing conversations. wasync posts to conversati
 asked: `send`, `reply`, `react` and `edit` (and the web app's message box) act on your command,
 or on an agent credential you granted the matching scope, and deletions are never sent
 automatically. There is no cloud service and no AI processing in wasync itself; the web app and
-API run only on your computer. Attachment downloads are opt-in.
+API run only on your computer. Attachments of synced chats download by default; see
+[Media](media.md) to keep text only.

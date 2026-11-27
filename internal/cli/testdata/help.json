@@ -122,7 +122,7 @@
     },
     {
       "description": "Read or persist a per-chat media policy; returns JSON.",
-      "details": "auto downloads media on future deliveries, including delivered history; manual requires an explicit download; inherit follows --download-media / WASYNC_DOWNLOAD_MEDIA. Omit --mode to read the saved policy. This setting persists across restarts and does not bulk-download older archived messages or enable capture.",
+      "details": "auto downloads media on future deliveries, including delivered history; manual requires an explicit download; inherit follows the wasync default: the 'Also save photos, videos and files' setting (on unless unticked), or --download-media / WASYNC_DOWNLOAD_MEDIA, which forces it on. Omit --mode to read the saved policy. This setting persists across restarts and does not bulk-download older archived messages or enable capture.",
       "path": "media policy",
       "usage": "media policy --chat CHAT_ID [--mode auto|manual|inherit]"
     },

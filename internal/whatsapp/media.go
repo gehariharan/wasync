@@ -31,10 +31,18 @@ type mediaJob struct {
 	manual     bool
 }
 
+// ConfigureMedia sets where attachments are kept. enabled is the
+// --download-media flag, which makes every chat that follows the wasync
+// default save its attachments whatever the owner's setting says.
 func (c *Client) ConfigureMedia(root string, enabled bool) {
 	c.mediaRoot = root
 	c.mediaEnabled = enabled
 }
+
+// ConfigureSaveMedia gives the owner's "Also save photos, videos and files"
+// setting, read each time an attachment arrives so a change applies at once.
+// Without it only the --download-media flag turns the default on.
+func (c *Client) ConfigureSaveMedia(on func() bool) { c.saveMedia = on }
 func (c *Client) startMediaWorker(ctx context.Context) error {
 	if c.mediaRoot == "" {
 		return nil
@@ -55,7 +63,9 @@ func (c *Client) startMediaWorker(ctx context.Context) error {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				c.sweepMedia(ctx)
+				if c.mediaFilesMayExist() {
+					c.sweepMedia(ctx)
+				}
 			case job := <-c.mediaQueue:
 				if ctx.Err() != nil {
 					return
@@ -186,6 +196,7 @@ func (c *Client) downloadMedia(ctx context.Context, job mediaJob) error {
 		return err
 	}
 	temp := path + ".part"
+	c.noteMediaWrite()
 	f, err := localfs.OpenFile(temp)
 	if err != nil {
 		return err
@@ -231,7 +242,7 @@ func (c *Client) downloadMedia(ctx context.Context, job mediaJob) error {
 	if err = os.Rename(temp, path); err != nil {
 		return err
 	}
-	valid, err = c.capture.store.CompleteMediaDownload(ctx, job.account, job.message.GroupID, job.message.MessageID, path, !job.manual, c.mediaEnabled)
+	valid, err = c.capture.store.CompleteMediaDownload(ctx, job.account, job.message.GroupID, job.message.MessageID, path, !job.manual, c.mediaDefault())
 	if err != nil || !valid {
 		os.Remove(path)
 	}
@@ -282,8 +293,23 @@ func (c *Client) removeMedia(account int64, chat, message string) {
 		c.log.Warn("local media cleanup deferred; files may be open")
 	}
 }
+
+// mediaFilesMayExist reports whether the media folders may hold a file the
+// sweep has to look at. The sweep finds out when it last saw none, and every
+// file written since then counts, so a wasync that keeps text only, or whose
+// files are all gone, does not walk empty folders every 30 seconds.
+func (c *Client) mediaFilesMayExist() bool {
+	empty := c.mediaEmptyAt.Load()
+	return empty == 0 || empty-1 != c.mediaWrites.Load()
+}
+
+// noteMediaWrite records that a file is about to appear in the media folders.
+func (c *Client) noteMediaWrite() { c.mediaWrites.Add(1) }
+
 func (c *Client) sweepMedia(ctx context.Context) {
-	c.sweepMediaReferences(ctx)
+	writes := c.mediaWrites.Load()
+	refs := c.sweepMediaReferences(ctx)
+	files := 0
 	err := filepath.WalkDir(c.mediaRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -297,6 +323,7 @@ func (c *Client) sweepMedia(ctx context.Context) {
 		if entry.IsDir() || entry.Type()&os.ModeSymlink != 0 || !mediafiles.ManagedPath(c.mediaRoot, path) {
 			return nil
 		}
+		files++
 		info, err := entry.Info()
 		if err != nil {
 			return err
@@ -315,6 +342,12 @@ func (c *Client) sweepMedia(ctx context.Context) {
 	})
 	if err != nil && ctx.Err() == nil {
 		c.log.Warn("local media cleanup incomplete; retrying later")
+	}
+	if err == nil && refs == 0 && files == 0 {
+		// Nothing to look at until a file is written after this sweep began.
+		c.mediaEmptyAt.Store(writes + 1)
+	} else {
+		c.mediaEmptyAt.Store(0)
 	}
 }
 

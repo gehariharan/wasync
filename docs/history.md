@@ -15,7 +15,8 @@ capture and removes the chat's stored records and search entries.
 
 The archive captures text, extended text, captions, sender/chat/message IDs,
 original timestamps, whether the message was sent by you, reply IDs and safe
-media metadata. By default it does not download attachment files; see [Media](media.md).
+media metadata. By default it also downloads attachment files (the **Also save photos,
+videos and files** setting); see [Media](media.md).
 It never stores thumbnails, quoted message bodies, download URLs
 or media decryption keys in the archive. Reactions retain emoji, target message identity, sender timestamp and removal
 events. Unsupported types retain minimal type metadata. Reaction records are

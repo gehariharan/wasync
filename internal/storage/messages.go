@@ -346,6 +346,9 @@ func (s *Store) PurgeGroup(ctx context.Context, account int64, group string) err
 	if _, err = tx.ExecContext(ctx, "DELETE FROM sync_state WHERE account_id=? AND group_id=?", account, group); err != nil {
 		return err
 	}
+	if _, err = tx.ExecContext(ctx, "DELETE FROM chat_activity WHERE account_id=? AND chat_id=?", account, group); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

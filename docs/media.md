@@ -1,8 +1,9 @@
 # Media and attachments
 
-By default wasync archives attachment *details* (type, size, filename and so on) but does not
-download the files. You choose, per chat, whether files download automatically, and you can
-download a single attachment on request.
+wasync archives attachment *details* (type, size, filename and so on) for every synced chat, and
+by default also downloads the files: the **Also save photos, videos and files** box on Choose chats
+starts ticked. Untick it to keep text only. You can still choose per chat, and download a single
+attachment on request.
 
 ## Choosing what downloads
 
@@ -10,9 +11,10 @@ Download selection has two layers:
 
 - Enable capture for the chats you want to archive.
 - Pick how files download in each chat: a saved per-chat policy, a one-time request for a
-  single message, or the global `--download-media` setting for chats whose policy is `inherit`.
-  With no global setting and no per-chat override, attachments remain available for manual
-  download.
+  single message, or the wasync default for chats whose policy is `inherit`. The default is the
+  **Also save photos, videos and files** setting (on unless you untick it), and the
+  `--download-media` flag turns it on whatever the setting says. With the default off and no
+  per-chat override, attachments remain available for manual download.
 
 In the web app (`wasync web`), an attachment that is not downloaded yet has a **Download** button
 in a syncing chat, and the chat header's **Downloads** setting sets that chat's policy ("Only
@@ -27,9 +29,9 @@ by WhatsApp account. Capture selection remains independent and must be enabled.
 
 | Policy | Behavior |
 | --- | --- |
-| `manual` | No automatic file downloads, even with the global setting. Request individual attachments. |
-| `auto` | Automatically download newly delivered eligible attachments in this chat, without the global setting. |
-| `inherit` (default) | Follow the launch-time `--download-media` / `WASYNC_DOWNLOAD_MEDIA` setting. With that setting off, download manually. |
+| `manual` | No automatic file downloads, even with the wasync default on. Request individual attachments. |
+| `auto` | Automatically download newly delivered eligible attachments in this chat, even with the wasync default off. |
+| `inherit` (default) | Follow the wasync default: the **Also save photos, videos and files** setting, or `--download-media` / `WASYNC_DOWNLOAD_MEDIA`. With both off, download manually. |
 
 ```sh
 wasync media policy --chat CHAT_ID --mode manual
@@ -43,7 +45,12 @@ selection, remove downloaded files, or bulk-download old attachments. Disabling 
 stops its downloads too. Media policies survive a local chat purge, so re-enabling capture
 restores the previous media behavior.
 
-### The global setting
+### The wasync default
+
+The **Also save photos, videos and files** box on the Choose chats page (`/ui/chats/pick`) is the
+default for every chat whose policy is `inherit`. It is saved in `settings.json` in the data
+directory, starts ticked, and a change applies to the next attachment that arrives, with no
+restart. It never downloads attachments that arrived before it was ticked.
 
 ```sh
 wasync --download-media serve
@@ -51,9 +58,9 @@ wasync --download-media serve
 WASYNC_DOWNLOAD_MEDIA=1 wasync serve
 ```
 
-The global flag is a setting for that process launch, not a preference written into every chat.
-An environment variable remains effective for as long as you keep it configured. It enables
-automatic downloads only for chats whose policy is `inherit`.
+The flag is a setting for that process launch, not a preference written into every chat. An
+environment variable remains effective for as long as you keep it configured. It turns the
+default on for chats whose policy is `inherit`, even when the box is unticked.
 
 ### One-time downloads
 
@@ -108,8 +115,9 @@ downloaded files.
 
 Download cleanup failures (for example, a file open in another Windows program)
 do not stop message capture. A background sweep retries removal of orphaned
-managed downloads at startup and every thirty seconds. Unrecognized files placed
-in the media directory are not swept. Close other programs holding downloaded
+managed downloads at startup and every thirty seconds while the media folders hold files;
+once a sweep finds them empty it rests until wasync writes a file there again. Unrecognized
+files placed in the media directory are not swept. Close other programs holding downloaded
 files if cleanup remains pending.
 
 ## Download keys (`media-refs/`)

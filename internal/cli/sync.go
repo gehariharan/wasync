@@ -112,9 +112,7 @@ func (a *App) runSync(ctx context.Context, cfg config.Config, args []string) (re
 	if !client.Paired() {
 		return fmt.Errorf("pair with wasync login first")
 	}
-	if media, ok := client.(interface{ ConfigureMedia(string, bool) }); ok {
-		media.ConfigureMedia(filepath.Join(cfg.DataDir, "media"), cfg.DownloadMedia)
-	}
+	configureMedia(client, cfg)
 	if lists, ok := client.(interface{ ConfigureLists(string) }); ok {
 		lists.ConfigureLists(cfg.DataDir)
 	}

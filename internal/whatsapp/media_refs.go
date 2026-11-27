@@ -71,6 +71,7 @@ func (c *Client) saveMediaReference(ctx context.Context, job mediaJob) error {
 	if len(data) > 1<<20 {
 		return fmt.Errorf("attachment reference is too large")
 	}
+	c.noteMediaWrite()
 	temp, err := os.CreateTemp(dir, ".reference-*")
 	if err != nil {
 		return err
@@ -146,9 +147,14 @@ func (ref mediaReference) job() (mediaJob, error) {
 	}
 	return mediaJob{account: ref.Account, message: storage.Message{GroupID: ref.Chat, MessageID: ref.Message, Type: ref.Kind}, attachment: attachment, extension: mediaExtension(ref.MIME), size: ref.Size}, nil
 }
-func (c *Client) sweepMediaReferences(ctx context.Context) {
+
+// sweepMediaReferences removes download keys whose message is gone. It returns
+// how many reference files it found, counting an incomplete walk as one so the
+// caller never takes it for an empty folder.
+func (c *Client) sweepMediaReferences(ctx context.Context) int {
 	root := ReferenceRoot(c.mediaRoot)
 	incomplete := false
+	seen := 0
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 		if ctx.Err() != nil {
 			return ctx.Err()
@@ -161,6 +167,7 @@ func (c *Client) sweepMediaReferences(ctx context.Context) {
 			return nil
 		}
 		if !entry.IsDir() && entry.Type()&os.ModeSymlink == 0 && strings.HasPrefix(entry.Name(), ".reference-") {
+			seen++
 			info, e := entry.Info()
 			if e != nil {
 				incomplete = true
@@ -180,6 +187,7 @@ func (c *Client) sweepMediaReferences(ctx context.Context) {
 		if !managedReferencePath(root, path) {
 			return nil
 		}
+		seen++
 		ref, err := readMediaReference(path)
 		if err != nil || path != referencePath(root, ref.Account, ref.Chat, ref.Message) {
 			if e := os.Remove(path); e != nil {
@@ -202,6 +210,10 @@ func (c *Client) sweepMediaReferences(ctx context.Context) {
 	if (err != nil || incomplete) && ctx.Err() == nil {
 		c.log.Warn("media reference cleanup incomplete; retrying later")
 	}
+	if err != nil || incomplete {
+		seen++
+	}
+	return seen
 }
 
 func managedReferencePath(root, path string) bool {

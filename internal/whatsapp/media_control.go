@@ -21,9 +21,16 @@ type MediaResult struct {
 }
 type MediaDownloader func(context.Context, string, string) (MediaResult, error)
 
+// mediaDefault reports whether a chat that follows the wasync default saves
+// its attachments: the --download-media flag forces it on, and otherwise the
+// owner's "Also save photos, videos and files" setting decides.
+func (c *Client) mediaDefault() bool {
+	return c.mediaEnabled || c.saveMedia != nil && c.saveMedia()
+}
+
 func (c *Client) autoMedia(ctx context.Context, account int64, chat string) (bool, error) {
 	if c.capture == nil {
-		return c.mediaEnabled, nil
+		return c.mediaDefault(), nil
 	}
 	mode, err := c.capture.store.MediaPolicy(ctx, account, chat)
 	if err != nil {
@@ -35,7 +42,7 @@ func (c *Client) autoMedia(ctx context.Context, account int64, chat string) (boo
 	case "manual":
 		return false, nil
 	default:
-		return c.mediaEnabled, nil
+		return c.mediaDefault(), nil
 	}
 }
 
