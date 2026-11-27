@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Install wasync: all downloads and options</title>
+  <meta name="description" content="Every wasync download for Mac, Windows and Linux, with install steps, Homebrew, checksums and system requirements.">
+  <link rel="canonical" href="https://gehariharan.com/wasync/installoptions/">
+  <meta name="theme-color" content="#f6f7f5" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#111513" media="(prefers-color-scheme: dark)">
+  <link rel="icon" href="../ui/icon.svg" type="image/svg+xml">
+  <link rel="preload" href="../ui/inter.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../ui/tokens.css">
+  <link rel="stylesheet" href="../ui/components.css">
+  <link rel="stylesheet" href="../site.css">
+  <script type="module" src="../app.js"></script>
+</head>
+<body class="site" data-page="install" data-base="../" data-os="any" data-arch="unknown">
+  <header class="topbar">
+    <a class="brand" href="../"><img src="../ui/icon.svg" alt="" width="28" height="28"><span>wasync</span></a>
+    <nav aria-label="Links">
+      <a href="../">Overview</a>
+      <a class="gh" href="https://github.com/gehariharan/wasync" aria-label="wasync on GitHub" title="wasync on GitHub"><svg class="logo" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg></a>
+    </nav>
+  </header>
+
+  <main class="install">
+    <p class="crumb"><a href="../">wasync</a> / Install options</p>
+    <h1>Install wasync</h1>
+    <p class="sub-lead" data-fill="release-line">Every file comes from the latest release on GitHub.</p>
+    <div class="notice warn" data-state="no-release" hidden><strong>The first release of the wasync app is on its way.</strong> Until then, the links below open the <a href="https://github.com/gehariharan/wasync/releases">releases on GitHub</a>.</div>
+
+    <section aria-labelledby="all-title">
+      <h2 id="all-title">All downloads</h2>
+      <div class="table-wrap">
+        <table class="table downloads">
+          <thead><tr><th scope="col">Computer</th><th scope="col">File</th><th scope="col">Size</th><th scope="col"><span class="sr-only">Download</span></th></tr></thead>
+          <tbody>
+            <tr data-row="mac"><td><strong>Mac, Apple silicon</strong><span class="block sub">M1 and later</span></td><td>App, disk image (.dmg)</td><td data-size="mac-arm64">-</td><td><a href="../download/mac-arm64" data-dl="mac-arm64">Download</a></td></tr>
+            <tr data-row="mac"><td><strong>Mac, Intel</strong></td><td>App, disk image (.dmg)</td><td data-size="mac-amd64">-</td><td><a href="../download/mac-amd64" data-dl="mac-amd64">Download</a></td></tr>
+            <tr data-row="windows"><td><strong>Windows 10 and 11</strong><span class="block sub">64-bit</span></td><td>App, Setup (.exe)</td><td data-size="windows-amd64">-</td><td><a href="../download/windows-amd64" data-dl="windows-amd64">Download</a></td></tr>
+            <tr data-row="windows"><td><strong>Windows, portable</strong></td><td>No installer (.zip)</td><td data-size="windows-amd64-zip">-</td><td><a href="../download/windows-amd64-zip" data-dl="windows-amd64-zip">Download</a></td></tr>
+            <tr data-row="linux"><td><strong>Linux, x86-64</strong></td><td>Terminal program (.tar.gz)</td><td data-size="linux-amd64">-</td><td><a href="../download/linux-amd64" data-dl="linux-amd64">Download</a></td></tr>
+            <tr data-row="linux"><td><strong>Linux, ARM64</strong></td><td>Terminal program (.tar.gz)</td><td data-size="linux-arm64">-</td><td><a href="../download/linux-arm64" data-dl="linux-arm64">Download</a></td></tr>
+            <tr data-row="mac-cli"><td><strong>Mac, command only</strong><span class="block sub">no app window</span></td><td>Installer package (.pkg)</td><td><span data-size="mac-arm64-pkg">-</span> / <span data-size="mac-amd64-pkg">-</span></td><td><a href="../download/mac-arm64-pkg" data-dl="mac-arm64-pkg">Apple silicon</a> · <a href="../download/mac-amd64-pkg" data-dl="mac-amd64-pkg">Intel</a></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section aria-labelledby="steps-title">
+      <h2 id="steps-title">Install steps</h2>
+      <div class="steps3">
+        <div class="card" id="mac">
+          <h3>Mac</h3>
+          <ol class="steps-n">
+            <li>Open the downloaded disk image.</li>
+            <li>Drag wasync to Applications.</li>
+            <li>Open wasync from Applications.</li>
+            <li>Scan the code with WhatsApp on your phone: Settings, Linked devices.</li>
+          </ol>
+        </div>
+        <div class="card" id="windows">
+          <h3>Windows</h3>
+          <ol class="steps-n">
+            <li>Run the Setup file.</li>
+            <li>Read the note and choose I accept.</li>
+            <li>Finish with "Open wasync now" ticked.</li>
+            <li>Scan the code with WhatsApp on your phone: Settings, Linked devices.</li>
+          </ol>
+        </div>
+        <div class="card" id="linux">
+          <h3>Linux</h3>
+          <div class="linux-cols"><div>
+          <ol class="steps-n">
+            <li>Unpack and install:
+              <pre><code>mkdir wasync &amp;&amp; cd wasync
+tar -xzf ~/Downloads/<span data-linux-file>wasync_VERSION_linux_ARCH.tar.gz</span>
+./install.sh</code></pre></li>
+            <li>Run <code>wasync setup</code> and scan the code.</li>
+          </ol>
+          </div><div>
+          <p class="sub nomt">Or with Homebrew:</p>
+          <div class="cmd"><pre><code id="brew-linux">brew tap --custom-remote gehariharan/tap https://github.com/gehariharan/wasync.git
+if brew help trust >/dev/null 2>&amp;1; then brew trust --formula gehariharan/tap/wasync; fi
+brew install gehariharan/tap/wasync-axi</code></pre><button type="button" data-copy="brew-linux">Copy</button></div>
+          </div></div>
+        </div>
+      </div>
+      <p class="sub">Homebrew on Mac and upgrade details: <a href="https://github.com/gehariharan/wasync#homebrew-installation">Homebrew installation</a>.</p>
+    </section>
+
+    <div class="grid2">
+      <section class="card" aria-labelledby="req-title">
+        <h2 id="req-title">System requirements</h2>
+        <dl class="req">
+          <dt>Mac</dt><dd>macOS 15 Sequoia or later</dd>
+          <dt>Windows</dt><dd>Windows 10 or 11, 64-bit</dd>
+          <dt>Linux</dt><dd>x86-64 or ARM64, glibc 2.35 or later</dd>
+          <dt>Phone</dt><dd>WhatsApp, to link wasync once</dd>
+        </dl>
+      </section>
+      <section class="card" aria-labelledby="verify-title">
+        <h2 id="verify-title">Check your download</h2>
+        <p>The Mac app is signed and notarised by Apple. Every file has a SHA-256 checksum.</p>
+        <p><a data-fill="checksums" href="https://github.com/gehariharan/wasync/releases/latest">Checksums</a> · <a data-fill="notes" href="https://github.com/gehariharan/wasync/releases">Release notes</a></p>
+        <div class="cmd"><code id="sha-cmd">shasum -a 256 ~/Downloads/wasync_*</code><button type="button" data-copy="sha-cmd">Copy</button></div>
+      </section>
+    </div>
+
+    <section class="card disclaimer" id="not-whatsapp" aria-labelledby="disc-title">
+      <h2 id="disc-title">Please read: wasync is not WhatsApp</h2>
+      <p>wasync is an independent, open-source project. It is not made by, affiliated with or endorsed by WhatsApp or Meta. It links to your account as a linked device through an unofficial method (whatsmeow), so WhatsApp could limit or ban an account that uses it. Use it at your own risk, and only keep or share chats you have permission to. WhatsApp is a trademark of Meta Platforms, Inc.</p>
+    </section>
+    <p class="sub marks">Apple and Mac are trademarks of Apple Inc. Windows is a trademark of the Microsoft group of companies. Linux is a registered trademark of Linus Torvalds; the Tux penguin is by Larry Ewing, made with The GIMP. wasync is not affiliated with or endorsed by any of them.</p>
+  </main>
+
+  <footer class="foot">
+    <span><a href="https://github.com/gehariharan/wasync/blob/main/LICENSE">MIT licence</a> · <a href="https://github.com/gehariharan/wasync">Source</a> · <a href="https://github.com/gehariharan/wasync/issues">Report a problem</a></span>
+  </footer>
+  <p id="live" class="sr-only" aria-live="polite"></p>
+</body>
+</html>

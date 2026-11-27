@@ -48,6 +48,26 @@ jobs:
           scripts/package.sh 0.0.0-ci.1
           bash scripts/test-macos-pkg.sh dist/0.0.0-ci.1/darwin_*/wasync_0.0.0-ci.1_darwin_*.pkg 0.0.0-ci.1 "$(go env GOARCH)"
           bash scripts/test-macos-dmg.sh dist/0.0.0-ci.1/darwin_*/wasync_0.0.0-ci.1_darwin_*.dmg 0.0.0-ci.1 "$(go env GOARCH)"
+  website:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: website
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+      - run: npm ci
+      - name: Test the Worker and the platform detection
+        run: npm test
+      - name: Build the site as a deploy does, without uploading or credentials
+        run: npm run check
   windows:
     runs-on: windows-2022
     timeout-minutes: 30

@@ -1,0 +1,5 @@
+node_modules/
+.cloudflare/
+.wrangler/
+# Copied from internal/api/webassets by `npm run design`; never edit here.
+public/wasync/ui/

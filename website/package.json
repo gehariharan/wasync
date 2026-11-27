@@ -1,0 +1,19 @@
+{
+  "name": "wasync-site",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "design": "node scripts/copy-design.mjs",
+    "dev": "npm run design && cf dev",
+    "check": "npm run design && cf deploy --dry-run",
+    "deploy": "npm run design && cf deploy",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "devDependencies": {
+    "cf": "1.0.0-rc.6",
+    "wrangler": "4.168.0"
+  }
+}

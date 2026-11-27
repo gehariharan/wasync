@@ -82,7 +82,9 @@ if [[ ( "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hos
     code="$(curl -s -o /dev/null -w '%{http_code}' "$base$page")"
     [[ "$code" == 401 ]] || fail "$page answered $code without a sign-in link; expected 401"
   done
-  "$app/Contents/MacOS/wasync" --data-dir "$data" status | grep -q 'started by the wasync app' || fail "wasync does not say the app started it"
+  # Read all of status first: grep -q in a pipe stops reading at the match, and
+  # under pipefail the still-writing wasync then fails on the closed pipe.
+  grep -q 'started by the wasync app' <<<"$("$app/Contents/MacOS/wasync" --data-dir "$data" status)" || fail "wasync does not say the app started it"
   pass "the app started wasync for its data directory, with its pages closed to visitors"
 
   # A second copy hands over to the first and leaves.
