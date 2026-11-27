@@ -195,6 +195,8 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 		return err
 	}
 	args = root.Args()
+	// A folder named by an earlier version means wherever the data is now.
+	cfg.DataDir = config.Resolve(cfg.DataDir)
 	if handled, helpErr := a.dispatchHelp(args); handled {
 		return helpErr
 	}
@@ -301,12 +303,16 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	if (args[0] == "serve" || args[0] == "setup") && cfg.NoAPI {
 		return fmt.Errorf("%s requires the local API; remove --no-api", args[0])
 	}
+	cfg.DataDir = a.moveData(parent, cfg.DataDir)
 	if err = localfs.EnsureDir(cfg.DataDir); err != nil {
 		return err
 	}
-	lock, err := processlock.Acquire(filepath.Join(cfg.DataDir, "device.lock"))
+	lock, err := acquireData(cfg.DataDir)
 	if errors.Is(err, processlock.ErrBusy) {
 		return a.throughOwner(parent, cfg, args)
+	}
+	if errors.Is(err, errDataMoved) {
+		return a.Run(parent, a.runArgs)
 	}
 	if err != nil {
 		return err

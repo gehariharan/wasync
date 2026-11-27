@@ -123,8 +123,11 @@ on macOS compare `shasum -a 256 FILE.pkg` with its line in `checksums.txt`.
 
 Stop wasync before upgrading (`wasync stop`), and start it again afterwards with
 `wasync service restart` if it runs at login. Installers only replace program files; archives,
-chat choices and pairing state remain in the per-user data directory
-(see [Data, files and security](data-and-security.md)).
+chat choices and pairing state remain in the per-user data directory:
+`~/Library/Application Support/wasync` on macOS, `%LOCALAPPDATA%\wasync` on Windows and
+`~/.local/share/wasync` on Linux. Upgrading from a version that used `%APPDATA%\wasync` or
+`~/.config/wasync` moves the data there on the first start, after checking the copy; see
+[Data, files and security](data-and-security.md#moving-from-an-older-versions-folder).
 
 ### Updating from the web app
 

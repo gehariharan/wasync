@@ -274,10 +274,11 @@ release. Its keys and screens are documented in [docs/tui.md](docs/tui.md).
 ## Your data
 
 Everything lives in one private folder: `~/Library/Application Support/wasync` on macOS,
-`~/.config/wasync` (or `$XDG_CONFIG_HOME/wasync`) on Linux, and `%APPDATA%\wasync` on Windows
-(`%USERPROFILE%\.wasync` for the Microsoft Store edition). Override it with `--data-dir` or
-`WASYNC_DATA_DIR`. It holds the archive, the WhatsApp session, credentials and settings, with
-owner-only permissions. wasync does **not** encrypt them at rest, so use full-disk encryption and
+`~/.local/share/wasync` (or `$XDG_DATA_HOME/wasync`) on Linux, and `%LOCALAPPDATA%\wasync` on
+Windows (`%USERPROFILE%\.wasync` for the Microsoft Store edition). You never have to pick it:
+wasync creates it, the Set up page shows where it is, and data from an older version's folder
+moves there by itself. Override it with `--data-dir` or `WASYNC_DATA_DIR`. It holds the archive,
+the WhatsApp session, credentials and settings, with owner-only permissions. wasync does **not** encrypt them at rest, so use full-disk encryption and
 keep backups private. See [docs/data-and-security.md](docs/data-and-security.md).
 
 <a id="store-privacy-policy"></a>

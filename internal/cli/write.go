@@ -45,7 +45,7 @@ func (a *App) runWrite(ctx context.Context, cfg config.Config, w writeCommand) (
 	if err := localfs.EnsureDir(cfg.DataDir); err != nil {
 		return err
 	}
-	lock, err := processlock.Acquire(filepath.Join(cfg.DataDir, "device.lock"))
+	lock, err := acquireData(cfg.DataDir)
 	if errors.Is(err, processlock.ErrBusy) {
 		return a.writeThroughOwner(ctx, cfg, w)
 	}

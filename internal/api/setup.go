@@ -54,6 +54,8 @@ type setupData struct {
 	DeviceCode string
 	// Update is where updates stand; nil when this wasync cannot update.
 	Update *update.Status
+	// DataDir is the folder that holds everything wasync keeps.
+	DataDir string
 }
 
 func (h *handler) axiCredentialPath() (string, error) {
@@ -69,7 +71,7 @@ func (h *handler) setupHome(w http.ResponseWriter, r *http.Request, sess uiSessi
 
 // setupView renders the setup page; tweak, when set, adds to what it shows.
 func (h *handler) setupView(w http.ResponseWriter, r *http.Request, sess uiSession, tweak func(*setupData)) {
-	d := &setupData{uiData: uiData{CSRF: sess.csrf, Gate: h.confirmName(r), Title: "wasync setup", Remote: remoteLogin(r) != ""}}
+	d := &setupData{uiData: uiData{CSRF: sess.csrf, Gate: h.confirmName(r), Title: "wasync setup", Remote: remoteLogin(r) != ""}, DataDir: h.dataDir}
 	if n, ok := notices[r.URL.Query().Get("n")]; ok {
 		d.Notice, d.NoticeOK = n.text, n.ok
 	}
@@ -215,6 +217,24 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 	h.uiBack(w, r, "connected")
 }
 
+// setupFolder opens the data folder in the file manager of the computer
+// running wasync. It is only for the person at that computer: from another
+// device it would open a window nobody there sees.
+func (h *handler) setupFolder(w http.ResponseWriter, r *http.Request, sess uiSession) {
+	if !h.uiForm(w, r, sess) {
+		return
+	}
+	if remoteLogin(r) != "" {
+		h.uiBack(w, r, "folderhere")
+		return
+	}
+	if err := h.showFolder(h.dataDir); err != nil {
+		h.uiBack(w, r, "nofolder")
+		return
+	}
+	h.uiBack(w, r, "")
+}
+
 // setupLink asks for a new pairing code after linking stopped.
 func (h *handler) setupLink(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	if !h.uiForm(w, r, sess) {
@@ -339,6 +359,10 @@ var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiH
 {{else}}<p class="bad">This computer cannot show a system confirmation, so devices cannot be added.</p>{{end}}
 </section>
 {{end}}
+<h2 id="data">Storage</h2>
+<section class="card">
+<form method="post" action="/ui/setup/folder" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><span>Your data is stored in <code>{{.DataDir}}</code></span>{{if not .Remote}} <button>Show folder</button>{{end}}</form>
+</section>
 {{template "update" .}}
 <p><a href="/ui/setup">Refresh</a></p>
 </main></body></html>

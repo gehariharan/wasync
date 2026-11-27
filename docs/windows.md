@@ -27,8 +27,9 @@ If you set up your agents, run `wasync-axi setup hooks --remove` and
 `wasync-axi setup skill --remove` before uninstalling. Quit the wasync app (or stop wasync
 with `wasync stop`) before upgrading by hand or uninstalling; **Update and restart…** on the Set up page does both steps
 for you (see [Updating from the web app](install.md#updating-from-the-web-app)). Uninstall removes program files, its
-PATH entry and the app's start-at-login item; it preserves `%APPDATA%\wasync`, including the archive and device
-session. The installer owns only the PATH entry it adds; a preexisting equivalent
+PATH entry and the app's start-at-login item; it preserves `%LOCALAPPDATA%\wasync`, including the archive and device
+session (older versions used `%APPDATA%\wasync`; see
+[Moving from an older version's folder](data-and-security.md#moving-from-an-older-versions-folder)). The installer owns only the PATH entry it adds; a preexisting equivalent
 entry is preserved on uninstall. The portable ZIP uses the same data directory unless
 `--data-dir` is set. Local data uses a private Windows ACL for your user and SYSTEM;
 concurrent capture uses an exclusive Windows file lock. Native Windows ARM64 is not yet packaged.
@@ -102,12 +103,15 @@ The privacy policy the Store listing points to is in the
 
 The Store build defaults to `%USERPROFILE%\.wasync`, a private directory outside
 MSIX-managed app data. Upgrades and uninstall retain the archive, linked-device
-session, chat choices and downloads. This avoids requesting the additional restricted
-capability for disabling MSIX filesystem virtualization. `runFullTrust` remains
-necessary for this desktop application and requires Store review.
+session, chat choices and downloads. The package's own app data folder
+(`%LOCALAPPDATA%\Packages\...`) would be deleted on uninstall and hidden from programs outside
+the package, and avoiding that needs an additional restricted capability for disabling MSIX
+filesystem virtualization, so the Store build keeps this folder and never moves it.
+`runFullTrust` remains necessary for this desktop application and requires Store review.
 
-The EXE/ZIP build keeps `%APPDATA%\wasync`. These are separate installations;
-there is no automatic session copy or background login. Before switching, stop
+The EXE/ZIP build uses `%LOCALAPPDATA%\wasync` and moves an older version's `%APPDATA%\wasync`
+there by itself. The Store edition and the EXE/ZIP build are separate installations;
+there is no automatic copy between them and no background login. Before switching, stop
 both versions and back up the entire old data directory, including SQLite
 sidecars, session database and media. Copy it to `%USERPROFILE%\.wasync` while
 both apps are stopped, then start the Store edition and verify `wasync status`.

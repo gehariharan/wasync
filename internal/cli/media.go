@@ -52,7 +52,7 @@ func (a *App) runMedia(parent context.Context, cfg config.Config, args []string)
 	if err := localfs.EnsureDir(cfg.DataDir); err != nil {
 		return err
 	}
-	lock, err := processlock.Acquire(filepath.Join(cfg.DataDir, "device.lock"))
+	lock, err := acquireData(cfg.DataDir)
 	if errors.Is(err, processlock.ErrBusy) {
 		if cfg.NoAPI {
 			return fmt.Errorf("owner command channel is disabled; use the running TUI")

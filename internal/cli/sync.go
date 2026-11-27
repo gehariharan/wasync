@@ -83,7 +83,7 @@ func (a *App) runSync(ctx context.Context, cfg config.Config, args []string) (re
 	if err := localfs.EnsureDir(cfg.DataDir); err != nil {
 		return err
 	}
-	lock, err := processlock.Acquire(filepath.Join(cfg.DataDir, "device.lock"))
+	lock, err := acquireData(cfg.DataDir)
 	if errors.Is(err, processlock.ErrBusy) {
 		if cfg.NoAPI {
 			return fmt.Errorf("running owner has no command channel")
