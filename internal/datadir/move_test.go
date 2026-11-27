@@ -460,7 +460,11 @@ func TestMoveFinishesAfterStoppingBetweenSwitchAndNote(t *testing.T) {
 	// What a move that stopped right after the switch leaves: the copy in
 	// Dir names the old folder it came from, which has no note yet.
 	write(t, filepath.Join(l.Dir, "archive.db"), "")
-	write(t, filepath.Join(l.Dir, KeptNoteFile), l.Legacy+"\n\nthe old folder\n")
+	// The copy's note is written as a move writes it: a private file, which
+	// on Windows is the only kind the later rewrite may open.
+	if err := writeKeptNote(l.Dir, l.Legacy); err != nil {
+		t.Fatal(err)
+	}
 	if l.InUse() != l.Dir {
 		t.Fatal("the copy is in use")
 	}
