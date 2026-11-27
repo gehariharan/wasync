@@ -23,9 +23,9 @@ agent** step. Setup offers a user PATH entry (keep it ticked so agents can find
 `wasync_VERSION_windows_amd64-setup.exe /VERYSILENT`. No administrator access is needed.
 
 To uninstall, use **Settings > Remove wasync** in the wasync app; no terminal is needed (see
-[Removing wasync](install.md#removing-wasync)). It disconnects every connected agent and takes wasync out of
+[Removing wasync](install.md#removing-wasync)). After you confirm with Windows Hello, it disconnects every connected agent and takes wasync out of
 its settings, unlinks the phone from WhatsApp, removes both start-at-login items, deletes your
-chats and data only if you tick **Also delete my chats and data** and confirm with Windows Hello,
+chats and data only if you ticked **Also delete my chats and data**,
 and then opens Setup's own uninstaller, the one Settings > Apps runs. Quit the wasync app (or stop
 wasync with `wasync stop`) before upgrading by hand; **Update and restart…** in Settings does
 that for you (see [Updating from the web app](install.md#updating-from-the-web-app)). The uninstaller

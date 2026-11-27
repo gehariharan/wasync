@@ -149,7 +149,8 @@ command-line package update the way you installed them; the page says how.
 ## Removing wasync
 
 In the wasync app or the web app, **Settings > Remove wasync** removes wasync without a
-terminal. In order, it:
+terminal. It first asks you to confirm with Touch ID, your password or Windows Hello; declining
+changes nothing. Then, in order, it:
 
 1. disconnects every agent: it takes wasync's entry out of each app's settings file (putting
    back any entry wasync replaced) and revokes every agent credential;
@@ -157,8 +158,8 @@ terminal. In order, it:
    offline), the page says what is left and how to finish it, and waits for **Finish removing**;
 3. stops wasync and quits the wasync app, then removes both start-at-login items: the app's own
    and the older `wasync service install` one;
-4. only if you ticked **Also delete my chats and data** (it starts unticked) and confirmed with
-   Touch ID, your password or Windows Hello: deletes the data directory, the approval
+4. only if you ticked **Also delete my chats and data** (it starts unticked; the confirmation
+   then says the data is deleted too): deletes the data directory, the approval
    credential in the macOS Keychain and the agent credentials wasync saved for `wasync-axi`;
 5. removes the program the way it was installed:
    - Windows Setup: opens Setup's own uninstaller (the one Settings > Apps runs), which asks

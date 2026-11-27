@@ -17,9 +17,10 @@ import (
 
 // Remove wasync, from Settings, with no terminal. On this computer only:
 //
-//  1. If "Also delete my chats and data" is ticked (it is not by default),
-//     the person confirms with the computer's own check first; declining
-//     changes nothing at all.
+//  1. The person confirms with the computer's own check first, once for the
+//     whole removal, including deleting the data when "Also delete my chats
+//     and data" is ticked (it is not by default); declining changes nothing
+//     at all.
 //  2. Every app wasync connected is disconnected (wasync's entry comes out of
 //     its settings and any entry it replaced goes back), and every other agent
 //     credential is revoked.
@@ -85,7 +86,7 @@ type removeData struct {
 	Linked     bool
 	DataDir    string
 	Handoff    uninstall.Handoff
-	CanDelete  bool
+	CanConfirm bool
 	DeleteData bool
 	// Problems are what could not be done; Finishing is the page that waits
 	// for "Finish removing"; Gone is the last page, shown as wasync stops.
@@ -97,7 +98,7 @@ type removeData struct {
 func (h *handler) removeData(r *http.Request, sess uiSession) (*removeData, error) {
 	d := &removeData{uiData: uiData{CSRF: sess.csrf, Gate: h.confirmName(r), Title: "Remove wasync", Remote: remoteLogin(r) != ""}, DataDir: h.dataDir, Handoff: h.handoff()}
 	h.noticeFrom(r, &d.uiData)
-	d.CanDelete = !d.Remote && h.human.Enabled()
+	d.CanConfirm = !d.Remote && h.human.Enabled()
 	account, err := h.store.Account(r.Context())
 	if err != nil {
 		return nil, err
@@ -170,16 +171,17 @@ func (h *handler) removeAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 		return
 	}
 	d.DeleteData = r.PostForm.Get("delete") == "yes"
+	if !d.CanConfirm {
+		removeBack(w, r, "nogate")
+		return
+	}
+	prompt := "Approve: remove wasync from this computer, revoking every agent's credential and unlinking WhatsApp; your data is kept in " + h.dataDir + "."
 	if d.DeleteData {
-		if !d.CanDelete {
-			removeBack(w, r, "nogate")
-			return
-		}
-		prompt := "Approve: remove wasync and delete all its data, which cannot be undone: your synced chats, saved files, settings and the link to WhatsApp, in " + h.dataDir + "."
-		if err := h.confirmError(r.Context(), prompt); err != nil {
-			removeBack(w, r, noticeFor(err))
-			return
-		}
+		prompt = "Approve: remove wasync from this computer, revoking every agent's credential, and delete all its data, which cannot be undone: your synced chats, saved files, settings and the link to WhatsApp, in " + h.dataDir + "."
+	}
+	if err := h.confirmError(r.Context(), prompt); err != nil {
+		removeBack(w, r, noticeFor(err))
+		return
 	}
 	d.Problems = h.takeAwayAccess(r.Context())
 	if len(d.Problems) > 0 {
@@ -301,6 +303,7 @@ var removeTemplate = template.Must(template.New("remove").Funcs(uiFuncs).Parse(u
 <form method="post" action="/ui/settings/remove" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button class="danger" name="action" value="finish">Finish removing</button> <a class="btn ghost" href="/ui/settings">Keep wasync</a></form>
 </section>
 {{else if .Remote}}<p class="notice bad">Remove wasync on the computer running it.</p>
+{{else if not .CanConfirm}}<p class="notice bad">This computer cannot show a system confirmation, so wasync cannot be removed on this page. {{.Handoff.Note}}</p>
 {{else}}<section class="card">
 <p>wasync will:</p>
 <ol class="remove-steps">
@@ -310,7 +313,8 @@ var removeTemplate = template.Must(template.New("remove").Funcs(uiFuncs).Parse(u
 <li>{{if eq .Handoff.Kind "mac-app"}}Quit and move wasync to the Bin.{{else if eq .Handoff.Kind "windows-setup"}}Open the Windows uninstaller, the same one Settings, Apps runs.{{else}}Stop. {{.Handoff.Note}}{{end}}</li>
 </ol>
 <form method="post" action="/ui/settings/remove"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<label class="choice risky"><input type="checkbox" name="delete" value="yes"{{if not .CanDelete}} disabled{{end}}><span><strong>Also delete my chats and data</strong></span><span class="mut">{{if .CanDelete}}Deletes <code>{{.DataDir}}</code> and the keys wasync keeps, after you confirm with {{.Gate}}. This cannot be undone. Unticked, your data stays for a later install.{{else}}This computer cannot confirm it is you, so your data is kept. It stays in <code>{{.DataDir}}</code>.{{end}}</span></label>
+<label class="choice risky"><input type="checkbox" name="delete" value="yes"><span><strong>Also delete my chats and data</strong></span><span class="mut">Deletes <code>{{.DataDir}}</code> and the keys wasync keeps. This cannot be undone. Unticked, your data stays for a later install.</span></label>
+<p class="mut">You confirm the removal with {{.Gate}} first.</p>
 <div class="step-foot"><a class="btn ghost" href="/ui/settings">Cancel</a><button class="danger" name="action" value="remove">Remove wasync</button></div>
 </form>
 </section>{{end}}

@@ -59,7 +59,8 @@ func (h *handler) linkState(r *http.Request) (linkState, error) {
 
 // setupRoute leads /ui/setup to the step that is due: the First open screen
 // once, then linking until a phone is linked, then the steps until setup is
-// done, and Settings after that.
+// done, from choosing chats once step 1 saved how wasync will be used, and
+// Settings after that.
 func (h *handler) setupRoute(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	to := "/ui/settings"
 	st, err := h.linkState(r)
@@ -75,8 +76,10 @@ func (h *handler) setupRoute(w http.ResponseWriter, r *http.Request, sess uiSess
 		to = welcomePath
 	case !st.Paired:
 		to = "/ui/setup/link"
-	case !settings.SetupDone:
+	case !settings.SetupDone && settings.Use == "":
 		to = "/ui/setup/link" // linked: the step asks how wasync will be used
+	case !settings.SetupDone:
+		to = "/ui/setup/chats"
 	}
 	if n := r.URL.Query().Get("n"); n != "" {
 		to += "?n=" + url.QueryEscape(n)
@@ -286,8 +289,8 @@ func (h *handler) setupLink(w http.ResponseWriter, r *http.Request, sess uiSessi
 	http.Redirect(w, r, to, http.StatusSeeOther)
 }
 
-// setupService turns start-at-login on or off. Turning it on needs the system
-// prompt because it leaves a program that runs whenever the person logs in.
+// setupService turns start-at-login on or off. Neither asks for the system
+// prompt; setLoginItem says why.
 func (h *handler) setupService(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	if !h.uiForm(w, r, sess) || h.service == nil {
 		return

@@ -183,6 +183,21 @@ func TestATailnetDeviceWithAPasskeyCanDoOwnerActions(t *testing.T) {
 		t.Fatalf("lists: %+v %v", lists, err)
 	}
 
+	// Removing an agent asks for the passkey too, with the revoke sentence.
+	_, ask, _ = c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"revoke"}, "agent": {"jit"}})
+	if !strings.Contains(ask, `revoke agent &#34;jit&#34;`) || attrOf(t, ask, "data-mode") != "get" {
+		t.Fatalf("revoke page:\n%s", ask)
+	}
+	if got, _ := agentauth.ActiveByName(f.dir, "jit"); got == nil {
+		t.Fatal("the agent was revoked before the passkey answered")
+	}
+	if got := notice(answer(t, c, device, ask)); got != "agentremoved" {
+		t.Fatalf("confirmed revoke: %q", got)
+	}
+	if got, _ := agentauth.ActiveByName(f.dir, "jit"); got != nil {
+		t.Fatal("the agent still works after a confirmed revoke")
+	}
+
 	// Only the device was confirmed on this computer; the rest came from the passkey.
 	if len(stub.seen()) != 1 {
 		t.Fatalf("remote actions raised the system prompt: %q", stub.seen())
@@ -222,7 +237,7 @@ func TestATailnetDeviceWithoutAPasskeyCannotDoOwnerActions(t *testing.T) {
 		t.Fatalf("agents page without a passkey:\n%s", page)
 	}
 	csrf := csrfOf(t, page)
-	for _, form := range []url.Values{{"action": {"openon"}}, {"action": {"allowsend"}, "agent": {"other"}}, {"action": {"liston"}, "agent": {"jit"}, "numbers": {"+15551230000"}, "rate": {"5"}, "ends": {"7d"}}} {
+	for _, form := range []url.Values{{"action": {"openon"}}, {"action": {"allowsend"}, "agent": {"other"}}, {"action": {"liston"}, "agent": {"jit"}, "numbers": {"+15551230000"}, "rate": {"5"}, "ends": {"7d"}}, {"action": {"revoke"}, "agent": {"jit"}}} {
 		form.Set("csrf", csrf)
 		if _, _, hd := c.post("/ui/agents", form); notice(hd) != "remote" {
 			t.Fatalf("%v without a passkey: %q", form, hd.Get("Location"))
@@ -240,6 +255,9 @@ func TestATailnetDeviceWithoutAPasskeyCannotDoOwnerActions(t *testing.T) {
 	}
 	if _, on := opensend.ActiveNow(f.dir, time.Now()); on || f.client(t, "other").HasScope(agentauth.ScopeSend) {
 		t.Fatal("something changed without a passkey")
+	}
+	if got, _ := agentauth.ActiveByName(f.dir, "jit"); got == nil {
+		t.Fatal("an agent was revoked without a passkey")
 	}
 	if lists, _ := sendlist.Load(f.dir); len(lists) != 0 {
 		t.Fatalf("lists: %+v", lists)

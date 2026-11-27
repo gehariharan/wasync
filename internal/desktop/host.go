@@ -20,6 +20,7 @@ import (
 	"github.com/gehariharan/wasync/internal/cli"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/firstopen"
+	"github.com/gehariharan/wasync/internal/prefs"
 	"github.com/gehariharan/wasync/internal/uninstall"
 	"github.com/gehariharan/wasync/internal/update"
 )
@@ -331,7 +332,8 @@ func (h *Host) StartLink(ctx context.Context) (string, error) {
 }
 
 // StartPage is the page the window opens on: setup while the First open
-// screen is still to be seen or no phone is linked, and the chats otherwise.
+// screen is still to be seen, no phone is linked or the setup steps were not
+// finished or skipped, and the chats otherwise.
 // The First open screen itself belongs to the setup pages; until they show
 // it, this opens setup.
 func (h *Host) StartPage(ctx context.Context) string {
@@ -339,6 +341,9 @@ func (h *Host) StartPage(ctx context.Context) string {
 		return "setup"
 	}
 	if st := h.CLI.Status(ctx, h.config()); st.Paired == nil || !*st.Paired {
+		return "setup"
+	}
+	if s, err := prefs.Open(h.DataDir()).Get(); err != nil || !s.SetupDone {
 		return "setup"
 	}
 	return "chats"

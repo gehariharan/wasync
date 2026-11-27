@@ -98,8 +98,8 @@ func TestRemoveWasyncDisconnectsUnlinksAndHandsOverKeepingTheData(t *testing.T) 
 	if code != 200 || !strings.Contains(page, "Removing wasync") || !strings.Contains(page, "Your chats and data are kept") {
 		t.Fatalf("removing: %d\n%s", code, page)
 	}
-	if len(f.stub.seen()) != asked {
-		t.Fatalf("keeping the data asked for a confirmation: %q", f.stub.seen())
+	if seen := f.stub.seen()[asked:]; len(seen) != 1 || !strings.Contains(seen[0], "revoking every agent's credential") || !strings.Contains(seen[0], "your data is kept") {
+		t.Fatalf("removing asks once, up front: %q", seen)
 	}
 	spy.waitStopped(t)
 	unlinks, started := spy.counts()
@@ -156,9 +156,37 @@ func TestRemoveWasyncDeletesTheDataOnlyAfterTheComputerConfirms(t *testing.T) {
 	}
 }
 
+func TestRemoveWasyncDoesNothingWithoutTheUpFrontConfirmation(t *testing.T) {
+	spy := &removeSpy{}
+	f, c, csrf := newConnectFixture(t, false, spy.owner)
+	f.stub.set(false)
+	if _, _, hd := c.post(removePath, url.Values{"csrf": {csrf}, "action": {"remove"}}); !strings.Contains(hd.Get("Location"), "n=declined") {
+		t.Fatalf("declined: %v", hd)
+	}
+	if unlinks, started := spy.counts(); unlinks != 0 || started != 0 {
+		t.Fatal("a declined removal still removed something")
+	}
+	if got, _ := agentauth.ActiveByName(f.dir, "jit"); got == nil {
+		t.Fatal("a declined removal revoked an agent")
+	}
+
+	sf, nc, ncsrf := newSetupFixture(t, false)
+	_, page, _ := nc.get(removePath)
+	if strings.Contains(page, `value="remove"`) || !strings.Contains(page, "cannot show a system confirmation") {
+		t.Fatalf("remove page with no confirmation:\n%s", page)
+	}
+	if _, _, hd := nc.post(removePath, url.Values{"csrf": {ncsrf}, "action": {"remove"}}); !strings.Contains(hd.Get("Location"), "n=nogate") {
+		t.Fatalf("remove with no confirmation: %v", hd)
+	}
+	if got, _ := agentauth.ActiveByName(sf.dir, "jit"); got == nil {
+		t.Fatal("removing with no confirmation revoked an agent")
+	}
+}
+
 func TestRemoveWasyncSaysWhatItCouldNotUndoAndWaits(t *testing.T) {
 	spy := &removeSpy{unlinkErr: errors.New("offline")}
 	f, c, csrf := newConnectFixture(t, false, spy.owner)
+	f.stub.set(true)
 	code, page, _ := c.post(removePath, url.Values{"csrf": {csrf}, "action": {"remove"}})
 	if code != 200 || !strings.Contains(page, "could not unlink this computer from WhatsApp") || !strings.Contains(page, `value="finish"`) {
 		t.Fatalf("problems page: %d\n%s", code, page)
@@ -256,19 +284,37 @@ func TestSettingsSwitchesHowWasyncIsUsedAndMedia(t *testing.T) {
 	}
 }
 
-func TestAgentsPageRemovesAnAgentWithoutAPrompt(t *testing.T) {
+func TestAgentsPageRemovesAnAgentOnlyAfterTheComputerConfirms(t *testing.T) {
 	sf, c, csrf := newSetupFixture(t, true)
 	_, page, _ := c.get("/ui/agents")
 	if !strings.Contains(page, `href="/ui/agents/connect"`) || !strings.Contains(page, `href="/ui/sent"`) || !strings.Contains(page, `name="agent" value="jit"`) {
 		t.Fatalf("agents page:\n%s", page)
 	}
-	if _, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"revoke"}, "agent": {"jit"}}); !strings.Contains(hd.Get("Location"), "n=agentremoved") {
+	remove := url.Values{"csrf": {csrf}, "action": {"revoke"}, "agent": {"jit"}}
+	if _, _, hd := c.post("/ui/agents", remove); !strings.Contains(hd.Get("Location"), "n=declined") {
+		t.Fatalf("declined remove: %v", hd)
+	}
+	if got, _ := agentauth.ActiveByName(sf.dir, "jit"); got == nil {
+		t.Fatal("a declined confirmation removed the agent")
+	}
+	if seen := sf.stub.seen(); len(seen) != 1 || !strings.Contains(seen[0], `revoke agent "jit"`) {
+		t.Fatalf("prompt: %q", seen)
+	}
+	sf.stub.set(true)
+	if _, _, hd := c.post("/ui/agents", remove); !strings.Contains(hd.Get("Location"), "n=agentremoved") {
 		t.Fatalf("remove: %v", hd)
 	}
 	if got, _ := agentauth.ActiveByName(sf.dir, "jit"); got != nil {
 		t.Fatal("the agent still works")
 	}
-	if len(sf.stub.seen()) != 0 {
-		t.Fatalf("removing an agent asked for a confirmation: %q", sf.stub.seen())
+}
+
+func TestAgentsPageCannotRemoveAnAgentWithoutAConfirmation(t *testing.T) {
+	sf, c, csrf := newSetupFixture(t, false)
+	if _, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"revoke"}, "agent": {"jit"}}); !strings.Contains(hd.Get("Location"), "n=nogate") {
+		t.Fatalf("remove with no confirmation: %v", hd)
+	}
+	if got, _ := agentauth.ActiveByName(sf.dir, "jit"); got == nil {
+		t.Fatal("the agent was removed with no confirmation")
 	}
 }

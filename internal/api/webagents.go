@@ -322,11 +322,20 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 	case "listresume":
 		h.listResume(w, r, name, back, audit)
 	case "revoke":
-		// Removing an agent only takes power away, so it needs no prompt. An
-		// app wasync connected is disconnected instead, which also takes
-		// wasync's entry out of its settings.
+		// Revoking asks like granting does, because revoking one agent and
+		// granting another is how a credential is swapped. An app wasync
+		// connected is disconnected instead, which also takes wasync's entry
+		// out of its settings.
 		if err := agentauth.ValidName(name); err != nil {
 			back("invalid")
+			return
+		}
+		if !h.canConfirm(r) {
+			back(noGate(r))
+			return
+		}
+		if err := h.confirmError(r.Context(), agentauth.RevokeEffect(name)); err != nil {
+			h.uiRefused(w, r, err, back)
 			return
 		}
 		if conns, err := agentconnect.Connections(h.dataDir); err == nil {

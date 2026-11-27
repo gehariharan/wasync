@@ -21,6 +21,7 @@ import (
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/firstopen"
 	"github.com/gehariharan/wasync/internal/localfs"
+	"github.com/gehariharan/wasync/internal/prefs"
 	"github.com/gehariharan/wasync/internal/processlock"
 	"github.com/gehariharan/wasync/internal/uninstall"
 	"github.com/gehariharan/wasync/internal/update"
@@ -226,12 +227,31 @@ func TestStartLinkOpensTheChatsOnceTheWasyncItStartsSaysAPhoneIsLinked(t *testin
 	if err := firstopen.Done(h.Config.DataDir, time.Now()); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := prefs.Open(h.Config.DataDir).Update(func(s *prefs.Settings) { s.SetupDone = true }); err != nil {
+		t.Fatal(err)
+	}
 	link, err := h.StartLink(context.Background())
 	if err != nil || !strings.HasSuffix(link, "next=chats") {
 		t.Fatalf("a linked phone opens on the chats: %q %v", link, err)
 	}
 	if *starts != 1 {
 		t.Fatalf("wasync started %d times", *starts)
+	}
+}
+
+func TestStartLinkReopensSetupWhenThePersonQuitAfterLinking(t *testing.T) {
+	h, _, _ := testHost(t, "linked")
+	if err := firstopen.Done(h.Config.DataDir, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	// Step 1 is done: the phone is linked and how wasync is used is saved,
+	// but the person quit before finishing or skipping the other steps.
+	if _, err := prefs.Open(h.Config.DataDir).Update(func(s *prefs.Settings) { s.Use = prefs.UseChats }); err != nil {
+		t.Fatal(err)
+	}
+	link, err := h.StartLink(context.Background())
+	if err != nil || !strings.HasSuffix(link, "next=setup") {
+		t.Fatalf("a linked phone with setup unfinished opens: %q %v", link, err)
 	}
 }
 

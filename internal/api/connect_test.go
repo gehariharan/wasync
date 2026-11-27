@@ -220,10 +220,17 @@ func TestConnectCodexWritesItsSettingsOnlyAfterThePersonConfirms(t *testing.T) {
 		t.Fatalf("second connect: %v", hd)
 	}
 
-	// Disconnect needs no prompt, and undoes everything.
+	// Disconnect asks like revoking does, and undoes everything.
 	prompts := len(f.stub.seen())
 	f.stub.set(false)
 	*f.ran = nil
+	if _, _, hd := c.post("/ui/setup/disconnect", url.Values{"csrf": {csrf}, "agent": {"codex"}}); !strings.Contains(hd.Get("Location"), "n=declined") {
+		t.Fatalf("declined disconnect: %v", hd)
+	}
+	if code, _ := f.do(t, "GET", "/api/v1/chats", secret, nil); code != 200 || len(*f.ran) != 0 {
+		t.Fatalf("a declined disconnect changed something: %d %q", code, *f.ran)
+	}
+	f.stub.set(true)
 	_, _, hd := c.post("/ui/setup/disconnect", url.Values{"csrf": {csrf}, "agent": {"codex"}})
 	if !strings.Contains(hd.Get("Location"), "n=agentdisconnected") {
 		t.Fatalf("disconnect: %v", hd)
@@ -231,8 +238,8 @@ func TestConnectCodexWritesItsSettingsOnlyAfterThePersonConfirms(t *testing.T) {
 	if _, page, _ := c.get(hd.Get("Location")); strings.Contains(page, "is connected") || !strings.Contains(page, "Disconnected") {
 		t.Fatalf("the page after Disconnect still shows the app connected:\n%s", page)
 	}
-	if len(f.stub.seen()) != prompts {
-		t.Fatal("disconnect asked for a confirmation")
+	if seen := f.stub.seen()[prompts:]; len(seen) != 2 || !strings.Contains(seen[1], "revoke agent") {
+		t.Fatalf("disconnect prompts: %q", seen)
 	}
 	if b, _ := os.ReadFile(cfg); string(b) != before {
 		t.Fatalf("config after disconnect: %q", b)

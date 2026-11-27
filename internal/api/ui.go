@@ -424,8 +424,9 @@ func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSess
 // signInPages are the pages a sign-in may return to.
 var signInPages = map[string]bool{"/ui/": true, uiApprovalsPath: true, "/ui/chats": true, "/ui/sent": true, "/ui/agents": true, "/ui/setup": true, "/ui/home": true, "/ui/settings": true}
 
-// uiStart opens the app's first page: the setup steps until a phone is
-// linked and the First open screen was seen, then Home or the chats.
+// uiStart opens the app's first page: the setup steps until the First open
+// screen was seen, a phone is linked and the steps were finished or skipped,
+// then Home or the chats.
 func (h *handler) uiStart(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	account, err := h.store.Account(r.Context())
 	if err != nil {
@@ -433,7 +434,8 @@ func (h *handler) uiStart(w http.ResponseWriter, r *http.Request, sess uiSession
 		return
 	}
 	pending, _ := firstopen.Pending(h.dataDir)
-	if account == nil || pending && remoteLogin(r) == "" {
+	settings, _ := h.prefs.Get()
+	if account == nil || (pending || !settings.SetupDone) && remoteLogin(r) == "" {
 		http.Redirect(w, r, "/ui/setup", http.StatusSeeOther)
 		return
 	}

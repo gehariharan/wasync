@@ -324,11 +324,10 @@ an AI service; an agent you connect yourself reads only what you grant it.
 The archive, session and downloaded files are plaintext with restrictive OS
 permissions; software running as your user can access them. Shared or exported
 copies are your responsibility. Local cleanup and WhatsApp remote deletion have
-different scopes and require explicit confirmation. **Settings > Remove wasync**
-disconnects your agents, unlinks the device, removes the start-at-login items and then
-removes the program the way you installed it; it keeps the data directory unless you
-tick **Also delete my chats and data** and confirm with Touch ID, your password or
-Windows Hello ([Removing wasync](docs/install.md#removing-wasync)). Uninstalling any
+different scopes and require explicit confirmation. **Settings > Remove wasync**, after
+you confirm with Touch ID, your password or Windows Hello, disconnects your agents, unlinks
+the device, removes the start-at-login items and then removes the program the way you
+installed it; it keeps the data directory unless you tick **Also delete my chats and data** ([Removing wasync](docs/install.md#removing-wasync)). Uninstalling any
 other way keeps the data directory too; stop wasync and remove that directory if you
 want to delete the local archive and pairing credentials, and use `wasync logout`
 first to unlink the device. Questions can be raised via

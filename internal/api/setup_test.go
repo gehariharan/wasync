@@ -376,3 +376,31 @@ func TestSetupLoginItemTurnsOnAndOffWithoutAPrompt(t *testing.T) {
 		t.Fatalf("forged form: %d", code)
 	}
 }
+
+func TestTheAppReopensOnTheSetupStepsUntilTheyAreFinished(t *testing.T) {
+	sf, c, csrf := newSetupFixture(t, true)
+	if _, _, hd := c.get("/ui/"); hd.Get("Location") != "/ui/setup" {
+		t.Fatalf("a linked phone with setup not done opens: %q", hd.Get("Location"))
+	}
+	if _, _, hd := c.post("/ui/setup/use", url.Values{"csrf": {csrf}, "use": {"chats"}}); hd.Get("Location") != "/ui/setup/chats" {
+		t.Fatalf("use: %q", hd.Get("Location"))
+	}
+
+	// The person quits after step 1; opening the app again, in a new
+	// browser session, goes back to the step they reached.
+	again := newPageClient(t, sf.accessFixture)
+	again.get(linkPath(t, sf.accessFixture))
+	if _, _, hd := again.get("/ui/"); hd.Get("Location") != "/ui/setup" {
+		t.Fatalf("reopened after step 1: %q", hd.Get("Location"))
+	}
+	if _, _, hd := again.get("/ui/setup"); hd.Get("Location") != "/ui/setup/chats" {
+		t.Fatalf("setup resumes at: %q", hd.Get("Location"))
+	}
+
+	if _, _, hd := c.post("/ui/setup/finish", url.Values{"csrf": {csrf}}); hd.Get("Location") != "/ui/chats" {
+		t.Fatalf("finish: %q", hd.Get("Location"))
+	}
+	if _, _, hd := again.get("/ui/"); hd.Get("Location") != "/ui/chats" {
+		t.Fatalf("after finishing, the app opens: %q", hd.Get("Location"))
+	}
+}

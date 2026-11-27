@@ -112,7 +112,7 @@ your computer cannot show that prompt (Linux, or a session with no screen), wasy
 when it starts, the page only lists requests, and approvals stay in the terminal, where the
 typed phrase is the only check. Creating or revoking an agent credential
 (`wasync agents grant`, `agents revoke`) asks for the same confirmation after you type the
-agent's name. The [threat model](architecture/threat-model.md) explains what this does and
+agent's name, and so do Remove and Disconnect on the web app's Agents page and Connect screen. The [threat model](architecture/threat-model.md) explains what this does and
 does not protect.
 
 On macOS the approval credential (`approve.token`) is kept in your login Keychain; see

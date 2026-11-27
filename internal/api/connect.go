@@ -385,7 +385,7 @@ func (h *handler) connect(ctx context.Context, p *connectPlan, req agentauth.Gra
 }
 
 // setupDisconnect takes an app's entry out of its settings and revokes its
-// credential. It needs no confirmation: it only takes power away.
+// credential after the person confirms it, like revoking any agent.
 func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess uiSession) {
 	if !h.uiForm(w, r, sess) {
 		return
@@ -394,6 +394,10 @@ func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess u
 	a, ok := agentconnect.Lookup(kind)
 	if !ok {
 		http.Error(w, "unknown agent", http.StatusBadRequest)
+		return
+	}
+	if !h.canConfirm(r) {
+		h.connectBack(w, r, noGate(r), kind)
 		return
 	}
 	h.connectMu.Lock()
@@ -405,6 +409,10 @@ func (h *handler) setupDisconnect(w http.ResponseWriter, r *http.Request, sess u
 	}
 	if c == nil {
 		h.connectBack(w, r, "notconnected", kind)
+		return
+	}
+	if err := h.confirmError(r.Context(), agentauth.RevokeEffect(c.Client)); err != nil {
+		h.uiRefused(w, r, err, func(n string) { h.connectBack(w, r, n, kind) })
 		return
 	}
 	h.connectBack(w, r, h.disconnect(r.Context(), *c), kind)
