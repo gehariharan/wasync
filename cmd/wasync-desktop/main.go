@@ -24,7 +24,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -92,14 +91,19 @@ func run() error {
 	if *wasync == "" {
 		*wasync = filepath.Join(filepath.Dir(self), wasyncName())
 	}
-	cfg, logFile, log, err := openData(context.Background(), cfg)
+	cfg, logFile, err := openData(context.Background(), cfg)
 	if err != nil {
 		return err
 	}
-	defer logFile.Close()
+	logOut := io.Writer(os.Stderr)
+	if logFile != nil {
+		defer logFile.Close()
+		logOut = logFile
+	}
+	log := slog.New(slog.NewTextHandler(logOut, nil))
 	log.Info("wasync app starting", "version", buildinfo.Version, "data_dir", cfg.DataDir, "background", *background)
 
-	host := &desktop.Host{Wasync: *wasync, App: self, Config: cfg, Log: logFile, CLI: &cli.App{Out: io.Discard, Err: logFile}, Command: wasyncCommand}
+	host := &desktop.Host{Wasync: *wasync, App: self, Config: cfg, Log: logOut, CLI: &cli.App{Out: io.Discard, Err: logOut}, Command: wasyncCommand}
 	d := &desktopApp{host: host, log: log}
 	host.OnUpdate = func() {
 		log.Info("wasync stopped to install an update; the update opens the app again")
@@ -110,25 +114,31 @@ func run() error {
 
 // openData moves the data out of the folder earlier versions used, as every
 // wasync does before it opens anything there, and opens the app's log in the
-// folder in use, where it notes what the move did.
-func openData(ctx context.Context, cfg config.Config) (config.Config, *os.File, *slog.Logger, error) {
+// folder in use, starting with what the move did. While another wasync holds
+// the old folder, which may be moving it, nothing is opened there and the log
+// file is nil: this app then only reaches that wasync, or is a second copy
+// that hands over to the first.
+func openData(ctx context.Context, cfg config.Config) (config.Config, *os.File, error) {
 	var report bytes.Buffer
-	cfg.DataDir = cli.MoveData(ctx, cfg.DataDir, &report)
+	dir, held := cli.MoveData(ctx, cfg.DataDir, &report)
+	cfg.DataDir = dir
+	if held {
+		return cfg, nil, nil
+	}
 	if err := localfs.EnsureDir(cfg.DataDir); err != nil {
-		return cfg, nil, nil, err
+		return cfg, nil, err
 	}
 	logFile, err := localfs.OpenFile(filepath.Join(cfg.DataDir, "desktop.log"))
 	if err != nil {
-		return cfg, nil, nil, err
+		return cfg, nil, err
 	}
-	if _, err = logFile.Seek(0, io.SeekEnd); err != nil {
-		return cfg, nil, nil, errors.Join(err, logFile.Close())
+	if _, err = logFile.Seek(0, io.SeekEnd); err == nil {
+		_, err = logFile.Write(report.Bytes())
 	}
-	log := slog.New(slog.NewTextHandler(logFile, nil))
-	if report.Len() > 0 {
-		log.Info("data folder", "move", strings.TrimSpace(report.String()))
+	if err != nil {
+		return cfg, nil, errors.Join(err, logFile.Close())
 	}
-	return cfg, logFile, log, nil
+	return cfg, logFile, nil
 }
 
 type desktopApp struct {

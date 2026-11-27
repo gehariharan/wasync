@@ -5,6 +5,7 @@ package main
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -15,10 +16,11 @@ import (
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/datadir"
 	"github.com/gehariharan/wasync/internal/localfs"
+	"github.com/gehariharan/wasync/internal/processlock"
 )
 
-// startupData resolves the data folder as run does and opens it.
-func startupData(t *testing.T, dataDir string) (config.Config, string) {
+// startupConfig resolves the data folder as run does.
+func startupConfig(t *testing.T, dataDir string) config.Config {
 	t.Helper()
 	cfg, err := config.Default()
 	if err != nil {
@@ -30,11 +32,20 @@ func startupData(t *testing.T, dataDir string) (config.Config, string) {
 	if cfg, err = cfg.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	cfg, logFile, log, err := openData(context.Background(), cfg)
+	return cfg
+}
+
+// startupData opens the data folder as run does and returns its log.
+func startupData(t *testing.T, dataDir string) (config.Config, string) {
+	t.Helper()
+	cfg, logFile, err := openData(context.Background(), startupConfig(t, dataDir))
 	if err != nil {
 		t.Fatal(err)
 	}
-	log.Info("wasync app starting")
+	if logFile == nil {
+		t.Fatal("the app must open its log")
+	}
+	slog.New(slog.NewTextHandler(logFile, nil)).Info("wasync app starting")
 	if err = logFile.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +56,10 @@ func startupData(t *testing.T, dataDir string) (config.Config, string) {
 	return cfg, string(b)
 }
 
-func TestStartupMovesTheOldFolderBeforeItsLog(t *testing.T) {
+// windowsFolders points %LOCALAPPDATA% and %APPDATA% at a temporary home
+// and returns the new data folder and the old one, which holds data.
+func windowsFolders(t *testing.T) (local, dir, legacy string) {
+	t.Helper()
 	if runtime.GOOS != "windows" {
 		t.Skip("macOS keeps its data where earlier versions did")
 	}
@@ -54,13 +68,18 @@ func TestStartupMovesTheOldFolderBeforeItsLog(t *testing.T) {
 	t.Setenv("WASYNC_DATA_DIR", "")
 	t.Setenv("LOCALAPPDATA", local)
 	t.Setenv("APPDATA", roaming)
-	legacy, dir := filepath.Join(roaming, "wasync"), filepath.Join(local, "wasync")
+	legacy, dir = filepath.Join(roaming, "wasync"), filepath.Join(local, "wasync")
 	if err := localfs.EnsureDir(legacy); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(legacy, "api.token"), []byte("kept"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+	return local, dir, legacy
+}
+
+func TestStartupMovesTheOldFolderBeforeItsLog(t *testing.T) {
+	local, dir, legacy := windowsFolders(t)
 	// An earlier version of the app left its log in the old folder.
 	if err := os.WriteFile(filepath.Join(legacy, "desktop.log"), []byte("earlier\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -86,7 +105,39 @@ func TestStartupMovesTheOldFolderBeforeItsLog(t *testing.T) {
 func TestStartupLeavesAnOwnDataFolderAlone(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "mine")
 	cfg, log := startupData(t, dir)
-	if cfg.DataDir != dir || !strings.Contains(log, "wasync app starting") || strings.Contains(log, "data folder") {
+	if cfg.DataDir != dir || !strings.Contains(log, "wasync app starting") || strings.Contains(log, "moved your data") {
 		t.Fatalf("an own folder is used as it is: %s %q", cfg.DataDir, log)
+	}
+}
+
+func TestSecondStartWhileTheOldFolderIsHeldWritesNothingThere(t *testing.T) {
+	_, dir, legacy := windowsFolders(t)
+	// The first copy of the app, moving the data, holds the old folder.
+	lock, err := processlock.Acquire(filepath.Join(legacy, "device.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Close()
+	before, err := os.ReadDir(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, logFile, err := openData(context.Background(), startupConfig(t, ""))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if logFile != nil {
+		logFile.Close()
+		t.Fatalf("no log may be opened in %s while it is held", cfg.DataDir)
+	}
+	after, err := os.ReadDir(legacy)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != len(before) {
+		t.Fatalf("the held old folder changed: %v, then %v", before, after)
+	}
+	if datadir.HoldsData(dir) {
+		t.Fatal("nothing may be moved while the old folder is held")
 	}
 }

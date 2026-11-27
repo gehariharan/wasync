@@ -42,26 +42,28 @@ const updateSettle = 30 * time.Second
 // to report, and returns the folder to use. When the data cannot be moved,
 // the old folder stays in use as it was, and the next start tries again.
 // Every program that uses the data folder calls it before opening anything
-// in it.
-func MoveData(ctx context.Context, dir string, report io.Writer) string {
+// in it. held reports that another wasync holds the old folder, which may be
+// moving it: the caller must then write nothing in the folder returned, and
+// can only reach that wasync.
+func MoveData(ctx context.Context, dir string, report io.Writer) (use string, held bool) {
 	loc, err := datadir.System()
 	if err != nil || loc.Legacy == "" || !loc.Names(dir) {
-		return dir
+		return dir, false
 	}
 	for deadline := time.Now().Add(updateSettle); update.Pending(loc.Legacy) && time.Now().Before(deadline); {
 		select {
 		case <-ctx.Done():
-			return config.Resolve(dir)
+			return config.Resolve(dir), false
 		case <-time.After(250 * time.Millisecond):
 		}
 	}
 	if update.Pending(loc.Legacy) {
-		return config.Resolve(dir)
+		return config.Resolve(dir), false
 	}
 	moved, err := loc.Move(ctx, time.Now())
 	switch {
 	case errors.Is(err, processlock.ErrBusy):
-		// Another wasync uses the old folder; this command reaches it there.
+		held = true
 	case err != nil:
 		fmt.Fprintf(report, "wasync could not move your data to %s, so it still uses %s: %v\n", loc.Dir, loc.Legacy, err)
 	case moved != nil && !moved.Copied:
@@ -74,5 +76,5 @@ func MoveData(ctx context.Context, dir string, report io.Writer) string {
 	if moved != nil && moved.Kept != "" && loc.KeepIn != "" && filepath.Dir(moved.Kept) != filepath.Clean(loc.KeepIn) {
 		fmt.Fprintf(report, "wasync could not move the old folder into %s, so Windows may still copy it between computers; delete %s once everything works.\n", loc.KeepIn, moved.Kept)
 	}
-	return config.Resolve(dir)
+	return config.Resolve(dir), held
 }

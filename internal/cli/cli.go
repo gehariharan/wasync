@@ -303,7 +303,7 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 	if (args[0] == "serve" || args[0] == "setup") && cfg.NoAPI {
 		return fmt.Errorf("%s requires the local API; remove --no-api", args[0])
 	}
-	cfg.DataDir = MoveData(parent, cfg.DataDir, a.Err)
+	cfg.DataDir, _ = MoveData(parent, cfg.DataDir, a.Err)
 	if err = localfs.EnsureDir(cfg.DataDir); err != nil {
 		return err
 	}
