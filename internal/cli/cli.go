@@ -689,7 +689,11 @@ func (a *App) printGroups(groups []storage.Group, jsonOut bool) error {
 	w := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "#\tGROUP ID\tENABLED\tNAME")
 	for i, g := range groups {
-		fmt.Fprintf(w, "%d\t%s\t%t\t%s\n", i+1, g.ID, g.PersonSynced(), strconv.Quote(g.Name))
+		name := strconv.Quote(g.Name)
+		if g.ListCapture {
+			name += " (archived for an agent's list)"
+		}
+		fmt.Fprintf(w, "%d\t%s\t%t\t%s\n", i+1, g.ID, g.PersonSynced(), name)
 	}
 	if len(groups) == 0 {
 		fmt.Fprintln(w, "No groups returned by discovery.")
