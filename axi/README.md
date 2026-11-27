@@ -64,7 +64,7 @@ The old `whatsapp_axi_*` JSON keys and the `whatsapp_axi_too_old` code (`legacy_
   `wasync-axi react REF EMOJI|--remove` needs the separate `react` scope the same way, and
   `wasync-axi edit REF --text TEXT` the `edit.own` scope; wasync also checks that the message is yours,
   is text and is inside WhatsApp's edit window. wasync-axi adds
-  no rules of its own and prints wasync's refusal unchanged, with a pointer to the next step. It sends
+  no rules of its own and prints wasync's refusal unchanged, including wasync's help on the next step. It sends
   once and never retries; offline (`wasync query`) never writes.
 - **Sending outside the synced chats needs the person, one message at a time.** To send to a chat
   that is not synced or to a new number, `wasync-axi send-request (--chat JID | --to PHONE) --text TEXT`

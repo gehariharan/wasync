@@ -115,8 +115,7 @@ requests waiting, `503 owner_offline` when no owner runs. Status is `pending`, `
 30 minutes and then change nothing.
 
 A send with `POST /api/v1/messages` to a chat the agent may not use still fails with `403 forbidden`; its
-help tells the agent to raise a send request (`wasync-axi send-request ...`), and wasync-axi adds the same
-pointer when an older help line lacks it.
+help tells the agent to raise a send request (`wasync-axi send-request ...`).
 
 Per-chat access requests are removed: `POST /api/v1/access-requests` and `GET /api/v1/access-requests/{id}`
 answer `410` with `invalid_argument` and a help line, the feature `access.request` is no longer listed,
