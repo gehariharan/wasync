@@ -108,8 +108,10 @@ by itself: it returns `202` with `request_id`, `status: pending`, `chat`, `new_n
 `approve_with` (the command the person can run). The person sees the agent, the chat and the full text and
 approves with the computer's own check (Touch ID, Windows Hello or a passkey) in wasync; on approval wasync
 itself sends exactly that text once. Asking again with the same chat and text while one is pending returns
-the same request. `200` with `status: already_allowed` means the agent can already send there with
-`POST /api/v1/messages`. `403 forbidden` without `send`, `429 rate_limited` when the agent already has 5
+the same request. `200` with `status: already_allowed` means `POST /api/v1/messages` would take that
+send right now: the chat is one the agent may use, or the agent's approved list (for a listed number)
+or else open sending would admit it. When that list or open sending would refuse it (a paused list, a
+number that has not replied yet, an hourly limit used up), the request is queued for the person instead. `403 forbidden` without `send`, `429 rate_limited` when the agent already has 5
 requests waiting, `503 owner_offline` when no owner runs. Status is `pending`, `sent` (with `message_id`),
 `declined`, `expired` or `failed`; `expires_at` is present only while pending. Requests expire after
 30 minutes and then change nothing.
