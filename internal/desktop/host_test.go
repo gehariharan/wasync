@@ -16,6 +16,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/cli"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/firstopen"
@@ -32,6 +33,17 @@ func TestMain(m *testing.M) {
 	case "fail":
 		fmt.Fprintln(os.Stderr, "fake wasync: the archive is unavailable")
 		os.Exit(3)
+	case "busy":
+		fmt.Fprintln(os.Stderr, "fake wasync: wasync setup cannot start: wasync serve already owns this data directory")
+		os.Exit(1)
+	case "hold":
+		if err := holdLinked(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "fake wasync:", err)
+			os.Exit(4)
+		}
+		fmt.Println("held")
+		_, _ = io.Copy(io.Discard, os.Stdin)
+		os.Exit(0)
 	default:
 		fakeWasync()
 		os.Exit(0)
@@ -106,6 +118,20 @@ func holdLinked(args []string) error {
 	mux.HandleFunc("/api/status", func(w http.ResponseWriter, _ *http.Request) {
 		fmt.Fprint(w, `{"enabled_chats":2}`)
 	})
+	mux.HandleFunc("/api/ui/link", func(w http.ResponseWriter, r *http.Request) {
+		var req struct {
+			Page string `json:"page"`
+		}
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		fmt.Fprintf(w, `{"url":"http://%s/ui/enter?t=other&next=%s"}`, ln.Addr(), req.Page)
+	})
+	approve := filepath.Join(dir, approvecred.FileName)
+	if err := localfs.EnsureFile(approve); err != nil {
+		return err
+	}
+	if err := os.WriteFile(approve, []byte(strings.Repeat("ab", 32)), 0o600); err != nil {
+		return err
+	}
 	go func() { _ = http.Serve(ln, mux) }()
 	return processlock.WriteOwner(dir, processlock.Owner{Kind: "setup", PID: pid, DataDir: dir, APIAddr: ln.Addr().String(), StartedAt: time.Now()})
 }
@@ -223,6 +249,46 @@ func TestALateLinkAnswerDoesNotReachTheNextRequest(t *testing.T) {
 		if err != nil || !strings.HasSuffix(link, "next="+page) {
 			t.Fatalf("asked for %s, got %q %v", page, link, err)
 		}
+	}
+}
+
+// holdDataDirectory starts a separate wasync that takes dir and answers on
+// its local API, the way `wasync serve` started at login does.
+func holdDataDirectory(t *testing.T, dir string) {
+	t.Helper()
+	cmd := exec.Command(os.Args[0], "--data-dir", dir)
+	cmd.Env = append(os.Environ(), "WASYNC_FAKE=hold")
+	cmd.Stderr = os.Stderr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = stdin.Close(); _ = cmd.Wait() })
+	if line, _ := bufio.NewReader(stdout).ReadString('\n'); line != "held\n" {
+		t.Fatalf("the other wasync did not take the data directory: %q", line)
+	}
+}
+
+func TestHostUsesAWasyncThatTookTheDataDirectoryWhileItsOwnWasStarting(t *testing.T) {
+	h, _, starts := testHost(t, "busy")
+	start := h.Command
+	h.Command = func(name string, args ...string) *exec.Cmd {
+		holdDataDirectory(t, h.Config.DataDir)
+		return start(name, args...)
+	}
+	link, err := h.Link(context.Background(), "chats")
+	if err != nil || !strings.Contains(link, "t=other&next=chats") {
+		t.Fatalf("the window must show the wasync that took the data directory: %q %v", link, err)
+	}
+	if *starts != 1 {
+		t.Fatalf("wasync started %d times", *starts)
 	}
 }
 

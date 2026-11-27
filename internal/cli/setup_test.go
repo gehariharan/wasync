@@ -430,6 +430,16 @@ func TestSetupWhenWasyncIsAlreadyRunningOpensItsSetupPage(t *testing.T) {
 	}
 }
 
+func TestSetupForTheAppWhenWasyncIsAlreadyRunningOpensNoBrowserAndFails(t *testing.T) {
+	app, _, run, _, _, _, _ := ownerFixture(t)
+	app.OpenURL = func(u string) error { t.Errorf("a browser was opened for the app: %s", u); return nil }
+	app.Err = &bytes.Buffer{}
+	err := run("setup", "--app")
+	if !errors.Is(err, processlock.ErrBusy) || !strings.Contains(err.Error(), "data directory") {
+		t.Fatalf("setup --app through a running wasync: %v", err)
+	}
+}
+
 type lockedWriter struct {
 	mu sync.Mutex
 	w  io.Writer

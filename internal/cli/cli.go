@@ -356,6 +356,9 @@ func (a *App) throughOwner(ctx context.Context, cfg config.Config, args []string
 	case "groups", "chats":
 		return a.targetsThroughOwner(ctx, withOwnerAPI(cfg), args)
 	case "setup":
+		if app, _ := a.parseSetup(args[1:]); app {
+			return a.busyError(cfg, "setup")
+		}
 		// wasync is already running: open its setup page instead of starting a second one.
 		return a.openPage(ctx, withOwnerAPI(cfg), "setup")
 	case "logout":
@@ -364,6 +367,19 @@ func (a *App) throughOwner(ctx context.Context, cfg config.Config, args []string
 		return a.statusThroughOwner(ctx, cfg)
 	}
 	return a.busyError(cfg, args[0])
+}
+
+// parseSetup reads setup's flags and reports whether it runs for the wasync app.
+func (a *App) parseSetup(args []string) (app bool, err error) {
+	fs := a.flags("setup")
+	appMode := fs.Bool("app", false, "run for the wasync app: open no browser and answer the app on standard input and output")
+	if err = a.parseFlags(fs, args); err != nil {
+		return false, err
+	}
+	if fs.NArg() != 0 {
+		return false, fmt.Errorf("usage: wasync setup [--app]")
+	}
+	return *appMode, nil
 }
 
 type action func(context.Context, config.Config, *storage.Store, *slog.Logger) error
@@ -384,15 +400,11 @@ func (a *App) parse(args []string) (action, error) {
 		}
 		return a.tuiAction(*offline), nil
 	case "setup":
-		fs := a.flags("setup")
-		app := fs.Bool("app", false, "run for the wasync app: open no browser and answer the app on standard input and output")
-		if err := a.parseFlags(fs, args[1:]); err != nil {
+		app, err := a.parseSetup(args[1:])
+		if err != nil {
 			return nil, err
 		}
-		if fs.NArg() != 0 {
-			return nil, fmt.Errorf("usage: wasync setup [--app]")
-		}
-		return a.setupAction(*app), nil
+		return a.setupAction(app), nil
 	case "login":
 		fs := a.flags("login")
 		selectGroups := fs.Bool("select", a.Interactive, "offer additive group selection in terminal")

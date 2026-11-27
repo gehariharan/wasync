@@ -83,17 +83,18 @@ func (h *Host) Ensure(ctx context.Context) (own bool, err error) {
 	}
 	c := h.child
 	h.mu.Unlock()
-	if c != nil && c.alive() {
-		return true, h.waitReady(ctx, c)
+	if c == nil || !c.alive() {
+		if st := h.CLI.Status(ctx, h.Config); st.Running {
+			return false, nil
+		}
+		if c, err = h.start(); err != nil {
+			return false, err
+		}
 	}
-	if st := h.CLI.Status(ctx, h.Config); st.Running {
+	if err = h.waitReady(ctx, c); err != nil && !c.alive() && h.CLI.Status(ctx, h.Config).Running {
 		return false, nil
 	}
-	c, err = h.start()
-	if err != nil {
-		return false, err
-	}
-	return true, h.waitReady(ctx, c)
+	return true, err
 }
 
 func (h *Host) waitReady(ctx context.Context, c *child) error {
@@ -107,7 +108,10 @@ func (h *Host) waitReady(ctx context.Context, c *child) error {
 	case <-c.ready:
 		return nil
 	case <-c.done:
-		return fmt.Errorf("wasync stopped while starting: %s", h.LastExit())
+		if why := h.LastExit(); why != "" {
+			return fmt.Errorf("wasync stopped while starting: %s", why)
+		}
+		return errors.New("wasync stopped while starting without saying why")
 	case <-timer.C:
 		return fmt.Errorf("wasync did not start within %s", wait)
 	case <-ctx.Done():
