@@ -15,6 +15,7 @@ import (
 
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/datadir"
+	"github.com/gehariharan/wasync/internal/desktop"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/processlock"
 )
@@ -139,5 +140,41 @@ func TestSecondStartWhileTheOldFolderIsHeldWritesNothingThere(t *testing.T) {
 	}
 	if datadir.HoldsData(dir) {
 		t.Fatal("nothing may be moved while the old folder is held")
+	}
+}
+
+func TestHeldStartFollowsTheMoveOnceTheHolderLetsGo(t *testing.T) {
+	_, dir, legacy := windowsFolders(t)
+	lock, err := processlock.Acquire(filepath.Join(legacy, "device.lock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, logFile, err := openData(context.Background(), startupConfig(t, ""))
+	if err != nil || logFile != nil || cfg.DataDir != legacy {
+		t.Fatalf("a held start opens nothing: %s %v %v", cfg.DataDir, logFile, err)
+	}
+	host := &desktop.Host{Config: cfg}
+	// The other wasync stops while the app is running.
+	released := make(chan error, 1)
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		released <- lock.Close()
+	}()
+	f, err := openDataWhenFree(context.Background(), cfg, time.Now().Add(time.Minute))
+	if err != nil || f == nil {
+		t.Fatalf("the log must open once the folder is free: %v %v", f, err)
+	}
+	defer f.Close()
+	if err = <-released; err != nil {
+		t.Fatal(err)
+	}
+	if f.Name() != filepath.Join(dir, "desktop.log") {
+		t.Fatalf("the log must be in the new folder, not %s", f.Name())
+	}
+	if got := host.DataDir(); got != dir {
+		t.Fatalf("the app must follow the move to %s, not %s", dir, got)
+	}
+	if b, err := os.ReadFile(filepath.Join(host.DataDir(), "api.token")); err != nil || string(b) != "kept" {
+		t.Fatalf("the data must be where the app looks: %q %v", b, err)
 	}
 }
