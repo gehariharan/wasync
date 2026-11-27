@@ -28,11 +28,12 @@ function Uninstall-Wasync($directory) {
  while ((Test-Path (Join-Path $directory 'wasync.exe')) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 500 }
 }
 try {
- # 1. Default choices: wasync only. AXI for agents must be off unless asked for.
+ # 1. Default choices: wasync, the wasync app and AXI for agents, which is always installed.
  $plain = Join-Path $temp 'plain'
  Install-Wasync $plain '!addtopath'
  if (-not (Test-Path (Join-Path $plain 'wasync.exe'))) { throw 'Setup did not install wasync.exe' }
- if (Test-Path (Join-Path $plain 'wasync-axi.exe')) { throw 'Setup installed wasync-axi without being asked' }
+ if (-not (Test-Path (Join-Path $plain 'wasync-axi.exe'))) { throw 'Setup did not install wasync-axi.exe' }
+ foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Setup changed agent settings: $folder" } }
  if (((& (Join-Path $plain 'wasync.exe') version) | Out-String) -notmatch [regex]::Escape("wasync $Version ")) { throw 'Installed wasync reports the wrong version' }
  # The wasync app is installed beside wasync, and the Start menu opens it (not the terminal UI).
  $desktop = Join-Path $plain 'wasync-desktop.exe'
@@ -52,7 +53,9 @@ try {
  if (Get-ItemProperty -Path $runKey -Name 'wasync-app' -ErrorAction SilentlyContinue) { throw 'Uninstall left the wasync app starting at login' }
  if (Test-Path (Join-Path $plain 'wasync.exe')) { throw 'Uninstall left wasync.exe behind' }
 
- # 2. Opt in: both tools at one version, and still no agent settings changed.
+ # 2. A second install: both tools at one version, and still no agent settings changed. It names
+ # installaxi, the task earlier Setup programs had, as scripts/install-windows.ps1 still does for
+ # them: Setup must accept a task it no longer has.
  $both = Join-Path $temp 'both'
  Install-Wasync $both '!addtopath,installaxi'
  if ((& (Join-Path $both 'wasync-axi.exe') --version).Trim() -ne $Version) { throw 'Installed wasync-axi is not the release version' }
@@ -142,7 +145,7 @@ try {
  foreach ($name in 'wasync.exe', 'wasync-desktop.exe', 'wasync-axi.exe', 'whatsapp-axi.exe', 'LICENSE', 'THIRD_PARTY_LICENSES') { if (-not (Test-Path (Join-Path $extracted $name))) { throw "ZIP is missing $name" } }
  if ((& (Join-Path $extracted 'wasync-axi.exe') --version).Trim() -ne $Version) { throw 'ZIP wasync-axi is not the release version' }
  foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Extracting changed agent settings: $folder" } }
- Write-Host 'Windows Setup: the Start menu opens the wasync app, which starts wasync and stops it when it goes away; AXI for agents is off by default, installs on request at the release version, and changes no agent settings; the installed tool server speaks MCP and offers no approving tool; wasync serve starts with its pages closed to visitors; the ZIP carries both tools.'
+ Write-Host 'Windows Setup: the Start menu opens the wasync app, which starts wasync and stops it when it goes away; AXI for agents is always installed at the release version and changes no agent settings; the installed tool server speaks MCP and offers no approving tool; wasync serve starts with its pages closed to visitors; the ZIP carries both tools.'
 } finally {
  Remove-Item -Recurse -Force $temp -ErrorAction SilentlyContinue
 }

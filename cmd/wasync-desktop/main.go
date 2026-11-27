@@ -147,6 +147,20 @@ func (d *desktopApp) run(background bool) error {
 				d.openWindow()
 			},
 		},
+		// Links to other websites, sent by desktop.LinkScript, open in the browser.
+		RawMessageHandler: func(_ application.Window, message string, origin *application.OriginInfo) {
+			from := ""
+			if origin != nil {
+				from = origin.Origin
+			}
+			link, ok := desktop.ExternalLink(message, from)
+			if !ok {
+				return
+			}
+			if err := d.app.Browser.OpenURL(link); err != nil {
+				d.log.Warn("opening a link in the browser", "error", err)
+			}
+		},
 		OnShutdown: func() {
 			if err := d.host.Stop(stopWait); err != nil {
 				d.log.Warn("stopping wasync", "error", err)
@@ -220,13 +234,16 @@ func (d *desktopApp) openWindow() {
 		return
 	}
 	w := d.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:             "wasync",
-		Title:            "wasync",
-		Width:            1100,
-		Height:           760,
-		MinWidth:         720,
-		MinHeight:        520,
-		HTML:             starting,
+		Name:      "wasync",
+		Title:     "wasync",
+		Width:     1100,
+		Height:    760,
+		MinWidth:  720,
+		MinHeight: 520,
+		HTML:      starting,
+		// Runs in every page the window loads (after each load on macOS, as
+		// each page starts on Windows), so other websites open in the browser.
+		JS:               desktop.LinkScript,
 		BackgroundColour: application.NewRGB(255, 255, 255),
 	})
 	d.window = w

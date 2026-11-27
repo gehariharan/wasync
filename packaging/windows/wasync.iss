@@ -38,15 +38,12 @@ FinishedLabelNoIcons=wasync opens in its own window and keeps running in the not
 FinishedLabel=wasync opens in its own window and keeps running in the notification area when you close it. Open it again from the Start menu.%n%nby @gehariharan · gehariharan.com
 
 [Tasks]
-Name: addtopath; Description: "Add wasync to your user PATH (open a new terminal after installation)"; Flags: checkedonce
-; AXI for agents is a choice and starts unticked. Silent installs can opt in with /TASKS or /MERGETASKS="installaxi".
-Name: installaxi; Description: "Also install wasync-axi, the tool AI agents use with wasync (AXI for agents). Keep the PATH option above ticked so agents can find it"; Flags: unchecked
+Name: addtopath; Description: "Add wasync and wasync-axi, the tool AI agents use with wasync, to your user PATH (open a new terminal after installation)"; Flags: checkedonce
 
 [Files]
-Source: "{#SourceDir}\*"; DestDir: "{app}"; Excludes: "wasync-axi.exe,whatsapp-axi.exe"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#SourceDir}\wasync-axi.exe"; DestDir: "{app}"; Flags: ignoreversion; Tasks: installaxi
-; The old command name, kept so existing agent settings keep working.
-Source: "{#SourceDir}\whatsapp-axi.exe"; DestDir: "{app}"; Flags: ignoreversion; Tasks: installaxi
+; Everything, including wasync-axi (AXI for agents), which does nothing until an agent is
+; connected, and whatsapp-axi.exe, its old name, kept so existing agent settings keep working.
+Source: "{#SourceDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
 Name: "{group}\wasync"; Filename: "{app}\wasync-desktop.exe"; WorkingDir: "{app}"
@@ -60,8 +57,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueName: 
 ; configuration, so only a tick here runs them (as you, without administrator access).
 [Run]
 Filename: "{app}\wasync-desktop.exe"; Description: "Open wasync now"; Flags: postinstall nowait skipifsilent
-Filename: "{app}\wasync-axi.exe"; Parameters: "setup skill"; Description: "Add the wasync-axi skill to my AI agents (runs wasync-axi setup skill)"; Flags: postinstall skipifsilent unchecked runhidden; Tasks: installaxi
-Filename: "{app}\wasync-axi.exe"; Parameters: "setup hooks"; Description: "Add wasync-axi's session hooks to my AI agents (runs wasync-axi setup hooks)"; Flags: postinstall skipifsilent unchecked runhidden; Tasks: installaxi
+Filename: "{app}\wasync-axi.exe"; Parameters: "setup skill"; Description: "Add the wasync-axi skill to my AI agents (runs wasync-axi setup skill)"; Flags: postinstall skipifsilent unchecked runhidden
+Filename: "{app}\wasync-axi.exe"; Parameters: "setup hooks"; Description: "Add wasync-axi's session hooks to my AI agents (runs wasync-axi setup hooks)"; Flags: postinstall skipifsilent unchecked runhidden
 
 [Code]
 function HasPath(Value, Item: String): Boolean;

@@ -20,6 +20,9 @@ Linux, wasync stays a terminal program (`wasync setup`).
   the copy that is running.
 - **Quitting** stops the wasync the app started, cleanly, and waits up to 20 seconds
   for it.
+- **Links to other websites** and email addresses open in your default browser; the
+  window only ever shows wasync's own pages. A link to one of wasync's pages that would
+  open a new tab opens in the window, since the browser is not signed in to them.
 
 ## How it runs wasync
 
@@ -90,8 +93,9 @@ page.
   an agent is connected. The app's bundle identifier is the one the `wasync` command
   is signed with (`com.gehariharan.wasynctuicli`), so the Keychain trusts the app, its
   `wasync` and a `wasync` installed elsewhere for the same approval credential.
-- **Windows:** Setup installs `wasync-desktop.exe` beside `wasync.exe`; the Start menu
-  entry and the finish page's "Open wasync now" open the app.
+- **Windows:** Setup installs `wasync-desktop.exe` and `wasync-axi.exe` beside
+  `wasync.exe`; the Start menu entry and the finish page's "Open wasync now" open the
+  app.
 
 The pictures (app icons, menu-bar glyph, Setup's side pictures and the disk image
 background) are drawn from logo D by `packaging/desktop/assetgen`; see the comment at
@@ -102,4 +106,3 @@ the top of its `main.go` to draw them again.
 - The First open screen, and the setup steps that use the settings above, are built
   on the shared design system in a later change; until then the app opens the setup
   page.
-- Links to other websites open inside the window rather than in your browser.

@@ -23,7 +23,7 @@ Installer checks cover AXI for agents (see [Installers and the AXI choice](#inst
 PR CI builds the unsigned macOS installer and installs it twice on the hosted Mac
 runners (default choices, then with AXI ticked), builds the Linux archive and runs its
 `install.sh` with and without `--with-axi`, and builds the Windows Setup program and
-ZIP and runs Setup silently with and without the `installaxi` task. The release
+ZIP, runs Setup silently (it always installs `wasync-axi`), and starts the wasync app. The release
 workflow repeats those checks on the packages it is about to publish, and
 `scripts/verify-signed-release.sh` repeats the Mac ones on the signed installer.
 
@@ -33,9 +33,10 @@ never use a paired account. Review both modules and run no-mistakes before merge
 ## Installers and the AXI choice
 
 wasync (the app and engine) and `wasync-axi` (the agent command) stay separate
-programs, as in [ADR-002](architecture/ADR-002-monorepo.md), but every installer that
-can offer a choice installs `wasync-axi` from the same release on request. It is
-always off by default. Both binaries get the same `VERSION`, and installers refuse to
+programs, as in [ADR-002](architecture/ADR-002-monorepo.md). The wasync app (the macOS
+disk image and Windows Setup) always carries `wasync-axi`, which does nothing until an
+agent is connected. Every other installer that can offer a choice installs it from the
+same release on request, off by default. Both binaries get the same `VERSION`, and installers refuse to
 build or verify if they do not.
 
 | Channel | What ships | How AXI for agents is chosen |
@@ -45,7 +46,7 @@ build or verify if they do not.
 | macOS Homebrew cask | `wasync` only | `brew install gehariharan/tap/wasync-axi` (the cask prints this) |
 | Linux archive | `wasync`, `wasync-axi`, `install.sh` (from `packaging/linux/`) | `install.sh` asks, default no; `--with-axi`/`--without-axi` |
 | Linux Homebrew | The `wasync-axi` formula depends on `wasync` | Install the formula or not |
-| Windows Setup | `wasync-axi.exe` is a file of the unticked `installaxi` task in `packaging/windows/wasync.iss` | Tasks page; silent `/MERGETASKS="installaxi"` |
+| Windows Setup | `wasync-axi.exe` beside `wasync.exe` and the wasync app, from `packaging/windows/wasync.iss` | Always installed, as in the Mac app; it does nothing until an agent is connected |
 | Windows ZIP | Both executables | Portable; nothing is installed or configured by extracting |
 | Microsoft Store MSIX | `wasync` only | Not offered, by design |
 

@@ -41,6 +41,8 @@ $sums = $assets | Where-Object { $_.name -eq 'checksums.txt' } | Select-Object -
 if (-not $setup) { throw "Release $($release.tag_name) has no Windows Setup program." }
 if (-not $sums) { throw "Release $($release.tag_name) has no checksums.txt, so the download cannot be verified." }
 
+# Setup always installs wasync-axi now; installaxi is the task that chose it in earlier
+# releases, kept so this script installs it from those too.
 $tasks = 'addtopath,installaxi'
 Write-Host "Release:  $($release.tag_name)"
 Write-Host "Setup:    $($setup.name)"

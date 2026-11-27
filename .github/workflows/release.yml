@@ -134,7 +134,7 @@ jobs:
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
         run: ./scripts/package-windows.ps1 -Version $env:PACKAGE_VERSION
-      - name: Check Setup offers AXI for agents as an opt-in, and the ZIP carries it
+      - name: Check Setup installs the wasync app and AXI for agents, and the ZIP carries them
         shell: pwsh
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
@@ -266,7 +266,7 @@ jobs:
 
           - macOS 15+: the wasync app is the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .dmg: open it and drag wasync to Applications. The .pkg installs the wasync command instead; it lists "AXI for agents" (wasync-axi) as an optional part, off unless you tick it.
           - Linux: download the matching linux archive, extract it and run `./install.sh`. It asks whether to also install wasync-axi (AXI for agents); the answer is no unless you say yes (`--with-axi` or `--without-axi` skips the question). Builds target glibc 2.35 or newer.
-          - Windows: Setup installs the wasync app (Start menu) and has an unticked "AXI for agents" option; the portable ZIP includes wasync-desktop.exe and wasync-axi.exe.
+          - Windows: Setup installs the wasync app (Start menu) and AXI for agents (wasync-axi.exe); the portable ZIP includes wasync-desktop.exe and wasync-axi.exe.
           - `wasync query --help` documents the agent query interface.
           - Verify downloads against checksums.txt.
 

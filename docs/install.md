@@ -34,8 +34,9 @@ The wasync app is wasync in its own window, with a menu-bar icon; it carries the
 
 wasync is the app and engine for people. **`wasync-axi`** ("AXI for agents") is a
 separate, small command that AI agents such as Claude Code, Codex and OpenCode use
-to work with your local wasync archive. You do not need it to use wasync, so every
-installer asks for it as a choice, off unless you say yes. Both programs always come
+to work with your local wasync archive. The wasync app (the macOS disk image
+and Windows Setup) always carries it; it does nothing until you connect an agent. The
+other installers ask for it as a choice, off unless you say yes. Both programs always come
 from the same release and have the same version.
 
 `wasync-axi` was called `whatsapp-axi`. The installers keep `whatsapp-axi` as an alias
@@ -46,7 +47,8 @@ and the old environment variables, config folder, skill and hooks still work.
 | --- | --- |
 | macOS `.pkg` | On the installer's **Customize** step, tick **AXI for agents (wasync-axi)**. It starts unticked. |
 | Linux archive | `./install.sh` asks and the default is no. Skip the question with `--with-axi` or `--without-axi`. |
-| Windows Setup | Tick **Also install wasync-axi** on the tasks page (unticked by default). For a silent install add `/MERGETASKS="installaxi"`. |
+| macOS `.dmg` (the wasync app) | Always inside `wasync.app`. |
+| Windows Setup | Always installed beside `wasync.exe` and the wasync app. |
 | Windows ZIP | The ZIP already contains `wasync-axi.exe` next to `wasync.exe`; extracting installs and configures nothing. |
 | Homebrew | `brew install gehariharan/tap/wasync-axi` (see [Homebrew](#homebrew)). |
 | Microsoft Store | Not offered: the Store edition is wasync only (see [Windows](windows.md#microsoft-store-edition)). |

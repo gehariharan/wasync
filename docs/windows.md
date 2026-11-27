@@ -16,14 +16,12 @@ Setup installs the [wasync app](desktop.md) beside `wasync.exe`. Its licence pag
 the note that wasync is not WhatsApp, and its finish page has a ticked **Open wasync now**
 box. The **wasync** Start menu entry opens the app, which shows the setup pages to link
 WhatsApp, and keeps running in the notification area when you close its window. The
-installer offers a user PATH entry and, as a separate unticked
-task, **AXI for agents** (`wasync-axi.exe`; keep the PATH entry ticked so agents
-can find it). If you pick it, the last page offers two more unticked boxes that run
-`wasync-axi setup skill` and `wasync-axi setup hooks` as you; a silent install
-never runs them. Silent examples:
-`wasync_VERSION_windows_amd64-setup.exe /VERYSILENT /MERGETASKS="installaxi"` adds
-AXI for agents, and omitting `installaxi` leaves it out. No administrator access is
-needed.
+installer always installs **AXI for agents** (`wasync-axi.exe`) beside them, as the Mac
+app carries it; it does nothing until you connect an agent. Setup offers a user PATH entry
+(keep it ticked so agents can find `wasync-axi`), and its last page offers two unticked
+boxes that run `wasync-axi setup skill` and `wasync-axi setup hooks` as you; a silent
+install (`wasync_VERSION_windows_amd64-setup.exe /VERYSILENT`) never runs them. No
+administrator access is needed.
 
 If you set up your agents, run `wasync-axi setup hooks --remove` and
 `wasync-axi setup skill --remove` before uninstalling. Quit the wasync app (or stop wasync
