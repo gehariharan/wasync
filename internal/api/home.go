@@ -180,7 +180,7 @@ func (h *handler) agentRequestRows(ctx context.Context, account int64) []uiAgent
 	now := time.Now()
 	var out []uiAgentRequest
 	for _, p := range h.agentRequests(ctx, account) {
-		v := uiAgentRequest{ID: p.ID, Short: p.ID[len(p.ID)-6:], Kind: kinds[p.Agent], Text: p.Text, Minutes: int(p.ExpiresAt.Sub(now).Round(time.Minute) / time.Minute), Asked: ago(now.Sub(p.AskedAt))}
+		v := uiAgentRequest{ID: p.ID, Short: p.ID[len(p.ID)-6:], Kind: kinds[p.agentID], Text: p.Text, Minutes: int(p.ExpiresAt.Sub(now).Round(time.Minute) / time.Minute), Asked: ago(now.Sub(p.AskedAt))}
 		v.Agent = agentTitle(v.Kind, p.Agent)
 		switch {
 		case p.NewNumber:

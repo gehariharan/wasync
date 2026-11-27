@@ -427,3 +427,31 @@ func TestRemoveWasyncReportsAConnectedAppItCouldNotRevokeOnce(t *testing.T) {
 		t.Fatalf("the page does not say to take the entry out of the app's settings:\n%s", page)
 	}
 }
+
+func TestAgentsPageRemovesANewAgentThatReusesAConnectedAppsName(t *testing.T) {
+	f, c, csrf := newConnectFixture(t, false)
+	f.stub.set(true)
+	_, digest := preview(t, c, "claude-code")
+	c.post("/ui/setup/connect", url.Values{"csrf": {csrf}, "agent": {"claude-code"}, "digest": {digest}})
+	conn, _ := agentconnect.Find(f.dir, agentconnect.ClaudeCode)
+	if conn == nil {
+		t.Fatal("not connected")
+	}
+	// Revoked in a terminal, which keeps the connection record, then the
+	// name is given to a new agent.
+	if _, err := agentauth.Revoke(f.dir, conn.Client, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	grantLegacyOnDemand(t, f.dir, conn.Client, agentauth.ScopeReadChats)
+	_, page, _ := c.get("/ui/agents")
+	card := `name="agent" value="` + conn.Client + `"><button name="action" value="revoke">`
+	if !strings.Contains(page, card+"Remove</button>") {
+		t.Fatalf("the new agent's card is not a plain Remove:\n%s", page)
+	}
+	if _, _, hd := c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"revoke"}, "agent": {conn.Client}}); !strings.Contains(hd.Get("Location"), "n=agentremoved") {
+		t.Fatalf("remove: %v", hd)
+	}
+	if got, _ := agentauth.ActiveByName(f.dir, conn.Client); got != nil {
+		t.Fatal("the new agent still works after the page said it was removed")
+	}
+}

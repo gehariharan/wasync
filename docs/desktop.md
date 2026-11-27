@@ -9,7 +9,8 @@ Linux, wasync stays a terminal program (`wasync setup`).
 ## What it does
 
 - **Opening the app** shows its window. The window opens on the setup steps until
-  the First open screen has been seen and a phone is linked, and after that on Home
+  the First open screen has been seen, a phone is linked and the steps are finished or
+  skipped (a setup left part-way opens again at the furthest step reached), and after that on Home
   (when wasync is for your AI agents only) or the chats. Each window signs in with a fresh one-time link, as `wasync web` does.
 - **The icon's menu** has *Open wasync*, a status line ("Syncing 12 chats", "Not
   linked to WhatsApp yet", "Connecting to WhatsApp…") and *Quit wasync*. On Windows a

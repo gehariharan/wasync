@@ -155,13 +155,13 @@ func (h *handler) otherApp(d *connectData) {
 	}
 }
 
-// agentKind is the app an agent credential was made for, from the record of
-// connected apps; "" for an agent connected by name, which shows the robot.
+// agentKinds maps a credential's ID to the app it was made for, from the
+// record of connected apps; "" for an agent connected by name, which shows the
+// robot.
 func (h *handler) agentKinds() map[string]string {
 	kinds := map[string]string{}
 	conns, _ := agentconnect.Connections(h.dataDir)
 	for _, c := range conns {
-		kinds[c.Client] = string(c.Agent)
 		kinds[c.ClientID] = string(c.Agent)
 	}
 	return kinds

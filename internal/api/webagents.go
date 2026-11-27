@@ -338,9 +338,14 @@ func (h *handler) agentsAct(w http.ResponseWriter, r *http.Request, sess uiSessi
 			h.uiRefused(w, r, err, back)
 			return
 		}
+		active, err := agentauth.ActiveByName(h.dataDir, name)
+		if err != nil || active == nil {
+			back("failed")
+			return
+		}
 		if conns, err := agentconnect.Connections(h.dataDir); err == nil {
 			for _, c := range conns {
-				if c.Client == name {
+				if c.ClientID == active.ID {
 					h.connectMu.Lock()
 					notice := h.disconnect(r.Context(), c)
 					h.connectMu.Unlock()
