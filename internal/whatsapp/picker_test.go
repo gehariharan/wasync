@@ -2,6 +2,7 @@ package whatsapp
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"io"
 	"log/slog"
@@ -99,6 +100,77 @@ func TestUnsyncedChatsRememberWhenTheyWereActiveButNotTheirMessages(t *testing.T
 	}
 	if got := activityOf(t, s, account, group); got != nil {
 		t.Fatalf("activity survived a purge: %v", got)
+	}
+}
+
+// When the last-active time cannot be saved, capture goes on: the time only
+// orders the chat picker. Live messages save it at most once a minute a chat.
+func TestChatActivityIsSavedSparinglyAndNeverStopsCapture(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(privateTestDir(t), "archive.db")
+	s, err := storage.Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	account, err := s.UseAccount(ctx, "test@s.whatsapp.net")
+	if err != nil {
+		t.Fatal(err)
+	}
+	group := "120363000000000023@g.us"
+	if err = s.SaveGroups(ctx, account, []storage.Group{{ID: group, Name: "Not synced"}}); err != nil {
+		t.Fatal(err)
+	}
+	c, err := Open(ctx, filepath.Join(privateTestDir(t), "session.db"), slog.New(slog.NewTextHandler(io.Discard, nil)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+	c.capture = &capture{ctx: ctx, store: s}
+	c.capture.account.Store(account)
+	raw, err := sql.Open("sqlite3", storage.DSN(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer raw.Close()
+	if _, err = raw.Exec(`CREATE TRIGGER refuse_activity BEFORE INSERT ON chat_activity BEGIN SELECT RAISE(ABORT, 'disk full'); END`); err != nil {
+		t.Fatal(err)
+	}
+	chat := types.NewJID("120363000000000023", types.GroupServer)
+	send := func(id string, at time.Time) error {
+		msg := &waE2E.Message{Conversation: proto.String("not kept")}
+		return c.captureEvent(&events.Message{Info: types.MessageInfo{MessageSource: types.MessageSource{Chat: chat, Sender: types.NewJID("456", types.HiddenUserServer), IsGroup: true}, ID: id, Timestamp: at}, Message: msg, RawMessage: msg})
+	}
+	first := time.Now().Add(-10 * time.Minute).Truncate(time.Second)
+	if err = send("A1", first); err != nil || c.capture.failed.Load() {
+		t.Fatalf("a failed activity write stopped capture: %v", err)
+	}
+	history := &events.HistorySync{Data: &waHistorySync.HistorySync{SyncType: waHistorySync.HistorySync_RECENT.Enum(), Conversations: []*waHistorySync.Conversation{{ID: proto.String(group), ConversationTimestamp: proto.Uint64(uint64(first.Unix()))}}}}
+	if err = c.captureEvent(history); err != nil || c.capture.failed.Load() {
+		t.Fatalf("a failed activity write stopped history capture: %v", err)
+	}
+	if _, err = raw.Exec(`DROP TRIGGER refuse_activity`); err != nil {
+		t.Fatal(err)
+	}
+	// The failed write is retried by the next message.
+	if err = send("A2", first); err != nil {
+		t.Fatal(err)
+	}
+	if got := activityOf(t, s, account, group); got == nil || !got.Equal(first) {
+		t.Fatalf("activity after the failure: %v", got)
+	}
+	if err = send("A3", first.Add(30*time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if got := activityOf(t, s, account, group); got == nil || !got.Equal(first) {
+		t.Fatalf("a message within a minute was written again: %v", got)
+	}
+	later := first.Add(2 * time.Minute)
+	if err = send("A4", later); err != nil {
+		t.Fatal(err)
+	}
+	if got := activityOf(t, s, account, group); got == nil || !got.Equal(later) {
+		t.Fatalf("activity a minute later: %v", got)
 	}
 }
 
