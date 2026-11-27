@@ -228,7 +228,7 @@ func (a *App) approveAgentSend(ctx context.Context, cfg config.Config, request a
 // rewrite the confirmation the person is reading.
 func printable(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
 			return -1
 		}
 		return r
@@ -238,12 +238,11 @@ func printable(s string) string {
 // printableLines is printable but keeps line breaks, so a message shows the
 // layout it is sent with.
 func printableLines(s string) string {
-	return strings.Map(func(r rune) rune {
-		if r != '\n' && unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, strings.ReplaceAll(s, "\r\n", "\n"))
+	lines := strings.Split(strings.ReplaceAll(s, "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		lines[i] = printable(line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 // quotedLines marks every line of an agent's message, so none of it can pass

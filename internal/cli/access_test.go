@@ -114,7 +114,7 @@ func TestActionsApproveAgentSendShowsTheMessageAndNeedsItsPhrase(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	r, _, err := queue.AddSend(account, "15551234567@s.whatsapp.net", approval.AgentSend{Agent: "co\x1b[2Jdex", AgentID: client.ID, Text: "Hello\x1b[2J there\nBring the keys", NewNumber: true})
+	r, _, err := queue.AddSend(account, "15551234567@s.whatsapp.net", approval.AgentSend{Agent: "co\x1b[2Jdex", AgentID: client.ID, Text: "Hello\x1b[2J there\nBring \u202ethe keys", NewNumber: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,10 +142,10 @@ func TestActionsApproveAgentSendShowsTheMessageAndNeedsItsPhrase(t *testing.T) {
 			t.Fatalf("prompt lacks %q:\n%s", want, prompts)
 		}
 	}
-	if strings.Contains(prompts, "\x1b") {
+	if strings.ContainsAny(prompts, "\x1b\u202e") {
 		t.Fatalf("control characters reached the terminal: %q", prompts)
 	}
-	if len(*sent) != 1 || (*sent)[0].Text != "Hello\x1b[2J there\nBring the keys" || (*sent)[0].To != "15551234567@s.whatsapp.net" {
+	if len(*sent) != 1 || (*sent)[0].Text != "Hello\x1b[2J there\nBring \u202ethe keys" || (*sent)[0].To != "15551234567@s.whatsapp.net" {
 		t.Fatalf("sent %+v", *sent)
 	}
 }
@@ -183,7 +183,7 @@ func TestServeAnnouncesSendRequestsWithoutNamingTheChatOrTextAndActionsListShows
 	if err != nil {
 		t.Fatal(err)
 	}
-	ask := approval.AgentSend{Agent: "jit", AgentID: "0123abcd", Text: "Secret text\nline two", NewNumber: true}
+	ask := approval.AgentSend{Agent: "jit", AgentID: "0123abcd", Text: "Secret text\nline \u2066two", NewNumber: true}
 	r, _, err := app.Approvals.AddSend(account, "15551234567@s.whatsapp.net", ask)
 	if err != nil {
 		t.Fatal(err)
