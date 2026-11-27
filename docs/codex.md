@@ -62,6 +62,25 @@ No tool Codex has can approve anything, create a credential or read one (see
 after the restart, the plugin could not start `whatsapp-axi`: check `whatsapp-axi --version` in
 a terminal and that the Codex app was started after the install.
 
+## Connect from the setup page
+
+On the setup page, **Connect an agent**, then **ChatGPT & Codex**, does the wiring with no
+terminal. The ChatGPT desktop app, the Codex CLI and the IDE extension share Codex's
+`config.toml` (`$CODEX_HOME/config.toml`, by default `~/.codex/config.toml`), so one connection
+covers all of them. After you confirm, wasync:
+
+1. gives Codex its own credential and saves it in a folder only its WhatsApp tools read;
+2. if the `codex` command is installed, adds the WhatsApp plugin from a copy built into wasync
+   (`codex plugin marketplace add` with a local folder, then `codex plugin add whatsapp@wasync`),
+   unless Codex already has it;
+3. keeps a copy of `config.toml` next to it and adds a `[mcp_servers.whatsapp]` table that starts
+   `wasync-axi mcp` by its full path, with that credential folder. It takes the place of the
+   plugin's own `whatsapp-axi mcp` server, so the app needs no PATH change.
+
+Quit and reopen the app; the setup page shows when Codex last called wasync. **Disconnect** removes
+the table (putting back a `whatsapp` table it replaced), the plugin if wasync added it, and the
+credential.
+
 ## Adding the plugin by hand
 
 In the Codex app, or with the command line:

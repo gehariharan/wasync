@@ -28,11 +28,15 @@ type setupAgent struct{ Name, Status string }
 
 type setupData struct {
 	uiData
-	Paired, Pairing   bool
-	QR                template.HTML
-	Failure           string
-	Syncing, Total    int
-	Agents            []setupAgent
+	Paired, Pairing bool
+	QR              template.HTML
+	Failure         string
+	Syncing, Total  int
+	Agents          []setupAgent
+	// Apps are the apps Connect can write settings for; Preview is the
+	// change it would make for the one the person chose.
+	Apps              []connectRow
+	Preview           *connectPreview
 	AxiPath           string
 	HasSavedCred      bool
 	Service           string
@@ -104,6 +108,10 @@ func (h *handler) setupView(w http.ResponseWriter, r *http.Request, sess uiSessi
 		now := time.Now()
 		for _, c := range clients {
 			d.Agents = append(d.Agents, setupAgent{Name: humancheck.Clean(c.Name, 40), Status: c.Status(now)})
+		}
+		d.Apps = h.connectRows(now)
+		if kind := r.URL.Query().Get("connect"); kind != "" {
+			d.Preview = h.previewFor(kind)
 		}
 		if p, err := h.axiCredentialPath(); err == nil {
 			d.AxiPath = p
@@ -274,8 +282,27 @@ var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiH
 <p class="btn-row"><a class="btn go" href="/ui/chats/pick">Choose chats…</a> {{if .Total}}<span class="mut">{{.Total}} chats found.</span>{{else}}<span class="mut">Chats appear a moment after linking; refresh if none are listed.</span>{{end}}</p>{{end}}
 </section>
 
-<h2>3. Connect an agent</h2>
+<h2 id="connect">3. Connect an agent</h2>
 <section class="card">
+<p class="mut">Connect writes the WhatsApp tools into the app's own settings file after you confirm, keeps a copy of that file first, and gives the app its own credential, which is never shown. Disconnect takes them out again.</p>
+<table class="sent"><thead><tr><th>App</th><th>Status</th><th></th></tr></thead><tbody>
+{{range .Apps}}<tr><td>{{.Title}}{{if not .Connected}} <span class="mut">{{if .Found}}found on this computer{{else}}not found{{end}}</span>{{end}}</td>
+<td>{{.Status}}{{if .Connected}}<br><span class="mut">{{.Next}}</span>{{end}}</td>
+<td>{{if .Connected}}<form method="post" action="/ui/setup/disconnect"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Agent}}"><button>Disconnect</button></form>{{else}}<a href="/ui/setup?connect={{.Agent}}#connect">Connect…</a>{{end}}</td></tr>
+{{end}}</tbody></table>
+{{with .Preview}}<h3>Connect {{.Title}}</h3>
+{{if .Error}}<p class="bad">{{.Error}}</p>
+{{else}}<p>wasync will give {{.Title}} the credential <strong>{{.Name}}</strong>: it may read, reply and react only in the chats you approve when it asks.</p>
+<p>{{if .Exists}}It changes <code>{{.Path}}</code> and keeps a copy of it next to it first.{{else}}It creates <code>{{.Path}}</code>.{{end}}</p>
+{{if .Removed}}<p>It replaces this entry:</p><pre>{{.Removed}}</pre>{{end}}
+<p>It adds:</p><pre>{{.Added}}</pre>
+{{if .Steps}}<p>It also adds the WhatsApp plugin to Codex by running:</p><pre>{{range .Steps}}{{.}}
+{{end}}</pre>{{end}}
+{{if $.Gate}}<form method="post" action="/ui/setup/connect#connect"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Kind}}"><input type="hidden" name="digest" value="{{.Digest}}"><button class="go">Connect {{.Title}}…</button> <span class="mut">Asks you to confirm with {{$.Gate}}.</span></form>
+{{else if $.Remote}}<p class="bad">Connect agents on the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
+{{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page.</p>{{end}}{{end}}
+{{end}}
+<h3>Another agent</h3>
 {{if .Agents}}<p>Connected agents:</p><ul>{{range .Agents}}<li>{{.Name}} <span class="mut">{{.Status}}</span></li>{{end}}</ul>{{end}}
 {{if .Gate}}
 <form method="post" action="/ui/setup/agent"><input type="hidden" name="csrf" value="{{.CSRF}}">
