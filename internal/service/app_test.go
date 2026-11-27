@@ -4,7 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"regexp"
 	"testing"
 )
 
@@ -104,8 +103,11 @@ func TestAppBundleIDMatchesThePackagedInfoPlist(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m := regexp.MustCompile(`<key>CFBundleIdentifier</key>\s*<string>([^<]+)</string>`).FindSubmatch(b)
-	if m == nil || string(m[1]) != AppBundleID {
-		t.Fatalf("Info.plist CFBundleIdentifier = %q, want %q", m, AppBundleID)
+	plist, err := parsePlist(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := plist["CFBundleIdentifier"]; got != AppBundleID {
+		t.Fatalf("Info.plist CFBundleIdentifier = %v, want %q", got, AppBundleID)
 	}
 }

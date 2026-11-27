@@ -267,7 +267,7 @@ func (d *desktopApp) openWindow() {
 func (d *desktopApp) load(w *application.WebviewWindow) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	link, err := d.host.Link(ctx, d.host.StartPage(ctx))
+	link, err := d.host.StartLink(ctx)
 	if err != nil {
 		d.log.Warn("opening wasync", "error", err)
 		if !errors.Is(err, desktop.ErrStopped) {

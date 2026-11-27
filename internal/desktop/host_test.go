@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +19,8 @@ import (
 	"github.com/gehariharan/wasync/internal/cli"
 	"github.com/gehariharan/wasync/internal/config"
 	"github.com/gehariharan/wasync/internal/firstopen"
+	"github.com/gehariharan/wasync/internal/localfs"
+	"github.com/gehariharan/wasync/internal/processlock"
 )
 
 // The test binary stands in for wasync: started with WASYNC_FAKE set, it
@@ -41,14 +45,62 @@ func fakeWasync() {
 		fmt.Fprintln(os.Stderr, "fake wasync: started without setup --app or the app's program:", args)
 		os.Exit(2)
 	}
+	mode := os.Getenv("WASYNC_FAKE")
+	if mode == "linked" {
+		if err := holdLinked(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "fake wasync:", err)
+			os.Exit(4)
+		}
+	}
 	_ = enc.Encode(cli.AppMessage{Event: "ready", URL: "http://127.0.0.1:1", PID: os.Getpid()})
 	in := bufio.NewScanner(os.Stdin)
-	for in.Scan() {
+	for asked := 0; in.Scan(); asked++ {
 		var req cli.AppMessage
 		_ = json.Unmarshal(in.Bytes(), &req)
+		if mode == "late" && asked == 0 {
+			time.Sleep(300 * time.Millisecond)
+		}
 		_ = enc.Encode(cli.AppMessage{Event: "link", Page: req.Page, URL: "http://127.0.0.1:1/ui/enter?t=fake&next=" + req.Page})
 	}
 	// Standard input closed: the app quit.
+}
+
+// holdLinked takes the data directory the way a running wasync does and
+// answers on its local API that a phone is linked.
+func holdLinked(args []string) error {
+	var dir string
+	for i, a := range args {
+		if a == "--data-dir" && i+1 < len(args) {
+			dir = args[i+1]
+		}
+	}
+	if err := localfs.EnsureDir(dir); err != nil {
+		return err
+	}
+	if _, err := processlock.Acquire(filepath.Join(dir, "device.lock")); err != nil {
+		return err
+	}
+	token := filepath.Join(dir, "api.token")
+	if err := localfs.EnsureFile(token); err != nil {
+		return err
+	}
+	if err := os.WriteFile(token, []byte("fake-token"), 0o600); err != nil {
+		return err
+	}
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return err
+	}
+	pid := os.Getpid()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/owner", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprintf(w, `{"owner":{"pid":%d},"connection":"online","paired":true}`, pid)
+	})
+	mux.HandleFunc("/api/status", func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, `{"enabled_chats":2}`)
+	})
+	go func() { _ = http.Serve(ln, mux) }()
+	return processlock.WriteOwner(dir, processlock.Owner{Kind: "setup", PID: pid, DataDir: dir, APIAddr: ln.Addr().String(), StartedAt: time.Now()})
 }
 
 type syncBuffer struct {
@@ -131,6 +183,39 @@ func TestStartPageIsSetupUntilFirstOpenIsSeenAndAPhoneIsLinked(t *testing.T) {
 	}
 	if got := h.StartPage(context.Background()); got != "setup" {
 		t.Fatalf("no wasync answers, so no phone is known to be linked: %q", got)
+	}
+}
+
+func TestStartLinkOpensTheChatsOnceTheWasyncItStartsSaysAPhoneIsLinked(t *testing.T) {
+	h, _, starts := testHost(t, "linked")
+	if err := firstopen.Done(h.Config.DataDir, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	link, err := h.StartLink(context.Background())
+	if err != nil || !strings.HasSuffix(link, "next=chats") {
+		t.Fatalf("a linked phone opens on the chats: %q %v", link, err)
+	}
+	if *starts != 1 {
+		t.Fatalf("wasync started %d times", *starts)
+	}
+}
+
+func TestALateLinkAnswerDoesNotReachTheNextRequest(t *testing.T) {
+	h, _, _ := testHost(t, "late")
+	if _, err := h.Ensure(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+	if _, err := h.Link(ctx, "setup"); err == nil {
+		t.Fatal("the first request must give up before wasync answers")
+	}
+	time.Sleep(500 * time.Millisecond)
+	for _, page := range []string{"chats", "setup", "chats"} {
+		link, err := h.Link(context.Background(), page)
+		if err != nil || !strings.HasSuffix(link, "next="+page) {
+			t.Fatalf("asked for %s, got %q %v", page, link, err)
+		}
 	}
 }
 

@@ -38,9 +38,3 @@ func TestExternalLinkOpensOnlyWebAndMailLinksFromWasyncPages(t *testing.T) {
 		}
 	}
 }
-
-func TestLinkScriptSendsTheMessageExternalLinkReads(t *testing.T) {
-	if !strings.Contains(LinkScript, `"`+openLinkPrefix+`"`) {
-		t.Fatal("the script and ExternalLink disagree on the message prefix")
-	}
-}

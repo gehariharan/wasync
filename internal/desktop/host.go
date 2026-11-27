@@ -236,23 +236,43 @@ func (h *Host) Link(ctx context.Context, page string) (string, error) {
 	}
 	c.asking.Lock()
 	defer c.asking.Unlock()
+	select {
+	case <-c.replies:
+	default:
+	}
 	req, _ := json.Marshal(cli.AppMessage{Op: "link", Page: page})
 	if _, err = c.stdin.Write(append(req, '\n')); err != nil {
 		return "", fmt.Errorf("ask wasync for a link: %w", err)
 	}
-	select {
-	case m := <-c.replies:
-		if m.Event != "link" || m.URL == "" {
-			return "", fmt.Errorf("wasync gave no link: %s", m.Error)
+	timeout := time.NewTimer(10 * time.Second)
+	defer timeout.Stop()
+	for {
+		select {
+		case m := <-c.replies:
+			if m.Event == "link" && m.Page != page {
+				continue
+			}
+			if m.Event != "link" || m.URL == "" {
+				return "", fmt.Errorf("wasync gave no link: %s", m.Error)
+			}
+			return m.URL, nil
+		case <-c.done:
+			return "", errors.New("wasync stopped")
+		case <-timeout.C:
+			return "", errors.New("wasync did not answer")
+		case <-ctx.Done():
+			return "", ctx.Err()
 		}
-		return m.URL, nil
-	case <-c.done:
-		return "", errors.New("wasync stopped")
-	case <-time.After(10 * time.Second):
-		return "", errors.New("wasync did not answer")
-	case <-ctx.Done():
-		return "", ctx.Err()
 	}
+}
+
+// StartLink returns a one-time link to the start page, starting wasync first
+// if needed.
+func (h *Host) StartLink(ctx context.Context) (string, error) {
+	if _, err := h.Ensure(ctx); err != nil {
+		return "", err
+	}
+	return h.Link(ctx, h.StartPage(ctx))
 }
 
 // StartPage is the page the window opens on: setup while the First open
