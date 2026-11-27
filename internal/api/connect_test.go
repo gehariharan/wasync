@@ -140,7 +140,7 @@ func TestConnectCodexWritesItsSettingsOnlyAfterThePersonConfirms(t *testing.T) {
 		t.Fatalf("changed without the person: %q ran %q", b, *f.ran)
 	}
 	seen := f.stub.seen()
-	if len(seen) != 1 || !strings.Contains(seen[0], `"codex"`) || !strings.Contains(seen[0], "ChatGPT & Codex's settings") || !strings.Contains(seen[0], "send") {
+	if len(seen) != 1 || !strings.Contains(seen[0], `"codex"`) || !strings.Contains(seen[0], "ChatGPT & Codex's settings") || !strings.Contains(seen[0], "read, reply and react in every chat you sync") {
 		t.Fatalf("prompt: %q", seen)
 	}
 
@@ -155,7 +155,7 @@ func TestConnectCodexWritesItsSettingsOnlyAfterThePersonConfirms(t *testing.T) {
 		t.Fatalf("connect: %v", hd)
 	}
 	client, _ := agentauth.ActiveByName(f.dir, "codex")
-	if client == nil || !client.HasScope(agentauth.ScopeSend) || !client.HasScope(agentauth.ScopeReact) || client.HasScope(agentauth.ScopeEditOwn) {
+	if client == nil || !client.SyncedChats || client.OnDemand || !client.HasScope(agentauth.ScopeSend) || !client.HasScope(agentauth.ScopeReact) || client.HasScope(agentauth.ScopeEditOwn) {
 		t.Fatalf("client %+v", client)
 	}
 	credDir := filepath.Join(f.axiDir, "agents", "codex")
