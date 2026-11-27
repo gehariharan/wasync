@@ -5,6 +5,9 @@
 set -eu
 bin=/usr/local/bin/wasync-axi
 kept=/usr/local/bin/.wasync-axi.kept
+if [ -L "$kept" ] && [ ! -e "$bin" ] && [ ! -L "$bin" ]; then
+  mv -f "$kept" "$bin"
+fi
 rm -f "$kept"
 if [ -L "$bin" ]; then
   mv -f "$bin" "$kept"

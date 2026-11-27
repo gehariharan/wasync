@@ -109,9 +109,10 @@ each chat was last active as WhatsApp reports it (a time per chat, also for
 chats that are not synced), and keeps both values too: older readers ignore
 the table, and an older owner only leaves it stale.
 Migration 009 adds `groups.list_capture` (capture switched on only so an
-agent's approved list sees replies, not chosen by the person) and keeps both
-values: older readers ignore the column, and a schema-6, schema-7 or schema-8
-owner only leaves it as it is.
+agent's approved list sees replies, not chosen by the person) and raises
+`min_writer` to 9, keeping `min_reader=5`: older readers ignore the column,
+but a schema-6, schema-7 or schema-8 owner would enable a chat for the person
+without clearing the mark, so the chat would stay hidden from connected agents.
 
 Binaries before this check (schema 5 releases without it) ignore
 `schema_compat` and always refuse newer archives, so the release containing it

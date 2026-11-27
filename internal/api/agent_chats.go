@@ -58,7 +58,7 @@ func syncedChats(ctx context.Context, store *storage.Store) ([]string, error) {
 	}
 	chats := []string{}
 	for _, g := range groups {
-		if personSynced(g) {
+		if g.PersonSynced() {
 			chats = append(chats, g.ID)
 		}
 	}

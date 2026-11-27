@@ -327,7 +327,7 @@ func syncedChatIDs(ctx context.Context, cfg config.Config) ([]string, error) {
 	}
 	ids := []string{}
 	for _, g := range groups {
-		if g.Enabled {
+		if g.PersonSynced() {
 			ids = append(ids, g.ID)
 		}
 	}

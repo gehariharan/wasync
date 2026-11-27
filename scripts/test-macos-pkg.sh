@@ -9,8 +9,8 @@
 #
 # On a disposable GitHub-hosted runner only, it also installs the package with
 # `installer` and its default choices (both at VERSION), installs it again over
-# a wasync-axi symlink owned by another installation method (which it must keep),
-# and removes everything it installed.
+# a wasync-axi symlink owned by another installation method (which it must keep,
+# also after an interrupted install), and removes everything it installed.
 set -euo pipefail
 package="${1:?Usage: scripts/test-macos-pkg.sh PKG VERSION ARCHITECTURE [SIGNED_AXI_BINARY]}"
 version="${2:?}"
@@ -91,6 +91,14 @@ if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hoste
   [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
   /usr/local/bin/wasync version | grep -qF "wasync $version " || fail "wasync is not installed when another installation owns wasync-axi"
   pass "install over another installation's wasync-axi symlink keeps it and still installs wasync"
+
+  # An install that stopped after preinstall set the link aside leaves it at
+  # .wasync-axi.kept with nothing at wasync-axi; the next install restores it.
+  sudo mv /usr/local/bin/wasync-axi /usr/local/bin/.wasync-axi.kept
+  run_installer
+  [[ "$(readlink /usr/local/bin/wasync-axi)" == "$other_axi" ]] || fail "an install after an interrupted one lost another installation's wasync-axi symlink"
+  [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
+  pass "an install after an interrupted one puts another installation's wasync-axi symlink back"
 else
   echo "test-macos-pkg: skipped the real install (only run on disposable GitHub-hosted runners)"
 fi

@@ -36,7 +36,11 @@ func (r *lineReader) Read(p []byte) (int, error) {
 }
 
 func TestAgentsGrantSyncedChatsAndList(t *testing.T) {
-	_, _, _, _, dir := queryFixture(t) // one@g.us is synced
+	_, _, store, account, dir := queryFixture(t) // one@g.us is synced
+	// two@g.us is archived only for an agent's approved list, so it is not shared.
+	if err := store.EnableListCapture(context.Background(), account, "two@g.us"); err != nil {
+		t.Fatal(err)
+	}
 	run := func(app *App, args ...string) error {
 		return app.Run(context.Background(), append([]string{"--data-dir", dir, "agents"}, args...))
 	}

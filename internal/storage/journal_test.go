@@ -398,7 +398,7 @@ func TestUpgradeFromSchema5CreatesJournal(t *testing.T) {
 		t.Fatalf("schema %d", v)
 	}
 	compat, err := readSchemaCompat(ctx, s.db)
-	if err != nil || compat == nil || compat.MinReader != 5 || compat.MinWriter != 6 {
+	if err != nil || compat == nil || compat.MinReader != 5 || compat.MinWriter != 9 {
 		t.Fatalf("schema_compat %+v %v", compat, err)
 	}
 	info, err := s.Journal(ctx)
@@ -419,8 +419,8 @@ func TestUpgradeFromSchema5CreatesJournal(t *testing.T) {
 }
 
 // TestSchema5ReaderCompatibility simulates a schema-5 binary (one that
-// understands schema_compat) opening a migrated schema-6 archive: queries
-// work, but owning the archive is refused because writes must journal.
+// understands schema_compat) opening a migrated archive: queries work, but
+// owning the archive is refused because writes must journal.
 func TestSchema5ReaderCompatibility(t *testing.T) {
 	ctx := context.Background()
 	path := buildArchive(t, 5)
@@ -440,7 +440,30 @@ func TestSchema5ReaderCompatibility(t *testing.T) {
 	if p, err := ro.Messages(ctx, 1, "", MessageQuery{Search: "searchable"}); err != nil || len(p.Items) != 1 {
 		t.Fatalf("schema-5 query: %+v %v", p.Items, err)
 	}
-	if _, err = Open(ctx, path); err == nil || !strings.Contains(err.Error(), "requires writer schema 6") {
+	if _, err = Open(ctx, path); err == nil || !strings.Contains(err.Error(), "requires writer schema 9") {
 		t.Fatalf("schema-5 writer accepted: %v", err)
+	}
+}
+
+// A schema-8 owner would enable a chat without clearing its list capture
+// mark, so it may read a migrated archive but not own it.
+func TestSchema8WriterCannotOwnAListCaptureArchive(t *testing.T) {
+	ctx := context.Background()
+	path := buildArchive(t, 5)
+	s, err := Open(ctx, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Close()
+	previous := schemaVersion
+	schemaVersion = 8
+	t.Cleanup(func() { schemaVersion = previous })
+	ro, err := OpenReadOnly(ctx, path)
+	if err != nil {
+		t.Fatalf("schema-8 reader refused: %v", err)
+	}
+	ro.Close()
+	if _, err = Open(ctx, path); err == nil || !strings.Contains(err.Error(), "requires writer schema 9") {
+		t.Fatalf("schema-8 writer accepted: %v", err)
 	}
 }

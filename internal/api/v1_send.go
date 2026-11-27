@@ -264,7 +264,7 @@ func (h *handler) openSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 }
 
 // knownChat reports whether the archive already has this chat, and whether
-// it is synced.
+// the person synced it.
 func (h *handler) knownChat(ctx context.Context, chat string) (known, synced bool, err error) {
 	account, err := h.store.Account(ctx)
 	if err != nil || account == nil {
@@ -276,7 +276,7 @@ func (h *handler) knownChat(ctx context.Context, chat string) (known, synced boo
 	}
 	for _, g := range groups {
 		if g.ID == chat {
-			return true, g.Enabled, nil
+			return true, g.PersonSynced(), nil
 		}
 	}
 	return false, false, nil

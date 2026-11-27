@@ -294,6 +294,18 @@ func TestAChatSyncedOnlyForAnAgentsListIsNotSharedUntilThePersonSyncsIt(t *testi
 	if got := mustClient(t, f.dir, "codex"); strings.Join(got.Chats, ",") != familyChat {
 		t.Fatalf("stored chats %v", got.Chats)
 	}
+	asked := f.askToSend(t, codex, map[string]string{"chat": phoneChat, "text": "hi"}, 202)
+	if asked.Data.Status != "pending" {
+		t.Fatalf("pending: %+v", asked)
+	}
+	sendToken, err := loadNamedToken(f.dir, "send.token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, out := f.signed(t, "GET", agentRequestsPath, sendToken, nil)
+	if !strings.Contains(string(out), "a chat that was not synced when it asked") || strings.Contains(string(out), "a synced chat this agent may not use") {
+		t.Fatalf("a chat synced only for a list was described as synced: %s", out)
+	}
 	if _, page, _ := c.get("/ui/chats/pick"); !strings.Contains(page, "1 of 3 syncing") {
 		t.Fatalf("Choose chats counted a chat the person did not choose:\n%s", page)
 	}

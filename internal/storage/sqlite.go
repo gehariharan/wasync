@@ -75,6 +75,12 @@ type Group struct {
 	HistoryRequestError  string
 	HistoryBatchMessages int
 }
+
+// PersonSynced reports whether the person chose to sync g: it is enabled, and
+// not only for an agent's approved list. Agents that use every synced chat get
+// these chats, and Choose chats shows them ticked.
+func (g Group) PersonSynced() bool { return g.Enabled && !g.ListCapture }
+
 type Account struct {
 	ID            int64
 	JID           string
