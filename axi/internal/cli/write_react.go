@@ -62,7 +62,7 @@ func (a *App) runReact(ctx context.Context, inv invocation) error {
 		resp, err = ack(t, &res, func(r *contract.Response) error { return p.Put(ctx, path, map[string]string{"emoji": inv.args[1]}, r) })
 	}
 	if err != nil {
-		return refusalHint(writeExplain(err, "react"), "sync", syncHelp)
+		return writeExplain(err, "react")
 	}
 	return a.writeResult(inv, t, ref, "reaction", resp, res)
 }

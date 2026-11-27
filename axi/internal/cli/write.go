@@ -74,29 +74,6 @@ func writeExplain(err error, scope string) error {
 	return &e
 }
 
-// syncHelp says how a chat becomes usable for reading, replying and reacting.
-const syncHelp = "Reading, replying and reacting work in every chat synced in wasync; for a chat that is not synced, ask the person to sync it in wasync."
-
-// refusalHint adds the next step after wasync's own help for a write it
-// refused with forbidden, unless that help already names it (marker). It
-// never changes the refusal or wasync's words.
-func refusalHint(err error, marker, hint string) error {
-	var ce *contract.Error
-	if !errors.As(err, &ce) || ce.Code != contract.CodeForbidden || strings.Contains(ce.Help, marker) {
-		return err
-	}
-	e := *ce
-	switch own := strings.TrimSpace(e.Help); {
-	case own == "":
-		e.Help = hint
-	case strings.HasSuffix(own, "."):
-		e.Help = own + " " + hint
-	default:
-		e.Help = own + ". " + hint
-	}
-	return &e
-}
-
 // writeResult prints WhatsApp's acknowledgement of a write.
 func (a *App) writeResult(inv invocation, t transport.Transport, ref, label string, resp contract.Response, res contract.WriteResult) error {
 	if inv.json {
@@ -161,7 +138,7 @@ func (a *App) runReply(ctx context.Context, inv invocation) error {
 	var res contract.WriteResult
 	resp, err := post(ctx, w, t, "/messages/"+url.PathEscape(ref)+"/reply", map[string]any{"text": text, "mentions": mentions}, &res)
 	if err != nil {
-		return refusalHint(writeExplain(err, "send"), "sync", syncHelp)
+		return writeExplain(err, "send")
 	}
 	return a.writeResult(inv, t, ref, "reply", resp, res)
 }

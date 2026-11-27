@@ -288,6 +288,19 @@ func TestReplyAndReactRefusalsSayToSyncTheChat(t *testing.T) {
 			t.Fatalf("%v: wasync's help was changed or repeated:\n%s", args, out)
 		}
 	}
+
+	// A credential with a fixed chat list is re-granted, not synced; its
+	// refusal keeps wasync's own advice and gains no sync hint.
+	fixed := "Chat two@g.us is not in the allowlist for scope send. To send one message there, ask the person to approve it: run `wasync-axi send-request --chat two@g.us --text TEXT` (POST /api/v1/send-requests); nothing is sent until they confirm in wasync. Otherwise a human must re-grant the client in an interactive terminal: wasync agents revoke writer && wasync agents grant writer --scope read.chats,read.messages,send --chat one@g.us --chat two@g.us --rate 60"
+	srv.Routes[replyEndpoint] = map[string]any{"request_id": "r-x", "error_code": "forbidden", "error": "refused", "help": fixed}
+	out, code := h.run(t, "reply", testRef, "--text", "hi")
+	if code != ExitError {
+		t.Fatalf("fixed-list reply: exit %d\n%s", code, out)
+	}
+	mustContain(t, out, fixed)
+	if strings.Contains(out, "sync it in wasync") {
+		t.Fatalf("a fixed-list refusal was told to sync the chat:\n%s", out)
+	}
 }
 
 func TestSendToANumberPostsTheNumberAndNeedsTheNewFeature(t *testing.T) {
