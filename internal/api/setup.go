@@ -102,7 +102,7 @@ func (h *handler) setupView(w http.ResponseWriter, r *http.Request, sess uiSessi
 		}
 		d.Total = len(groups)
 		for _, g := range groups {
-			if g.Enabled {
+			if g.PersonSynced() {
 				d.Syncing++
 			}
 		}
@@ -172,8 +172,6 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.uiBack(w, r, "badname")
 		return
 	}
-	// Read only, until revoked. Sending stays behind the approval of each request.
-	scopes := []string{agentauth.ScopeReadChats, agentauth.ScopeReadMessages}
 	if existing, err := agentauth.ActiveByName(h.dataDir, name); err != nil {
 		h.uiBack(w, r, "failed")
 		return
@@ -193,12 +191,20 @@ func (h *handler) setupAgent(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.uiBack(w, r, "replace")
 		return
 	}
-	req := agentauth.GrantRequest{Name: name, Scopes: scopes, OnDemand: true, RatePerMinute: agentauth.DefaultRatePerMinute}
+	// Read, reply and react in every synced chat, now and later, until
+	// revoked. Sending anywhere else waits for the person to approve that
+	// one message.
+	synced, err := syncedChats(r.Context(), h.store, h.dataDir)
+	if err != nil {
+		h.uiBack(w, r, "failed")
+		return
+	}
+	req := agentauth.ConnectRequest(name, synced)
 	if agentauth.ValidateGrant(req) != nil {
 		h.uiBack(w, r, "invalid")
 		return
 	}
-	if err := h.confirmError(r.Context(), agentauth.GrantEffect(name, scopes, nil, true, 0)); err != nil {
+	if err := h.confirmError(r.Context(), agentauth.GrantEffect(name, req.Scopes, synced, true, 0)); err != nil {
 		h.uiRefused(w, r, err, func(n string) { h.uiBack(w, r, n) })
 		return
 	}
@@ -292,7 +298,7 @@ var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiH
 <section class="card">
 {{if .Syncing}}<p><strong>{{.Syncing}} of {{.Total}} chats are syncing.</strong> They may be left over from before you linked this phone. <a href="/ui/chats/pick">Review them</a>, or start fresh.</p>
 <form method="post" action="/ui/chats/pick" class="btn-row"><input type="hidden" name="csrf" value="{{.CSRF}}"><button name="action" value="clearall">Start fresh: stop syncing all</button> <a class="btn" href="/ui/chats/pick">Choose chats…</a></form>
-{{else}}<p>Nothing is syncing yet. wasync keeps only the chats you tick, on this computer. Agents see none of them until you connect one in step 3 and approve what it may read.</p>
+{{else}}<p>Nothing is syncing yet. wasync keeps only the chats you tick, on this computer. Agents see none of them until you connect one in step 3.</p>
 <p class="btn-row"><a class="btn go" href="/ui/chats/pick">Choose chats…</a> {{if .Total}}<span class="mut">{{.Total}} chats found.</span>{{else}}<span class="mut">Chats appear a moment after linking; refresh if none are listed.</span>{{end}}</p>{{end}}
 </section>
 
@@ -306,7 +312,7 @@ var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiH
 {{end}}</tbody></table>
 {{with .Preview}}<h3>Connect {{.Title}}</h3>
 {{if .Error}}<p class="bad">{{.Error}}</p>
-{{else}}<p>wasync will give {{.Title}} the credential <strong>{{.Name}}</strong>: it may read, reply and react only in the chats you approve when it asks.</p>
+{{else}}<p>wasync will give {{.Title}} the credential <strong>{{.Name}}</strong>: it may read, reply and react in every chat you sync, now and later; editing stays off. To message a chat you don't sync, or a new number, it asks under Approvals.</p>
 <p>{{if .Exists}}It changes <code>{{.Path}}</code> and keeps a copy of it next to it first.{{else}}It creates <code>{{.Path}}</code>.{{end}}</p>
 {{if .Removed}}<p>It replaces this entry:</p><pre>{{.Removed}}</pre>{{end}}
 <p>It adds:</p><pre>{{.Added}}</pre>
@@ -320,13 +326,13 @@ var setupTemplate = template.Must(template.New("setup").Funcs(uiFuncs).Parse(uiH
 {{if .Agents}}<p>Connected agents:</p><ul>{{range .Agents}}<li>{{.Name}} <span class="mut">{{.Status}}</span></li>{{end}}</ul>{{end}}
 {{if .Gate}}
 <form method="post" action="/ui/setup/agent"><input type="hidden" name="csrf" value="{{.CSRF}}">
-<p class="mut">The agent may read only chats you approve, and starts with none. When it asks for one, the request appears under Approvals and you decide. The secret is saved straight to where wasync-axi reads it ({{.AxiPath}}) and is never shown.</p>
+<p class="mut">The agent may read, reply and react in every chat you sync, now and later; editing stays off. To message a chat you don't sync, or a new number, it asks under Approvals and you approve each message. The secret is saved straight to where wasync-axi reads it ({{.AxiPath}}) and is never shown.</p>
 <label>Name <input type="text" name="name" value="wasync-axi" maxlength="32" pattern="[a-z0-9-]{1,32}"></label>
 {{if .HasSavedCred}}<label><input type="checkbox" name="replace" value="yes"> Replace the credential wasync-axi already has saved</label>{{end}}
 <div class="btn-row"><button class="go">Connect…</button> <span class="mut">Asks you to confirm with {{.Gate}}.</span></div>
 </form>
 {{else if .Remote}}<p class="bad">Connect agents on the computer running wasync, or <a href="#devices">set up this device</a> with a passkey first.</p>
-{{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page. Run <code>wasync agents grant wasync-axi --on-demand</code> in a terminal.</p>{{end}}
+{{else}}<p class="bad">This computer cannot show a system confirmation, so agents cannot be connected from this page. Run <code>wasync agents grant wasync-axi --scope read.chats,read.messages,send,react --synced-chats</code> in a terminal.</p>{{end}}
 </section>
 {{end}}
 

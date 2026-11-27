@@ -9,8 +9,11 @@ import (
 // PickerChat is one chat as the chat picker lists it: what it is called,
 // whether it is synced and when it was last active. It carries no content.
 type PickerChat struct {
-	ID      string
-	Name    string
+	ID   string
+	Name string
+	// Enabled reports whether the person chose to sync the chat. A chat
+	// switched on only for an agent's approved list is not, so the picker
+	// shows it unticked and ticking it makes it the person's choice.
 	Enabled bool
 	// LastActive is the newest of the last archived message and the last
 	// activity WhatsApp reported for the chat; nil when neither is known.
@@ -34,7 +37,7 @@ func (s *Store) PickerChat(ctx context.Context, account int64, chat string) (c P
 	return chats[0], true, nil
 }
 
-const pickerQuery = `SELECT g.group_id,g.name,g.sync_enabled,
+const pickerQuery = `SELECT g.group_id,g.name,g.sync_enabled=1 AND g.list_capture=0,
  NULLIF(MAX(COALESCE(g.last_message_at,0),COALESCE(a.last_active_at,0)),0)
  FROM groups g LEFT JOIN chat_activity a ON a.account_id=g.account_id AND a.chat_id=g.group_id`
 

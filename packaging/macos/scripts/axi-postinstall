@@ -1,4 +1,11 @@
 #!/bin/sh
+# Put back a wasync-axi symlink that preinstall set aside, so another
+# installation method keeps owning the command.
+kept=/usr/local/bin/.wasync-axi.kept
+if [ -L "$kept" ] && [ -e "$kept" ]; then
+  mv -f "$kept" /usr/local/bin/wasync-axi
+fi
+rm -f "$kept"
 # Keep the old command name, whatsapp-axi, as a link to wasync-axi unless
 # another program owns that name.
 old=/usr/local/bin/whatsapp-axi

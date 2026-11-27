@@ -35,21 +35,23 @@ func unauthorized(message string) *Error {
 	return &Error{Code: CodeUnauthorized, Status: 401, Message: message, Help: grantHelpDefault}
 }
 
-// notAllowedHelp tells an agent how to get a chat it may not use. A client that
-// can ask is pointed at the human-approval request first; re-granting stays the
-// pre-approval route.
+// notAllowedHelp tells an agent what it can do about a chat it may not use.
+// Sending there can be asked for one message at a time, which the person
+// approves on their own computer; anything else needs the person to sync the
+// chat (for an agent that uses the synced chats) or to re-grant the agent.
 func notAllowedHelp(c *Client, scope, chat string) string {
-	regrant := fmt.Sprintf("A human must re-grant the client in an interactive terminal: %s", regrantCommand(c, scope, chat, 0))
-	if !requestable(scope) || c.ExpiresAt != nil {
-		return fmt.Sprintf("Chat %s is not in the allowlist for scope %s. %s", chat, scope, regrant)
+	ask := ""
+	if scope == ScopeSend {
+		ask = fmt.Sprintf(" To send one message there, ask the person to approve it: run `wasync-axi send-request --chat %s --text TEXT` (POST /api/v1/send-requests); nothing is sent until they confirm in wasync.", chat)
 	}
-	send := ""
-	if contains(sendFamily, scope) {
-		send = " --send"
-	} else if contains(editFamily, scope) {
-		send = " --edit"
+	if c.SyncedChats {
+		return fmt.Sprintf("Chat %s is not synced in wasync, so this agent cannot use it for %s.%s To read, reply or react there, the person must sync the chat in wasync.", chat, scope, ask)
 	}
-	return fmt.Sprintf("Chat %s is not allowed for scope %s. Ask the person to approve it: run `wasync-axi access request --chat %s%s` (or POST /api/v1/access-requests); nothing is granted until they confirm in wasync. Otherwise: %s", chat, scope, chat, send, regrant)
+	regrant := "A human must re-grant the client in an interactive terminal: "
+	if ask != "" {
+		regrant = "Otherwise a human must re-grant the client in an interactive terminal: "
+	}
+	return fmt.Sprintf("Chat %s is not in the allowlist for scope %s.%s %s%s", chat, scope, ask, regrant, regrantCommand(c, scope, chat, 0))
 }
 
 // RegrantCommand documents the replacement policy shared by these error hints.
@@ -64,8 +66,16 @@ func regrantCommand(c *Client, extraScope, extraChat string, rate int) string {
 	if extraScope != "" {
 		set[extraScope] = true
 	}
-	chats := append([]string(nil), c.Chats...)
-	if extraChat != "" {
+	chats := []string(nil)
+	if !c.SyncedChats {
+		// A credential from before agents used the synced chats keeps the
+		// chats a person approved for it one by one.
+		chats = append(chats, c.Chats...)
+		for _, g := range c.Grants {
+			chats = append(chats, g.Chat)
+		}
+	}
+	if extraChat != "" && !c.SyncedChats {
 		found := false
 		for _, existing := range chats {
 			found = found || existing == extraChat
@@ -80,11 +90,15 @@ func regrantCommand(c *Client, extraScope, extraChat string, rate int) string {
 	for s := range set {
 		needChat = needChat || RequiresAllowlist(s)
 	}
-	if c.OnDemand || (len(chats) == 0 && needChat) {
-		b.WriteString(" --on-demand")
+	if c.SyncedChats || (len(chats) == 0 && needChat) {
+		b.WriteString(" --synced-chats")
 	}
+	seen := map[string]bool{}
 	for _, chat := range chats {
-		b.WriteString(" --chat " + chat)
+		if !seen[chat] {
+			seen[chat] = true
+			b.WriteString(" --chat " + chat)
+		}
 	}
 	if rate <= 0 {
 		rate = c.RatePerMinute

@@ -9,7 +9,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/gehariharan/wasync/internal/localfs"
@@ -20,8 +22,14 @@ const (
 	// FileName is the private client registry in the data directory.
 	FileName = "agents.json"
 	// LockFileName serializes writers (grant/revoke) across processes.
-	LockFileName         = "agents.lock"
+	LockFileName = "agents.lock"
+	// FileVersion is written while no credential follows the synced chats, so
+	// an older wasync can still read the file. FileVersionSynced is written
+	// once one does: an older wasync, which would not keep that agent's chats
+	// in step, then refuses the file and asks to be upgraded instead of
+	// misreading it.
 	FileVersion          = 1
+	FileVersionSynced    = 2
 	DefaultRatePerMinute = 60
 	MaxRatePerMinute     = 6000
 	maxFileSize          = 4 << 20
@@ -29,8 +37,10 @@ const (
 )
 
 // ChatGrant is access to one chat that a human approved while the agent was
-// running (just in time). It adds to the pre-approved Chats allowlist and is
-// limited to Scopes, so read access never implies send access.
+// running (just in time), from before agents used every synced chat. It adds
+// to the pre-approved Chats allowlist and is limited to Scopes, so read access
+// never implies send access. No new grants are made; the ones a person
+// approved earlier keep working until the agent is revoked.
 type ChatGrant struct {
 	Chat      string    `json:"chat"`
 	Scopes    []string  `json:"scopes"`
@@ -41,14 +51,25 @@ type ChatGrant struct {
 // Client is a registered agent client. It never carries the secret or its hash.
 //
 // Scopes are the ceiling the human granted the credential. Chats is the
-// pre-approved allowlist (every scope applies). OnDemand marks a client that
-// starts with no chats at all instead of "every chat": it sees only Chats and
-// Grants, and Grants grow only through human-approved access requests.
+// pre-approved allowlist (every scope applies).
+//
+// SyncedChats marks the credential a person connects an agent with: its
+// Chats are the chats synced in wasync, and wasync keeps them equal to that
+// set as chats are synced or unsynced (see SetSyncedChats). So the agent may
+// read, and with the scopes it holds reply and react, in every synced chat,
+// now and later, and in no other. Chats stays a named list, so the rule that
+// write scopes need one still holds.
+//
+// OnDemand marks a credential from before agents used every synced chat: it
+// started with no chats at all instead of "every chat" and sees only Chats
+// and the Grants a person approved one by one. It keeps working exactly as it
+// did and gains no chats any more; connecting the agent again replaces it.
 type Client struct {
 	ID            string      `json:"id"`
 	Name          string      `json:"name"`
 	Scopes        []string    `json:"scopes"`
 	Chats         []string    `json:"chats"`
+	SyncedChats   bool        `json:"synced_chats,omitempty"`
 	OnDemand      bool        `json:"on_demand,omitempty"`
 	Grants        []ChatGrant `json:"grants,omitempty"`
 	RatePerMinute int         `json:"rate_per_minute"`
@@ -75,8 +96,9 @@ func (c *Client) HasScope(scope string) bool {
 }
 
 // Restricted reports whether the client sees only listed or granted chats
-// rather than every archived chat.
-func (c *Client) Restricted() bool { return c.OnDemand || len(c.Chats) > 0 }
+// rather than every archived chat. A synced-chats client is always
+// restricted: with no chat synced it sees none.
+func (c *Client) Restricted() bool { return c.SyncedChats || c.OnDemand || len(c.Chats) > 0 }
 
 // grantFor returns the just-in-time grant for chat, if any.
 func (c *Client) grantFor(chat string) *ChatGrant {
@@ -185,13 +207,24 @@ type registry struct {
 
 // GrantRequest describes a new client. Empty Scopes means DefaultScopes;
 // zero RatePerMinute means DefaultRatePerMinute; zero Expires means no expiry.
+// With SyncedChats, Chats are the chats synced right now, and wasync keeps
+// them in step from then on.
 type GrantRequest struct {
 	Name          string
 	Scopes        []string
 	Chats         []string
-	OnDemand      bool
+	SyncedChats   bool
 	RatePerMinute int
 	Expires       time.Duration
+}
+
+// ConnectRequest is the credential a person gives an agent when they connect
+// it in wasync: it may read, reply and react (editing stays off) in every chat
+// synced in wasync, now and later, with no prompt for each chat. synced is the
+// set of chats synced right now. Sending to any other chat or number needs the
+// person to approve that one message.
+func ConnectRequest(name string, synced []string) GrantRequest {
+	return GrantRequest{Name: name, Scopes: append([]string(nil), ConnectScopes...), Chats: synced, SyncedChats: true, RatePerMinute: DefaultRatePerMinute}
 }
 
 func (r *GrantRequest) normalize() error {
@@ -203,12 +236,14 @@ func (r *GrantRequest) normalize() error {
 		return err
 	}
 	r.Scopes = scopes
-	if r.Chats, err = normalizeChats(r.Chats); err != nil {
+	if r.SyncedChats {
+		r.Chats = syncedSet(r.Chats)
+	} else if r.Chats, err = normalizeChats(r.Chats); err != nil {
 		return err
 	}
 	for _, s := range r.Scopes {
-		if RequiresAllowlist(s) && len(r.Chats) == 0 && !r.OnDemand {
-			return fmt.Errorf("scope %s needs a chat list; add --on-demand (recommended: the agent asks for a chat by name and you approve each one in the TUI or with `wasync actions approve`), or --chat NAME for each chat to allow now", s)
+		if RequiresAllowlist(s) && len(r.Chats) == 0 && !r.SyncedChats {
+			return fmt.Errorf("scope %s needs a chat list; add --synced-chats (recommended: the agent uses every chat you sync in wasync, now and later), or --chat NAME for each chat to allow", s)
 		}
 	}
 	if r.RatePerMinute == 0 {
@@ -283,7 +318,7 @@ func Grant(dir string, req GrantRequest, now time.Time) (credential string, clie
 			return fmt.Errorf("could not allocate a client ID")
 		}
 		created := now.UTC().Truncate(time.Second)
-		client = Client{ID: id, Name: req.Name, Scopes: req.Scopes, Chats: req.Chats, OnDemand: req.OnDemand, RatePerMinute: req.RatePerMinute, CreatedAt: created}
+		client = Client{ID: id, Name: req.Name, Scopes: req.Scopes, Chats: req.Chats, SyncedChats: req.SyncedChats, RatePerMinute: req.RatePerMinute, CreatedAt: created}
 		if req.Expires > 0 {
 			expires := created.Add(req.Expires)
 			client.ExpiresAt = &expires
@@ -317,71 +352,77 @@ func Revoke(dir, name string, now time.Time) (client Client, err error) {
 	return client, err
 }
 
-// GrantChatAccess records human-approved access to one chat for the client with
-// this ID, limited to scopes (which must be requestable and already held by the
-// credential). It merges with an earlier grant for the same chat and refuses a
-// revoked or expired client, so an approval that arrives late changes nothing.
-func GrantChatAccess(dir, clientID, chat string, scopes []string, requestID string, now time.Time) (client Client, err error) {
-	if err = ValidChatJID(chat); err != nil {
-		return Client{}, err
-	}
-	if len(scopes) == 0 {
-		return Client{}, fmt.Errorf("no scopes to grant")
-	}
-	err = update(dir, func(reg *registry) error {
-		for i := range reg.Clients {
-			r := &reg.Clients[i]
-			if r.ID != clientID {
-				continue
-			}
-			if err := checkGrantable(r, scopes, now); err != nil {
-				return err
-			}
-			set := map[string]bool{}
-			for _, s := range scopes {
-				set[s] = true
-			}
-			if g := r.Client.grantFor(chat); g != nil {
-				for _, s := range g.Scopes {
-					set[s] = true
-				}
-				g.Scopes, g.GrantedAt, g.RequestID = canonicalScopes(set), now.UTC().Truncate(time.Second), requestID
-			} else {
-				r.Grants = append(r.Grants, ChatGrant{Chat: chat, Scopes: canonicalScopes(set), GrantedAt: now.UTC().Truncate(time.Second), RequestID: requestID})
-			}
-			client = cloneClient(r.Client)
-			return nil
-		}
-		return fmt.Errorf("no agent with this ID; nothing was granted")
-	})
-	return client, err
-}
-
-func checkGrantable(r *record, scopes []string, now time.Time) error {
-	if r.Status(now) != "active" {
-		return fmt.Errorf("agent %s is %s; nothing was granted", r.Name, r.Status(now))
-	}
-	for _, s := range scopes {
-		if !requestable(s) || !contains(r.Scopes, s) {
-			return fmt.Errorf("agent %s does not hold scope %s; nothing was granted", r.Name, s)
-		}
-	}
-	return nil
-}
-
-// CanGrantChatAccess reports whether GrantChatAccess would accept this client
-// and scopes now, so callers can check before changing anything else.
-func CanGrantChatAccess(dir, clientID string, scopes []string, now time.Time) error {
+// SetSyncedChats makes the chat list of every synced-chats credential equal
+// to chats, the chats synced in wasync right now, so each such agent may use
+// exactly those. It writes agents.json only when a list changes, and returns
+// the credentials it changed. A chat ID that is not a valid chat JID is left
+// out, which can only narrow what an agent may use.
+func SetSyncedChats(dir string, chats []string) (changed []Client, err error) {
+	want := syncedSet(chats)
 	reg, _, err := load(dir)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	for i := range reg.Clients {
-		if reg.Clients[i].ID == clientID {
-			return checkGrantable(&reg.Clients[i], scopes, now)
+	if !syncedStale(reg, want) {
+		return nil, nil
+	}
+	err = update(dir, func(reg *registry) error {
+		changed = nil
+		for i := range reg.Clients {
+			r := &reg.Clients[i]
+			if !r.SyncedChats || r.RevokedAt != nil || slices.Equal(r.Chats, want) {
+				continue
+			}
+			r.Chats = append([]string(nil), want...)
+			changed = append(changed, cloneClient(r.Client))
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return changed, nil
+}
+
+// HasSyncedChats reports whether any unrevoked credential in dir follows the
+// synced chats, so callers can skip working out the synced set otherwise.
+func HasSyncedChats(dir string) (bool, error) {
+	reg, _, err := load(dir)
+	if err != nil {
+		return false, err
+	}
+	for _, r := range reg.Clients {
+		if r.SyncedChats && r.RevokedAt == nil {
+			return true, nil
 		}
 	}
-	return fmt.Errorf("no agent with this ID; nothing was granted")
+	return false, nil
+}
+
+func syncedStale(reg *registry, want []string) bool {
+	for _, r := range reg.Clients {
+		if r.SyncedChats && r.RevokedAt == nil && !slices.Equal(r.Chats, want) {
+			return true
+		}
+	}
+	return false
+}
+
+// syncedSet is chats sorted, without duplicates and without anything that is
+// not a valid chat JID.
+func syncedSet(chats []string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, c := range chats {
+		c = strings.TrimSpace(c)
+		if ValidChatJID(c) != nil || seen[c] {
+			continue
+		}
+		seen[c] = true
+		out = append(out, c)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // load reads and validates the registry. It refuses files that are not
@@ -423,7 +464,7 @@ func load(dir string) (*registry, os.FileInfo, error) {
 	if err = dec.Decode(&reg); err != nil {
 		return nil, nil, fmt.Errorf("invalid %s: %w", FileName, err)
 	}
-	if reg.Version != FileVersion {
+	if reg.Version != FileVersion && reg.Version != FileVersionSynced {
 		return nil, nil, fmt.Errorf("unsupported %s version %d; upgrade wasync", FileName, reg.Version)
 	}
 	ids := map[string]bool{}
@@ -464,7 +505,10 @@ func validRecord(r record) error {
 			return err
 		}
 	}
-	if needsChats && len(r.Chats) == 0 && !r.OnDemand {
+	if r.SyncedChats && r.OnDemand {
+		return fmt.Errorf("client %s is both on demand and synced chats", r.Name)
+	}
+	if needsChats && len(r.Chats) == 0 && !r.OnDemand && !r.SyncedChats {
 		return fmt.Errorf("client %s has a write scope without a chat allowlist", r.Name)
 	}
 	seen := map[string]bool{}
@@ -474,7 +518,7 @@ func validRecord(r record) error {
 		}
 		seen[g.Chat] = true
 		for _, s := range g.Scopes {
-			if !contains(r.Scopes, s) || !requestable(s) {
+			if !contains(r.Scopes, s) || !grantable(s) {
 				return fmt.Errorf("client %s has a chat grant for scope %q it does not hold", r.Name, s)
 			}
 		}
@@ -500,6 +544,12 @@ func update(dir string, fn func(*registry) error) (result error) {
 	}
 	if err = fn(reg); err != nil {
 		return err
+	}
+	reg.Version = FileVersion
+	for _, r := range reg.Clients {
+		if r.SyncedChats {
+			reg.Version = FileVersionSynced
+		}
 	}
 	data, err := json.MarshalIndent(reg, "", "  ")
 	if err != nil {

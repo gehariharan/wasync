@@ -18,8 +18,8 @@
           description="The wasync terminal app, command-line tool and local engine. Installs /usr/local/bin/wasync. Always installed.">
     <pkg-ref id="com.gehariharan.wasynctuicli"/>
   </choice>
-  <choice id="axi" title="AXI for agents (wasync-axi)" start_selected="false"
-          description="Optional. Installs /usr/local/bin/wasync-axi, the command that AI agents such as Claude Code, Codex and OpenCode use to work with your local wasync archive. What an agent may read or send is decided by the access you grant in wasync. This installer does not change any agent settings.">
+  <choice id="axi" title="AXI for agents (wasync-axi)" enabled="false" start_selected="true"
+          description="Installs /usr/local/bin/wasync-axi, the command that AI agents such as Claude Code, Codex and OpenCode use to work with your local wasync archive. Always installed, and inactive until you connect an agent from wasync's Connect an agent step. What an agent may read or send is decided by the access you grant in wasync. This installer does not change any agent settings.">
     <pkg-ref id="com.gehariharan.wasynctuicli.axi"/>
   </choice>
   <pkg-ref id="com.gehariharan.wasynctuicli">#wasync.pkg</pkg-ref>

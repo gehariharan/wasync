@@ -69,18 +69,18 @@ func seedArchive(t *testing.T) string {
 	return dir
 }
 
-func TestGrantWithoutChatsPointsToOnDemandFirst(t *testing.T) {
+func TestGrantWithoutChatsPointsToSyncedChatsFirst(t *testing.T) {
 	app, out, _, _ := setupApp(t, "")
 	err := app.Run(context.Background(), grantArgs(filepath.Join(t.TempDir(), "d"), "helper", "--scope", "read.chats,send"))
 	if err == nil || out.Len() != 0 {
 		t.Fatalf("%v %q", err, out.String())
 	}
 	msg := err.Error()
-	if !strings.Contains(msg, "--on-demand") || !strings.Contains(msg, "wasync actions approve") || !strings.Contains(msg, "--chat NAME") {
+	if !strings.Contains(msg, "--synced-chats") || !strings.Contains(msg, "--chat NAME") {
 		t.Fatalf("message %q", msg)
 	}
-	if strings.Index(msg, "--on-demand") > strings.Index(msg, "--chat") || strings.Contains(msg, "CHAT_JID") {
-		t.Fatalf("on-demand should come first and no raw JID placeholder: %q", msg)
+	if strings.Index(msg, "--synced-chats") > strings.Index(msg, "--chat") || strings.Contains(msg, "CHAT_JID") {
+		t.Fatalf("--synced-chats should come first and no raw JID placeholder: %q", msg)
 	}
 }
 
@@ -145,7 +145,7 @@ func TestGrantChatByNameRefusesAmbiguousAndUnknown(t *testing.T) {
 	}
 	app, _, _, _ = setupApp(t, "y\nhelper\n")
 	err = app.Run(context.Background(), grantArgs(dir, "helper", "--scope", "send", "--chat", "nope"))
-	if err == nil || !strings.Contains(err.Error(), "--on-demand") {
+	if err == nil || !strings.Contains(err.Error(), "--synced-chats") {
 		t.Fatalf("unknown: %v", err)
 	}
 	if c, _ := agentauth.ActiveByName(dir, "helper"); c != nil {
@@ -169,10 +169,10 @@ func TestGrantChatByNameChecksOtherFlagsBeforeAskingAboutChats(t *testing.T) {
 	}
 }
 
-func TestGrantChatByNameWithoutArchiveSuggestsOnDemand(t *testing.T) {
+func TestGrantChatByNameWithoutArchiveSuggestsSyncedChats(t *testing.T) {
 	app, _, _, _ := setupApp(t, "")
 	err := app.Run(context.Background(), grantArgs(filepath.Join(t.TempDir(), "empty"), "helper", "--scope", "send", "--chat", "Family"))
-	if err == nil || !strings.Contains(err.Error(), "--on-demand") {
+	if err == nil || !strings.Contains(err.Error(), "--synced-chats") {
 		t.Fatalf("%v", err)
 	}
 }
@@ -188,7 +188,7 @@ func TestGrantRawJIDStillWorksWithoutArchive(t *testing.T) {
 func TestGrantSavesCredentialForAxiPrivately(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), "data")
 	app, out, errs, credPath := setupApp(t, "helper\ny\n")
-	if err := app.Run(context.Background(), grantArgs(dir, "helper", "--on-demand", "--scope", "read.chats,read.messages,send")); err != nil {
+	if err := app.Run(context.Background(), grantArgs(dir, "helper", "--synced-chats", "--scope", "read.chats,read.messages,send")); err != nil {
 		t.Fatal(err)
 	}
 	saved, err := os.ReadFile(credPath)
@@ -228,7 +228,7 @@ func TestGrantDoesNotReplaceADifferentSavedCredentialWithoutAsking(t *testing.T)
 	if err := os.WriteFile(credPath, []byte("wsa_old\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.Run(context.Background(), grantArgs(dir, "helper", "--on-demand")); err != nil {
+	if err := app.Run(context.Background(), grantArgs(dir, "helper", "--synced-chats")); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(credPath); string(b) != "wsa_old\n" {
@@ -247,7 +247,7 @@ func TestGrantDoesNotReplaceADifferentSavedCredentialWithoutAsking(t *testing.T)
 		}
 		return ""
 	}
-	if err := app.Run(context.Background(), grantArgs(dir2, "helper", "--on-demand")); err != nil {
+	if err := app.Run(context.Background(), grantArgs(dir2, "helper", "--synced-chats")); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(credPath); strings.Contains(string(b), "wsa_old") || out.Len() != 0 {
@@ -265,7 +265,7 @@ func TestGrantSaveFailureStillPrintsCredential(t *testing.T) {
 	if err := os.WriteFile(filepath.Dir(credPath), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := app.Run(context.Background(), grantArgs(dir, "helper", "--on-demand")); err != nil {
+	if err := app.Run(context.Background(), grantArgs(dir, "helper", "--synced-chats")); err != nil {
 		t.Fatal(err)
 	}
 	// Unix fails reading the old credential, Windows fails creating the

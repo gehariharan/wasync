@@ -49,7 +49,7 @@ type sendListView struct {
 
 func (h *handler) v1SendList(w http.ResponseWriter, r *http.Request, id string) {
 	c := v1Client(r)
-	if err := h.agents.AllowAccessRequest(c); err != nil {
+	if err := h.agents.AllowRequest(c); err != nil {
 		var denied *agentauth.Error
 		if errors.As(err, &denied) {
 			if denied.RetryAfter > 0 {
@@ -202,55 +202,57 @@ func retryLater(w http.ResponseWriter, id string, at time.Time, message, help st
 // listSendRoom enforces the list's pacing and marks the sent-log entry. It
 // answers the refusal itself.
 func (h *handler) listSendRoom(w http.ResponseWriter, r *http.Request, id, chat string, entry *sentlog.Entry) bool {
-	c, now := v1Client(r), time.Now()
-	if err := h.dropStopped(r.Context(), now, c.ID); err != nil {
-		v1Fail(w, id, 503, query.CodeInternal, "replies cannot be checked, so the send is refused", "check the wasync archive and data directory")
+	newNumber, no := h.listSendCheck(r.Context(), v1Client(r), chat)
+	if no != nil {
+		no.write(w, id)
 		return false
+	}
+	entry.List, entry.NewNumber = true, newNumber
+	return true
+}
+
+// listSendCheck reports whether c's approved list takes a message to chat
+// right now, and whether it would be the number's first.
+func (h *handler) listSendCheck(ctx context.Context, c *agentauth.Client, chat string) (newNumber bool, no *sendRefusal) {
+	now := time.Now()
+	if err := h.dropStopped(ctx, now, c.ID); err != nil {
+		return false, &sendRefusal{status: 503, code: query.CodeInternal, message: "replies cannot be checked, so the send is refused", help: "check the wasync archive and data directory"}
 	}
 	list, ok := sendlist.For(h.dataDir, c.ID, now)
 	number := list.Find(chat)
 	if !ok || number == nil {
-		v1Fail(w, id, 403, query.CodeForbidden, "this number is not on your approved list (it was removed, it replied STOP, or the list ended)", "do not message it; ask the person if you need it approved again")
-		return false
+		return false, &sendRefusal{status: 403, code: query.CodeForbidden, message: "this number is not on your approved list (it was removed, it replied STOP, or the list ended)", help: "do not message it; ask the person if you need it approved again"}
 	}
 	if list.Paused() {
-		v1Fail(w, id, 403, query.CodeForbidden, "the person paused your approved list", "do not send until they resume it; GET /api/v1/send-list shows paused: false then")
-		return false
+		return false, &sendRefusal{status: 403, code: query.CodeForbidden, message: "the person paused your approved list", help: "do not send until they resume it; GET /api/v1/send-list shows paused: false then"}
 	}
 	if number.LastSentAt != nil {
-		account, err := h.store.Account(r.Context())
+		account, err := h.store.Account(ctx)
 		var last time.Time
 		if err == nil && account != nil {
-			last, err = h.store.LastIncoming(r.Context(), account.ID, chat)
+			last, err = h.store.LastIncoming(ctx, account.ID, chat)
 		}
 		if err != nil {
-			v1Fail(w, id, 503, query.CodeInternal, "the archive is unavailable, so the send is refused", "")
-			return false
+			return false, &sendRefusal{status: 503, code: query.CodeInternal, message: "the archive is unavailable, so the send is refused"}
 		}
 		if !last.After(*number.LastSentAt) {
-			v1Fail(w, id, 429, query.CodeRateLimited, "you already messaged this number and it has not replied; a list allows one message per number until it replies", "wait for a reply before writing again")
-			return false
+			return false, &sendRefusal{status: 429, code: query.CodeRateLimited, message: "you already messaged this number and it has not replied; a list allows one message per number until it replies", help: "wait for a reply before writing again"}
 		}
 	}
 	pace, err := h.listPace(c.Name, now)
 	if err != nil {
-		v1Fail(w, id, 503, query.CodeInternal, "the sent log cannot be read, so the send is refused", "check the permissions of the wasync data directory")
-		return false
+		return false, &sendRefusal{status: 503, code: query.CodeInternal, message: "the sent log cannot be read, so the send is refused", help: "check the permissions of the wasync data directory"}
 	}
 	if pace.messages >= list.MessagesPerHour() {
-		retryLater(w, id, pace.nextMessage, fmt.Sprintf("your approved list allows %d messages an hour and they are used up", list.MessagesPerHour()), "Wait for the hour to pass.")
-		return false
+		return false, &sendRefusal{status: 429, code: query.CodeRateLimited, message: fmt.Sprintf("your approved list allows %d messages an hour and they are used up", list.MessagesPerHour()), help: "Wait for the hour to pass.", retryAt: pace.nextMessage}
 	}
 	if number.FirstSentAt == nil && pace.fresh >= list.NewPerHour() {
-		retryLater(w, id, pace.nextFresh, fmt.Sprintf("your approved list allows %d new numbers an hour and they are used up", list.NewPerHour()), "Wait for the hour to pass.")
-		return false
+		return false, &sendRefusal{status: 429, code: query.CodeRateLimited, message: fmt.Sprintf("your approved list allows %d new numbers an hour and they are used up", list.NewPerHour()), help: "Wait for the hour to pass.", retryAt: pace.nextFresh}
 	}
 	if number.FirstSentAt == nil && list.NextAt != nil && now.Before(*list.NextAt) {
-		retryLater(w, id, *list.NextAt, "your approved list spaces first messages at random intervals and the next one is not due yet", "Send it then.")
-		return false
+		return false, &sendRefusal{status: 429, code: query.CodeRateLimited, message: "your approved list spaces first messages at random intervals and the next one is not due yet", help: "Send it then.", retryAt: *list.NextAt}
 	}
-	entry.List, entry.NewNumber = true, number.FirstSentAt == nil
-	return true
+	return number.FirstSentAt == nil, nil
 }
 
 // captureListed makes sure a listed number's chat is archived before the
@@ -266,7 +268,7 @@ func (h *handler) captureListed(ctx context.Context, chat string) {
 		return
 	}
 	if h.store.SaveDiscoveredChat(ctx, account.ID, storage.Group{ID: chat, Name: chat}) == nil {
-		_ = h.store.EnableCapture(ctx, account.ID, chat, false)
+		_ = h.store.EnableListCapture(ctx, account.ID, chat)
 	}
 }
 

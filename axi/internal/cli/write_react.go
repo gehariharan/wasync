@@ -12,7 +12,7 @@ const reactUsage = "wasync-axi react REF (EMOJI | --remove) [--json]"
 var reactCommand = &command{
 	name:        "react",
 	usage:       reactUsage,
-	description: "React to the message REF with an emoji, or clear your reaction (running wasync, scope react and an allowlisted chat); sends once, never retries",
+	description: "React to the message REF with an emoji, or clear your reaction (running wasync, scope react, in a chat synced in wasync); sends once, never retries",
 	flags: []flagSpec{
 		{name: "--remove", description: "clear your reaction instead of setting one"},
 		jsonFlag,

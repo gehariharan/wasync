@@ -127,7 +127,6 @@ Usage: wasync [--data-dir PATH] [--timeout 3m] [--api-addr 127.0.0.1:8787] [--no
   delete --chat CHAT_ID --scope SCOPE        Request WhatsApp deletion; human CLI/TUI approval
   sync [--wait 30s] [--history] [--chat ID]    Capture now, reusing any running owner
   actions list                               Requests waiting for you (interactive)
-  access mode [ask|all]                      How agents get chats: ask each time or sync all
   actions approve REQUEST_ID                 Interactive typed approval, no --yes
   approvals                                  Open the approval page in your browser
   web                                        Open the web app (chats) in your browser
@@ -241,7 +240,7 @@ func (a *App) Run(parent context.Context, args []string) (result error) {
 		return a.runActionStatus(parent, cfg, args[1:])
 	}
 	if args[0] == "access" {
-		return a.runAccessMode(parent, cfg, args[1:])
+		return fmt.Errorf("wasync access was removed: agents you connect use every chat you sync, so choose the chats to sync instead (wasync chats enable, or the TUI)")
 	}
 	if args[0] == "approvals" {
 		return a.runApprovals(parent, cfg, args[1:])
@@ -534,7 +533,7 @@ func (a *App) parse(args []string) (action, error) {
 				}
 				enabled := 0
 				for _, g := range groups {
-					if g.Enabled {
+					if g.PersonSynced() {
 						enabled++
 					}
 				}
@@ -696,7 +695,11 @@ func (a *App) printGroups(groups []storage.Group, jsonOut bool) error {
 	w := tabwriter.NewWriter(a.Out, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(w, "#\tGROUP ID\tENABLED\tNAME")
 	for i, g := range groups {
-		fmt.Fprintf(w, "%d\t%s\t%t\t%s\n", i+1, g.ID, g.Enabled, strconv.Quote(g.Name))
+		name := strconv.Quote(g.Name)
+		if g.ListCapture {
+			name += " (archived for an agent's list)"
+		}
+		fmt.Fprintf(w, "%d\t%s\t%t\t%s\n", i+1, g.ID, g.PersonSynced(), name)
 	}
 	if len(groups) == 0 {
 		fmt.Fprintln(w, "No groups returned by discovery.")

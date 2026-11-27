@@ -18,14 +18,10 @@ import (
 )
 
 // grantOnDemand registers an agent that starts with no chats at all, like
-// one set up on the Agents page.
+// one connected "on demand" before agents used every synced chat.
 func (f fixture) grantOnDemand(t *testing.T, name string, scopes ...string) string {
 	t.Helper()
-	credential, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: name, Scopes: scopes, OnDemand: true}, time.Now())
-	if err != nil {
-		t.Fatal(err)
-	}
-	return credential
+	return grantLegacyOnDemand(t, f.dir, name, scopes...)
 }
 
 // archive stores a message from the person in chat, archiving the chat first

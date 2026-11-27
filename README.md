@@ -7,9 +7,10 @@ It links to your WhatsApp account as a linked device (like WhatsApp on a desktop
 chats you pick in a local SQLite database, and keeps capturing new messages while it runs. You
 use it from a local web app in your browser, from the command line, or through an HTTP API on
 your own computer. Agents such as Claude Code, Codex and OpenCode use it through a small
-companion command, **`wasync-axi`**. In the normal setup an agent starts with no chats: it asks
-for one, and you approve it on your own computer. Nothing goes to a cloud service, agents can
-never delete anything, and every cleanup or deletion needs a person's confirmation.
+companion command, **`wasync-axi`**. In the normal setup an agent uses the chats you sync, and
+anything it wants to send elsewhere waits for you to approve it on your own computer. Nothing
+goes to a cloud service, agents can never delete anything, and every cleanup or deletion needs a
+person's confirmation.
 
 wasync is written in Go on top of [whatsmeow](https://github.com/tulir/whatsmeow). It is an
 unofficial client; see [Using an unofficial client](docs/data-and-security.md#using-an-unofficial-client).
@@ -43,17 +44,16 @@ Each release has a `checksums.txt` with SHA-256 hashes. Upgrades keep your archi
 and pairing. Platform details, signing, checksums and the Microsoft Store edition are in
 [docs/install.md](docs/install.md) and [docs/windows.md](docs/windows.md).
 
-### Choose whether to add AXI for agents
+### AXI for agents
 
-`wasync-axi` ("AXI for agents") is the command agents use to work with your archive. You only
-need it if you want an agent to use wasync. The wasync app (the macOS disk image and Windows
-Setup) always carries it, and it does nothing until you connect an agent. The other installers
-offer it as a choice that is off by default: a checkbox in the macOS `.pkg`,
-`./install.sh --with-axi` on Linux, and a separate Homebrew formula. (The Windows ZIP always
-includes it; the Microsoft Store edition does not.) Both programs come from the same release. Installing it never
-changes your agents' settings; to tell your agents about it, run `wasync-axi setup skill` and
-`wasync-axi setup hooks` (add `--dry-run` to preview). It was previously called `whatsapp-axi`,
-which still works as an alias. See [docs/install.md](docs/install.md#axi-for-agents-wasync-axi).
+`wasync-axi` ("AXI for agents") is the command agents use to work with your archive. The wasync
+app (the macOS disk image and Windows Setup) always carries it, and the macOS `.pkg` and the
+Linux `./install.sh` always install it next to wasync; the Windows ZIP includes it. On Homebrew
+it is a separate formula, and the Microsoft Store edition does not include it. Both programs
+come from the same release. Installing it never changes your agents' settings: it stays
+inactive until you connect an agent from wasync's **Connect an agent** step. It was previously
+called `whatsapp-axi`, which still works as an alias. See
+[docs/install.md](docs/install.md#axi-for-agents-wasync-axi).
 
 ### Homebrew installation
 
@@ -89,15 +89,17 @@ wasync setup
 1. **Link WhatsApp.** Scan the QR code with WhatsApp on your phone (*Linked devices → Link a
    device*). The code refreshes by itself; if it expires, the page offers **Get a new code**.
 2. **Choose chats.** Tick the chats wasync should keep on this computer. Nothing else is
-   archived, and agents see none of them until you connect one and approve what it may read.
+   archived, and agents see none of them until you connect one.
 3. **Connect an agent** (optional). Pick ChatGPT & Codex, Claude Code or Claude Desktop. The
    page first shows the exact lines it will add to that app's own settings file. When you
-   confirm, wasync gives the app its own credential (read, reply and react, in the chats you
-   approve), saves it where only that app's WhatsApp tools read it, keeps a copy of the settings
-   file, and adds the tools; for Codex it also adds the WhatsApp plugin. Restart the app, and the
-   page shows when it last called wasync. **Disconnect** takes the entry out and revokes the
-   credential. For any other agent, pick a name instead; wasync creates a read-only credential
-   that starts with no chats and saves it straight to where `wasync-axi` reads it, never showing it.
+   confirm, wasync gives the app its own credential (read, reply and react in every chat you
+   sync, now and later; editing is off; to message any other chat or a new number it asks you
+   to approve each message), saves it where only that app's WhatsApp tools read it,
+   keeps a copy of the settings file, and adds the tools; for Codex it also adds the WhatsApp
+   plugin. Restart the app, and the page shows when it last called wasync. **Disconnect** takes
+   the entry out and revokes the credential. For any other agent, pick a name instead; wasync
+   creates a credential with the same abilities and saves it straight to where `wasync-axi`
+   reads it, never showing it. Sending anywhere else needs your approval.
 4. **Start at login** (optional, macOS and Windows). Adds a login item for your account only,
    with no administrator rights, that runs `wasync serve` (or, when the
    [wasync app](docs/desktop.md#start-when-i-log-in) started wasync, opens the app).
@@ -130,8 +132,8 @@ side:
 - **Sent**: what was sent from this computer, by you or by an agent.
 - **Agents**: each agent's access; allow or stop sending, approve a paced list of phone numbers
   for one agent, or switch on open sending for an hour.
-- **Approvals**: requests agents are waiting on (also `wasync approvals`), and the choice
-  between asking you each time and syncing all chats.
+- **Approvals**: messages agents are asking to send (also `wasync approvals`), each approved on
+  its own, and your own delete confirmations.
 - **Set up and settings** (the gear at the foot of the rail): the setup page above.
 
 Anything that gives an agent more power asks your computer to confirm, and the operating-system
@@ -168,10 +170,12 @@ does). After `logout`, run `wasync setup` again to link a phone. See
 
 An agent never talks to WhatsApp directly. It uses a credential you create, which carries only
 the scopes you chose (read, send, react, edit its own messages, and so on), and wasync checks
-every request. Reading needs a read scope; replies, reactions and edits need a scope you granted,
-per chat. No agent scope can delete anything. Create agents with `--on-demand` (as below, and as
-the setup page does) so they start with no chats; a read-only agent granted without
-`--on-demand` or `--chat` can read every archived chat.
+every request. Reading needs a read scope; replies, reactions and edits need a scope you granted.
+No agent scope can delete anything. A connected agent (as below, and as the setup page does)
+reads, replies and reacts in every chat you sync in wasync, now and later, without asking; you
+widen or narrow that by syncing or unsyncing chats. Sending to any other chat or a new number
+waits for you to approve that one message. A read-only agent granted without `--synced-chats`
+or `--chat` can read every archived chat.
 
 ### Set up an agent, start to finish
 
@@ -179,29 +183,31 @@ the setup page does) so they start with no chats; a read-only agent granted with
 2. **Pair your phone** with `wasync setup`, and keep wasync running (`wasync serve` or the login
    item) whenever an agent should use it.
 3. **Create the agent's credential**, either with **Connect** on the setup page (see
-   [Pair your phone](#pair-your-phone): ChatGPT & Codex, Claude Code and Claude Desktop may also
-   reply and react, any other named agent is read only), or
-   in a terminal, with any name:
+   [Pair your phone](#pair-your-phone): ChatGPT & Codex, Claude Code, Claude Desktop or any
+   other named agent), or in a terminal, with any name:
 
    ```sh
-   wasync agents grant helper --scope read.chats,read.messages,observe,send,react,edit.own --on-demand
+   wasync agents grant helper --scope read.chats,read.messages,send,react --synced-chats
    ```
 
-   `--on-demand` starts the agent with no chats at all. Type the agent's name to confirm. wasync
-   then offers to save the credential straight into wasync-axi's private credential file; if you
-   decline, it prints it once for `WASYNC_AXI_TOKEN` or your agent's secret store.
+   `--synced-chats` lets the agent read, reply and react in every chat you sync in wasync, now
+   and later. Editing its own messages (`edit.own`) stays off unless you add it. Type the
+   agent's name to confirm. wasync then offers to save the credential straight into
+   wasync-axi's private credential file; if you decline, it prints it once for
+   `WASYNC_AXI_TOKEN` or your agent's secret store.
 4. **Check the agent can reach wasync:** `wasync-axi doctor`.
-5. **The agent asks for a chat by name**, for example
-   `wasync-axi access request --match "Family" --send`. It is told the request is pending,
-   whatever matched.
-6. **You approve it** on the Approvals page (`wasync approvals`), or with `wasync actions list`
-   and `wasync actions approve REQUEST_ID` in a terminal. You choose the chat when several
-   match and the history depth, and see whether it may only read or also send. Only then can
-   the agent use that chat.
+5. **Choose what the agent can use** by syncing chats: in the setup page's chat picker, with
+   `wasync chats enable` or `wasync chats disable`, or in the terminal UI. The agent follows
+   your synced chats by itself.
+6. **To send to any other chat or a new number, the agent asks**, for example
+   `wasync-axi send-request --to +15551234567 --text "Hello"`. You approve that one message on
+   the Approvals page (`wasync approvals`), or with `wasync actions list` and
+   `wasync actions approve REQUEST_ID` in a terminal. You see the agent, the chat and the whole
+   message; approving sends exactly that message once and gives the agent nothing more.
 
 Revoke an agent any time with `wasync agents revoke helper`. Pre-approving chats with
-`--chat "Family"`, switching to "sync all chats", approved number lists and open sending are
-covered in [docs/agents.md](docs/agents.md). The agent command itself is documented in
+`--chat "Family"`, send requests, approved number lists and open sending are covered in
+[docs/agents.md](docs/agents.md). The agent command itself is documented in
 [axi/README.md](axi/README.md).
 
 ### Let your agent set this up
@@ -219,7 +225,8 @@ and set up WhatsApp for you. Paste this into a Codex conversation (the same word
 Codex then installs wasync and `wasync-axi`, adds the plugin
 (`codex plugin marketplace add gehariharan/wasync`, then `codex plugin add whatsapp@wasync`) and
 starts the setup page, asking your approval for each step. You scan the QR code, choose chats,
-press **Connect** for the agent, and later approve each chat Codex asks for. Restart Codex last
+press **Connect** for the agent, and later approve any message Codex asks to send to a chat
+you have not synced. Restart Codex last
 so it loads the WhatsApp tools. No tool Codex has can approve anything, create a credential or
 read one. **The exact commands for each platform, which Codex follows, are in
 [docs/codex.md](docs/codex.md).**

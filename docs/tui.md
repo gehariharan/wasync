@@ -53,7 +53,6 @@ encryption library, which never print to the terminal.
 | D | Disable and purge the selected chat's archive, after confirmation |
 | X | On your own archived message, request WhatsApp deletion for everyone |
 | W | In the chat list, delete WhatsApp chat state for your account |
-| M | Choose how agents get chats: ask me each time, or sync all chats (shown once after pairing) |
 | L | Unlink the device and quit, after confirmation |
 | Esc | Close details, return to chats, or clear the filter |
 | ? | Show keyboard help |
@@ -107,12 +106,13 @@ See [History](history.md) for how this works.
 
 ## Approvals in the terminal UI
 
-Agent requests for chats, and cleanup or deletion requests, open as dialogs. A chat request
-lets you pick the chat with ↑/↓ and the history depth with Tab; a destructive request shows the
-exact action. Either way you type the exact confirmation shown in the dialog (for a destructive
-request, the `DELETE CODE` it displays), then Enter. **n** or Esc rejects, and nothing is
-granted. Where your
-computer can show a system confirmation, it asks too. The same requests appear on the web app's
+An agent's request to send a message, and cleanup or deletion requests, open as dialogs. A send
+request (**AGENT ASKS TO SEND A MESSAGE**) shows the agent, the chat or new number and the whole
+message; a destructive request shows the exact action. Either way you type the exact
+confirmation shown in the dialog (`SEND` and six characters for a send request, the
+`DELETE CODE` for a destructive one), then Enter. Each send request is approved on its own, and
+approving sends exactly that message once. **n** or Esc declines, and nothing is sent or
+changed. Where your computer can show a system confirmation, it asks too. The same requests appear on the web app's
 Approvals page; see [Agents](agents.md#approving-without-a-terminal).
 
 ## Logging out and re-pairing

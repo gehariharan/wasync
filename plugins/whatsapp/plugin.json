@@ -12,7 +12,7 @@
       "interface": {
         "displayName": "WhatsApp (wasync)",
         "shortDescription": "Your WhatsApp chats, read from a private archive on this computer",
-        "longDescription": "Link your own WhatsApp to wasync, a program that keeps an archive of the chats you choose on this computer. This plugin lets Codex read and search that archive and, only where you allow it, reply, react and edit. Codex asks for each chat and you approve it on your own computer with Touch ID, your password or Windows Hello. Nothing leaves your computer except messages you send.",
+        "longDescription": "Link your own WhatsApp to wasync, a program that keeps an archive of the chats you choose on this computer. This plugin lets Codex read and search that archive and, only where you allow it, reply, react and edit. Codex uses the chats you sync, and any message it asks to send to another chat or a new number waits for you to approve it on your own computer with Touch ID, your password or Windows Hello. Nothing leaves your computer except messages you send.",
         "developerName": "wasync",
         "category": "Productivity",
         "capabilities": ["Read chats", "Search messages", "Reply when allowed"],

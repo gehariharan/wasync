@@ -13,35 +13,15 @@ import (
 func (r Request) Effect(name string) string {
 	chat := quoted(name, r.Chat)
 	switch r.Kind {
-	case KindChatAccess:
-		if r.Access == nil {
-			return "grant an agent access to a WhatsApp chat"
+	case KindAgentSend:
+		if r.Send == nil {
+			return "send a message for an agent"
 		}
-		a := r.Access
-		for _, c := range a.Candidates {
-			if c.Chat == a.Chosen {
-				chat = quoted(c.Name, c.Chat)
-			}
+		where := chat + ", " + r.Send.Target()
+		if r.Send.NewNumber {
+			where = "the new number " + quoted(PhoneNumber(r.Chat), r.Chat)
 		}
-		what := "read"
-		switch {
-		case a.Send && a.Edit:
-			what = "read, send, reply, react and edit its own messages in"
-		case a.Send:
-			what = "read, send, reply and react in"
-		case a.Edit:
-			what = "read and edit its own messages in"
-		default:
-			what = "read"
-		}
-		depth := ""
-		switch a.History {
-		case HistoryNow:
-			depth = " (from now on only)"
-		case HistoryFull:
-			depth = " (full history)"
-		}
-		return fmt.Sprintf("let agent %s %s the WhatsApp chat %s%s", quoted(a.Agent, "unknown"), what, chat, depth)
+		return fmt.Sprintf("let agent %s send this message to %s: %s", quoted(r.Send.Agent, "unknown"), where, quotedText(r.Send.Text))
 	case "clear-message":
 		return "remove one message from this computer's archive of " + chat
 	case "purge-chat":
@@ -56,6 +36,34 @@ func (r Request) Effect(name string) string {
 
 // Prompt is the sentence the operating system shows when asking the person.
 func (r Request) Prompt(name string) string { return "Approve: " + r.Effect(name) }
+
+// PhoneNumber is the phone number of a direct chat with a phone-number
+// address, such as +15551230000 for 15551230000@s.whatsapp.net, or "" for any
+// other chat.
+func PhoneNumber(chat string) string {
+	user, server, ok := strings.Cut(chat, "@")
+	if !ok || server != "s.whatsapp.net" || user == "" {
+		return ""
+	}
+	for _, r := range user {
+		if r < '0' || r > '9' {
+			return ""
+		}
+	}
+	return "+" + user
+}
+
+// quotedText is an agent's message, cleaned and shortened for a prompt, with
+// each line break shown as ⏎. The person sees all of it on the approval page;
+// the prompt shows how it starts.
+func quotedText(text string) string {
+	text = strings.ReplaceAll(strings.ReplaceAll(text, "\r\n", "\n"), "\n", " ⏎ ")
+	n := humancheck.Clean(text, 200)
+	if n == "" {
+		n = "(no text)"
+	}
+	return `"` + strings.ReplaceAll(n, `"`, "'") + `"`
+}
 
 func quoted(name, fallback string) string {
 	n := humancheck.Clean(name, 60)

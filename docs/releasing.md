@@ -19,34 +19,36 @@ explicitly trusts only the owned formulas and cask it installs, including the
 Linux core dependency. See [Homebrew installation](../README.md#homebrew-installation)
 for dependency trust and source-build toolchain behavior.
 
-Installer checks cover AXI for agents (see [Installers and the AXI choice](#installers-and-the-axi-choice)):
-PR CI builds the unsigned macOS installer and installs it twice on the hosted Mac
-runners (default choices, then with AXI ticked), builds the Linux archive and runs its
-`install.sh` with and without `--with-axi`, and builds the Windows Setup program and
-ZIP, runs Setup silently (it always installs `wasync-axi`), and starts the wasync app. The release
+Installer checks cover AXI for agents (see [Installers and AXI for agents](#installers-and-axi-for-agents)):
+PR CI builds the unsigned macOS installer, checks that both components are locked on and
+installs it on the hosted Mac runners, builds the Linux archive and runs its `install.sh`
+(which must install both tools and ask nothing, accept `--with-axi` as a no-op, run
+`wasync-axi setup skill` or `setup hooks` only for `--axi-skill` or `--axi-hooks`, and refuse
+`--without-axi`), and builds the Windows Setup program and ZIP, runs Setup silently, which
+must install both tools, and starts the wasync app. The release
 workflow repeats those checks on the packages it is about to publish, and
 `scripts/verify-signed-release.sh` repeats the Mac ones on the signed installer.
 
 Locally use `bash scripts/check.sh` with Go 1.27.2 on PATH. CI and packaging
 never use a paired account. Review both modules and run no-mistakes before merge.
 
-## Installers and the AXI choice
+## Installers and AXI for agents
 
 wasync (the app and engine) and `wasync-axi` (the agent command) stay separate
-programs, as in [ADR-002](architecture/ADR-002-monorepo.md). The wasync app (the macOS
-disk image and Windows Setup) always carries `wasync-axi`, which does nothing until an
-agent is connected. Every other installer that can offer a choice installs it from the
-same release on request, off by default. Both binaries get the same `VERSION`, and installers refuse to
-build or verify if they do not.
+programs, as in [ADR-002](architecture/ADR-002-monorepo.md), but the wasync app (the macOS
+disk image and Windows Setup), the macOS package and the Linux archive's `install.sh` always
+carry `wasync-axi` from the same release, inactive until the user connects an agent from
+wasync's Connect an agent step. Both binaries get the same `VERSION`, and installers refuse
+to build or verify if they do not.
 
-| Channel | What ships | How AXI for agents is chosen |
+| Channel | What ships | How AXI for agents is installed |
 | --- | --- | --- |
 | macOS `.dmg` | `wasync.app`, which carries `wasync-desktop`, `wasync` and `wasync-axi` | Always inside the app; it does nothing until an agent is connected |
-| macOS `.pkg` | A product archive with two components: `wasync` (locked on) and `wasync-axi` (starts unticked), defined by `packaging/macos/distribution.xml` | Installer's Customize step |
+| macOS `.pkg` | A product archive with two components, `wasync` and `wasync-axi`, both locked on, defined by `packaging/macos/distribution.xml` | Always |
 | macOS Homebrew cask | `wasync` only | `brew install gehariharan/tap/wasync-axi` (the cask prints this) |
-| Linux archive | `wasync`, `wasync-axi`, `install.sh` (from `packaging/linux/`) | `install.sh` asks, default no; `--with-axi`/`--without-axi` |
+| Linux archive | `wasync`, `wasync-axi`, `install.sh` (from `packaging/linux/`) | Always, without asking |
 | Linux Homebrew | The `wasync-axi` formula depends on `wasync` | Install the formula or not |
-| Windows Setup | `wasync-axi.exe` beside `wasync.exe` and the wasync app, from `packaging/windows/wasync.iss` | Always installed, as in the Mac app; it does nothing until an agent is connected |
+| Windows Setup | `wasync-axi.exe` beside `wasync.exe` and the wasync app, from `packaging/windows/wasync.iss` | Always, including silent installs, as in the Mac app; it does nothing until an agent is connected |
 | Windows ZIP | Both executables | Portable; nothing is installed or configured by extracting |
 | Microsoft Store MSIX | `wasync` only | Not offered, by design |
 
@@ -56,10 +58,9 @@ certified package; a real choice there would mean a separate Store add-on, which
 a new Partner Center product and certification. That is an **owner-only action**
 and was not started. Nothing was submitted to the Store.
 
-No installer changes agent configuration. Where the installer can run a command as
-the user (the Linux script and Windows Setup's last page) it offers
-`wasync-axi setup skill` and `wasync-axi setup hooks` as separate, off-by-default
-steps; the macOS installer cannot, so its last page only says to run them.
+No installer changes agent configuration on its own: only the Linux `install.sh` runs
+`wasync-axi setup skill` or `setup hooks`, and only when given `--axi-skill` or
+`--axi-hooks`. Connecting an agent happens later, from wasync's Connect an agent step.
 
 macOS details. `scripts/package.sh` builds `wasync.pkg` and `wasync-axi.pkg`
 with `pkgbuild` and joins them with `productbuild` (signed with the Developer ID
@@ -146,7 +147,7 @@ Outputs are written under `dist/VERSION/OS_ARCH/` (ignored by Git). Each build
 contains version, commit and timestamp metadata, dependency license notices (for both
 tools), a compressed executable archive and checksums. The Linux archive holds both
 executables and `install.sh`; the macOS archive holds `wasync` only. macOS builds
-additionally contain a native `.pkg` with the optional `wasync-axi` component. The build compiles SQLite with FTS5 enabled and embeds the
+additionally contain a native `.pkg` with a separate, always-installed `wasync-axi` component. The build compiles SQLite with FTS5 enabled and embeds the
 result in the executable; it requires no separately installed SQLite package.
 Linux executables use the build platform's libc, so the workflow uses Ubuntu
 22.04 (glibc 2.35). macOS builds target macOS 15 or later.

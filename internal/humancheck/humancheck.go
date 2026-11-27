@@ -51,6 +51,18 @@ func Clean(s string, max int) string {
 	return s
 }
 
+// CleanLines drops control and format characters (bidi overrides included)
+// from untrusted text but keeps its line breaks, so a message shows the
+// layout it is sent with.
+func CleanLines(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r != '\n' && (unicode.IsControl(r) || unicode.Is(unicode.Cf, r)) {
+			return -1
+		}
+		return r
+	}, strings.ReplaceAll(s, "\r\n", "\n"))
+}
+
 const (
 	promptTimeout = 60 * time.Second
 	failLimit     = 3

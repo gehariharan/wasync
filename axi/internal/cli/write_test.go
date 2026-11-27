@@ -128,7 +128,7 @@ func TestReplyNeedsCredentialWithWriteScopeHelp(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,send --on-demand", "offers to save the credential")
+	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,send --synced-chats", "offers to save the credential")
 	if n, _ := posts(srv); n != 0 {
 		t.Fatalf("posted without a credential: %d", n)
 	}
@@ -229,16 +229,21 @@ func TestSendNeedsAChatAndTextAndSendsNothingWithoutThem(t *testing.T) {
 }
 
 // A refusal, including "this chat was never given to you", is reported as
-// wasync words it and is never turned into a retry or another route.
+// wasync words it and is never turned into a retry or another route. The help
+// strings are wasync's own (internal/agentauth and internal/api): only a chat
+// the agent may not use names the send request, and wasync says so itself.
 func TestSendReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
+	notSynced := "Chat 15551230000@s.whatsapp.net is not synced in wasync, so this agent cannot use it for send. To send one message there, ask the person to approve it: run `wasync-axi send-request --chat 15551230000@s.whatsapp.net --text TEXT` (POST /api/v1/send-requests); nothing is sent until they confirm in wasync. To read, reply or react there, the person must sync the chat in wasync."
 	for _, tc := range []struct {
 		name   string
 		status int
 		code   string
 		help   string
 	}{
-		{"chat not allowed", 403, "forbidden", "Chat 15551230000@s.whatsapp.net is not in the allowlist for scope send."},
-		{"missing scope", 403, "forbidden", "Missing scope send."},
+		{"chat not synced", 403, "forbidden", notSynced},
+		{"missing scope", 403, "forbidden", "Missing scope send. A human must re-grant the client in an interactive terminal: wasync agents revoke codex && wasync agents grant codex --scope read.chats,read.messages,send --synced-chats --rate 60"},
+		{"opted out", 403, "forbidden", "do not message it; ask the person if you need it approved again"},
+		{"list paused", 403, "forbidden", "do not send until they resume it; GET /api/v1/send-list shows paused: false then"},
 		{"unknown outcome", 502, "send_failed", "check WhatsApp before retrying; do not retry automatically"},
 		{"owner offline", 503, "owner_offline", "start wasync tui or wasync serve with a paired session"},
 	} {
@@ -250,9 +255,51 @@ func TestSendReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
 			t.Errorf("%s: exit %d\n%s", tc.name, code, out)
 		}
 		mustContain(t, out, tc.code, "refused: "+tc.name, tc.help)
+		if got, want := strings.Count(out, "send-request"), strings.Count(tc.help, "send-request"); got != want {
+			t.Errorf("%s: send-request named %d times, wasync named it %d times\n%s", tc.name, got, want, out)
+		}
 		if n, _ := posts(srv); n != 1 {
 			t.Errorf("%s: %d posts; a refused or unknown write must not be retried", tc.name, n)
 		}
+	}
+}
+
+// wasync's refusal for a reply or reaction in a chat that is not synced
+// (internal/agentauth notAllowedHelp) already says to sync it; that is shown
+// as wasync words it, with nothing repeated.
+func TestReplyAndReactRefusalsSayToSyncTheChat(t *testing.T) {
+	h, srv := writerHarness(t)
+	reaction := "/messages/" + testRef + "/reaction"
+	help := map[string]string{
+		replyEndpoint: "Chat one@g.us is not synced in wasync, so this agent cannot use it for send. To send one message there, ask the person to approve it: run `wasync-axi send-request --chat one@g.us --text TEXT` (POST /api/v1/send-requests); nothing is sent until they confirm in wasync. To read, reply or react there, the person must sync the chat in wasync.",
+		reaction:      "Chat one@g.us is not synced in wasync, so this agent cannot use it for react. To read, reply or react there, the person must sync the chat in wasync.",
+	}
+	for ep, text := range help {
+		srv.Routes[ep] = map[string]any{"request_id": "r-x", "error_code": "forbidden", "error": "refused", "help": text}
+		srv.Codes[ep] = 403
+	}
+	for ep, args := range map[string][]string{replyEndpoint: {"reply", testRef, "--text", "hi"}, reaction: {"react", testRef, "👍"}} {
+		out, code := h.run(t, args...)
+		if code != ExitError {
+			t.Fatalf("%v: exit %d\n%s", args, code, out)
+		}
+		mustContain(t, out, help[ep], "the person must sync the chat in wasync")
+		if strings.Count(out, "sync the chat") != 1 || strings.Contains(out, "Reading, replying and reacting work") {
+			t.Fatalf("%v: wasync's help was changed or repeated:\n%s", args, out)
+		}
+	}
+
+	// A credential with a fixed chat list is re-granted, not synced; its
+	// refusal keeps wasync's own advice and gains no sync hint.
+	fixed := "Chat two@g.us is not in the allowlist for scope send. To send one message there, ask the person to approve it: run `wasync-axi send-request --chat two@g.us --text TEXT` (POST /api/v1/send-requests); nothing is sent until they confirm in wasync. Otherwise a human must re-grant the client in an interactive terminal: wasync agents revoke writer && wasync agents grant writer --scope read.chats,read.messages,send --chat one@g.us --chat two@g.us --rate 60"
+	srv.Routes[replyEndpoint] = map[string]any{"request_id": "r-x", "error_code": "forbidden", "error": "refused", "help": fixed}
+	out, code := h.run(t, "reply", testRef, "--text", "hi")
+	if code != ExitError {
+		t.Fatalf("fixed-list reply: exit %d\n%s", code, out)
+	}
+	mustContain(t, out, fixed)
+	if strings.Contains(out, "sync it in wasync") {
+		t.Fatalf("a fixed-list refusal was told to sync the chat:\n%s", out)
 	}
 }
 

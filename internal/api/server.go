@@ -204,6 +204,13 @@ func StartOwner(o Owner) (*Server, error) {
 			return nil, err
 		}
 	}
+	if store != nil {
+		// Chats synced while no owner ran apply to connected agents now.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = markEarlierListChats(ctx, store, dir) // best effort: tried again before any agent's chats are set
+		_ = h.syncAgentChats(ctx)                 // best effort: every request from such an agent tries again
+		cancel()
+	}
 	srv := &http.Server{Handler: h.routes(), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 2 * time.Minute, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 16 << 10}
 	done := make(chan error, 1)
 	go func() {
@@ -294,8 +301,10 @@ func (h *handler) routes() http.Handler {
 	mux.HandleFunc("POST /api/chats/disable-all", h.enableAll)
 	mux.HandleFunc("POST /api/actions", h.requestAction)
 	mux.HandleFunc("POST "+uiLinkPath, h.uiLink)
-	mux.HandleFunc("GET /api/access/mode", h.getAccessMode)
-	mux.HandleFunc("POST /api/access/mode", h.setAccessMode)
+	mux.HandleFunc("GET "+agentRequestsPath, h.listAgentRequests)
+	mux.HandleFunc("POST "+agentRequestsPath+"/decline-all", h.declineAllAgentRequests)
+	mux.HandleFunc("POST "+agentRequestsPath+"/{id}/approve", h.approveAgentRequest)
+	mux.HandleFunc("POST "+agentRequestsPath+"/{id}/decline", h.declineAgentRequest)
 	mux.HandleFunc("GET /api/actions", h.listActions)
 	mux.HandleFunc("GET /api/actions/{id}", h.actionStatus)
 	mux.HandleFunc("GET /api/groups", h.groups)
@@ -363,13 +372,13 @@ func (h *handler) routes() http.Handler {
 			return
 		}
 		requiredToken := h.token
-		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, "/api/media/") || r.URL.Path == accessModePath || r.URL.Path == uiLinkPath || r.URL.Path == stopPath || r.URL.Path == logoutPath {
-			if r.URL.Path == "/api/send" && h.sender == nil || strings.HasPrefix(r.URL.Path, "/api/actions") && h.approvals == nil {
+		if (isWritePath(r.URL.Path) || r.URL.Path == "/api/sync") || strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, agentRequestsPath) || strings.HasPrefix(r.URL.Path, "/api/media/") || r.URL.Path == uiLinkPath || r.URL.Path == stopPath || r.URL.Path == logoutPath {
+			if r.URL.Path == "/api/send" && h.sender == nil || (strings.HasPrefix(r.URL.Path, "/api/actions") || strings.HasPrefix(r.URL.Path, agentRequestsPath)) && h.approvals == nil {
 				fail(w, 503, "sending unavailable")
 				return
 			}
 			requiredToken = h.sendToken
-			if strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath || r.URL.Path == uiLinkPath || r.URL.Path == stopPath || r.URL.Path == logoutPath {
+			if strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == uiLinkPath || r.URL.Path == stopPath || r.URL.Path == logoutPath {
 				if h.approve == nil || h.approveToken == "" {
 					fail(w, 503, "interactive approval unavailable")
 					return
@@ -407,7 +416,7 @@ func (h *handler) routes() http.Handler {
 			return
 		}
 		timeout := 10 * time.Second
-		if r.URL.Path == "/api/sync" || strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == accessModePath || r.URL.Path == logoutPath {
+		if r.URL.Path == "/api/sync" || strings.HasSuffix(r.URL.Path, "/approve") || r.URL.Path == logoutPath {
 			timeout = 90 * time.Second
 		}
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)

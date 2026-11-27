@@ -28,11 +28,10 @@ function Uninstall-Wasync($directory) {
  while ((Test-Path (Join-Path $directory 'wasync.exe')) -and [DateTime]::UtcNow -lt $deadline) { Start-Sleep -Milliseconds 500 }
 }
 try {
- # 1. Default choices: wasync, the wasync app and AXI for agents, which is always installed.
+ # 1. Default choices: wasync, the wasync app and AXI for agents are all installed, and no agent settings change.
  $plain = Join-Path $temp 'plain'
  Install-Wasync $plain '!addtopath'
- if (-not (Test-Path (Join-Path $plain 'wasync.exe'))) { throw 'Setup did not install wasync.exe' }
- if (-not (Test-Path (Join-Path $plain 'wasync-axi.exe'))) { throw 'Setup did not install wasync-axi.exe' }
+ foreach ($name in 'wasync.exe', 'wasync-axi.exe', 'whatsapp-axi.exe') { if (-not (Test-Path (Join-Path $plain $name))) { throw "Setup did not install $name" } }
  foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Setup changed agent settings: $folder" } }
  if (((& (Join-Path $plain 'wasync.exe') version) | Out-String) -notmatch [regex]::Escape("wasync $Version ")) { throw 'Installed wasync reports the wrong version' }
  # The wasync app is installed beside wasync, and the Start menu opens it (not the terminal UI).
@@ -51,7 +50,7 @@ try {
  New-ItemProperty -Path $runKey -Name 'wasync-app' -Value "`"$desktop`" --background" -PropertyType String | Out-Null
  Uninstall-Wasync $plain
  if (Get-ItemProperty -Path $runKey -Name 'wasync-app' -ErrorAction SilentlyContinue) { throw 'Uninstall left the wasync app starting at login' }
- if (Test-Path (Join-Path $plain 'wasync.exe')) { throw 'Uninstall left wasync.exe behind' }
+ foreach ($name in 'wasync.exe', 'wasync-axi.exe', 'whatsapp-axi.exe') { if (Test-Path (Join-Path $plain $name)) { throw "Uninstall left $name behind" } }
 
  # 2. A second install: both tools at one version, and still no agent settings changed. It names
  # installaxi, the task earlier Setup programs had, as scripts/install-windows.ps1 still does for
@@ -84,7 +83,7 @@ try {
  $answers = $replies | ForEach-Object { $_ | ConvertFrom-Json }
  if ($answers[0].result.serverInfo.name -ne 'wasync-axi') { throw 'wasync-axi mcp did not identify itself' }
  $names = @($answers[1].result.tools | ForEach-Object { $_.name })
- foreach ($want in 'whatsapp_status', 'whatsapp_read_messages', 'whatsapp_request_access', 'whatsapp_start_setup') { if ($names -notcontains $want) { throw "Tool list is missing $want" } }
+ foreach ($want in 'whatsapp_status', 'whatsapp_read_messages', 'whatsapp_request_send', 'whatsapp_send_request_status', 'whatsapp_start_setup') { if ($names -notcontains $want) { throw "Tool list is missing $want" } }
  foreach ($name in $names) { if ($name -match 'approve|grant|revoke|credential|secret|token') { throw "Tool server offers a forbidden tool: $name" } }
  if ($answers[2].result.content[0].text -notmatch '\S') { throw 'whatsapp_status returned no text' }
 

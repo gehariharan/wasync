@@ -47,18 +47,6 @@ func init() {
 	}
 }
 
-// connectGrant is the credential Connect issues to an app. The abilities
-// follow the agent access rules (decision D2: read, reply and react; edit
-// off); which chats it may use is owned by those rules too.
-func connectGrant(name string) agentauth.GrantRequest {
-	return agentauth.GrantRequest{
-		Name:          name,
-		Scopes:        []string{agentauth.ScopeReadChats, agentauth.ScopeReadMessages, agentauth.ScopeSend, agentauth.ScopeReact},
-		OnDemand:      true,
-		RatePerMinute: agentauth.DefaultRatePerMinute,
-	}
-}
-
 func (h *handler) connectEnv() agentconnect.Env {
 	if h.agentEnv != nil {
 		return *h.agentEnv
@@ -146,9 +134,8 @@ func (h *handler) planConnect(a agentconnect.Agent) (*connectPlan, error) {
 }
 
 // connectPrompt is the sentence on the system prompt.
-func connectPrompt(p *connectPlan) string {
-	req := connectGrant(p.name)
-	return agentauth.GrantEffect(p.name, req.Scopes, req.Chats, req.OnDemand, req.Expires) + ", and add it to " + p.agent.Title + "'s settings"
+func connectPrompt(p *connectPlan, req agentauth.GrantRequest) string {
+	return agentauth.GrantEffect(p.name, req.Scopes, req.Chats, req.SyncedChats, req.Expires) + ", and add it to " + p.agent.Title + "'s settings"
 }
 
 // connectPreview is what the setup page shows before Connect.
@@ -320,12 +307,19 @@ func (h *handler) setupConnect(w http.ResponseWriter, r *http.Request, sess uiSe
 		back("connectchanged")
 		return
 	}
-	req := connectGrant(p.name)
+	// Read, reply and react in every synced chat, now and later; the
+	// same credential Connect by name gives.
+	synced, err := syncedChats(r.Context(), h.store, h.dataDir)
+	if err != nil {
+		back("failed")
+		return
+	}
+	req := agentauth.ConnectRequest(p.name, synced)
 	if agentauth.ValidateGrant(req) != nil {
 		back("invalid")
 		return
 	}
-	if err := h.confirmError(r.Context(), connectPrompt(p)); err != nil {
+	if err := h.confirmError(r.Context(), connectPrompt(p, req)); err != nil {
 		h.uiRefused(w, r, err, back)
 		return
 	}

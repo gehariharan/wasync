@@ -4,13 +4,13 @@
 #   scripts/test-macos-pkg.sh PKG VERSION ARCHITECTURE [SIGNED_AXI_BINARY]
 #
 # Always (no administrator access, installs nothing): the installer holds wasync
-# and wasync-axi as separate components; wasync is selected and locked, and AXI
-# for agents is offered but not selected. With SIGNED_AXI_BINARY, the installer's
-# wasync-axi must be byte-identical to it.
+# and wasync-axi as separate components, and both are selected and locked. With
+# SIGNED_AXI_BINARY, the installer's wasync-axi must be byte-identical to it.
 #
-# On a disposable GitHub-hosted runner only, it also installs the package twice
-# with `installer`: once with the default choices (wasync only) and once with AXI
-# for agents ticked (both at VERSION), and removes everything it installed.
+# On a disposable GitHub-hosted runner only, it also installs the package with
+# `installer` and its default choices (both at VERSION), installs it again over
+# a wasync-axi symlink owned by another installation method (which it must keep,
+# also after an interrupted install), and removes everything it installed.
 set -euo pipefail
 package="${1:?Usage: scripts/test-macos-pkg.sh PKG VERSION ARCHITECTURE [SIGNED_AXI_BINARY]}"
 version="${2:?}"
@@ -22,7 +22,7 @@ work="$(mktemp -d)"
 installed=0
 cleanup() {
   if [[ "$installed" == 1 ]]; then
-    sudo rm -f /usr/local/bin/wasync /usr/local/bin/wasync-axi /usr/local/bin/whatsapp-axi
+    sudo rm -f /usr/local/bin/wasync /usr/local/bin/wasync-axi /usr/local/bin/whatsapp-axi /usr/local/bin/.wasync-axi.kept
     sudo rm -rf /usr/local/share/wasync
     for id in com.gehariharan.wasynctuicli com.gehariharan.wasynctuicli.axi; do sudo pkgutil --forget "$id" >/dev/null 2>&1 || true; done
   fi
@@ -59,10 +59,10 @@ with open(sys.argv[1], "rb") as handle:
     choices = {c["choiceIdentifier"]: c for c in walk(plistlib.load(handle))}
 wasync, axi = choices["wasync"], choices["axi"]
 assert wasync["choiceIsSelected"] == 1 and not wasync["choiceIsEnabled"], "wasync must be selected and not removable"
-assert axi["choiceIsSelected"] == 0 and axi["choiceIsEnabled"], "AXI for agents must be offered but not selected"
+assert axi["choiceIsSelected"] == 1 and not axi["choiceIsEnabled"], "AXI for agents must be selected and not removable"
 assert "AXI for agents" in axi["choiceTitle"], axi["choiceTitle"]
 PY
-pass "Installer preselects wasync (locked) and leaves AXI for agents unticked"
+pass "Installer preselects wasync and AXI for agents, both locked"
 
 if [[ -n "$signed_axi" ]]; then
   cmp "$signed_axi" "$work/expanded/wasync-axi.pkg/Payload/usr/local/bin/wasync-axi" || fail "installer wasync-axi differs from the standalone signed one"
@@ -73,24 +73,51 @@ if [[ "${GITHUB_ACTIONS:-}" == true && "${RUNNER_ENVIRONMENT:-}" == github-hoste
   if [[ -e /usr/local/bin/wasync || -e /usr/local/bin/wasync-axi || -e /usr/local/bin/whatsapp-axi ]]; then fail "refusing to install over an existing wasync"; fi
   installed=1
   run_installer
-  [[ -x /usr/local/bin/wasync ]] || fail "default install did not provide wasync"
-  [[ ! -e /usr/local/bin/wasync-axi ]] || fail "default install added wasync-axi"
-  pass "default install provides wasync only"
-  cat > "$work/choose-axi.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0"><array><dict>
-<key>attributeSetting</key><integer>1</integer>
-<key>choiceAttribute</key><string>selected</string>
-<key>choiceIdentifier</key><string>axi</string>
-</dict></array></plist>
-PLIST
-  run_installer -applyChoiceChangesXML "$work/choose-axi.plist"
   [[ "$(/usr/local/bin/wasync-axi --version)" == "$version" ]] || fail "installed wasync-axi is not version $version"
   [[ "$(readlink /usr/local/bin/whatsapp-axi)" == wasync-axi ]] || fail "the old name whatsapp-axi is not a link to wasync-axi"
   /usr/local/bin/wasync version | grep -qF "wasync $version " || fail "installed wasync is not version $version"
   python3 "$project_dir/scripts/smoke-installed.py" /usr/local/bin/wasync "$version" "$architecture" /usr/local/bin/wasync-axi
-  pass "choosing AXI for agents installs both at $version, and they work together"
+  pass "default install provides both tools at $version, and they work together"
+
+  other_axi="$work/other/wasync-axi"
+  mkdir -p "$work/other"
+  printf '#!/bin/sh\necho other-wasync-axi\n' > "$other_axi"
+  chmod 755 "$other_axi"
+  sudo rm -f /usr/local/bin/wasync-axi
+  sudo ln -s "$other_axi" /usr/local/bin/wasync-axi
+  run_installer
+  [[ "$(readlink /usr/local/bin/wasync-axi)" == "$other_axi" ]] || fail "the install replaced another installation's wasync-axi symlink"
+  [[ "$(/usr/local/bin/wasync-axi --version)" == other-wasync-axi ]] || fail "the install wrote through another installation's wasync-axi symlink"
+  [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
+  /usr/local/bin/wasync version | grep -qF "wasync $version " || fail "wasync is not installed when another installation owns wasync-axi"
+  pass "install over another installation's wasync-axi symlink keeps it and still installs wasync"
+
+  # An install that stopped after preinstall set the link aside leaves it at
+  # .wasync-axi.kept with nothing at wasync-axi; the next install restores it.
+  sudo mv /usr/local/bin/wasync-axi /usr/local/bin/.wasync-axi.kept
+  run_installer
+  [[ "$(readlink /usr/local/bin/wasync-axi)" == "$other_axi" ]] || fail "an install after an interrupted one lost another installation's wasync-axi symlink"
+  [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
+  pass "an install after an interrupted one puts another installation's wasync-axi symlink back"
+
+  # An install that stopped after the payload wrote its own wasync-axi, before
+  # postinstall put the set-aside link back; the next install still restores it.
+  sudo mv /usr/local/bin/wasync-axi /usr/local/bin/.wasync-axi.kept
+  sudo cp "$work/expanded/wasync-axi.pkg/Payload/usr/local/bin/wasync-axi" /usr/local/bin/wasync-axi
+  run_installer
+  [[ "$(readlink /usr/local/bin/wasync-axi)" == "$other_axi" ]] || fail "an install after one stopped past the payload lost another installation's wasync-axi symlink"
+  [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
+  pass "an install after one stopped past the payload puts another installation's wasync-axi symlink back"
+
+  # A link left behind by an uninstalled formula points nowhere; the install
+  # replaces it with this package's working wasync-axi.
+  sudo rm -f /usr/local/bin/wasync-axi
+  sudo ln -s "$work/gone/wasync-axi" /usr/local/bin/wasync-axi
+  run_installer
+  [[ ! -L /usr/local/bin/wasync-axi ]] || fail "the install kept a wasync-axi link whose target is gone"
+  [[ "$(/usr/local/bin/wasync-axi --version)" == "$version" ]] || fail "wasync-axi does not run after installing over a dangling link"
+  [[ ! -e /usr/local/bin/.wasync-axi.kept && ! -L /usr/local/bin/.wasync-axi.kept ]] || fail "the install left the set-aside wasync-axi link behind"
+  pass "an install over a dangling wasync-axi link installs a working wasync-axi"
 else
   echo "test-macos-pkg: skipped the real install (only run on disposable GitHub-hosted runners)"
 fi

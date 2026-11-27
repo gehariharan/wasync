@@ -107,6 +107,9 @@ func unknown(a map[string]any, allowed ...string) error {
 
 const textMax = 16000
 
+// sendRequestTextMax is wasync's limit for the text of a send request.
+const sendRequestTextMax = 4096
+
 var readHints = annotations{ReadOnlyHint: true, DestructiveHint: false, IdempotentHint: true, OpenWorldHint: false}
 
 func hints(title string, base annotations) annotations { base.Title = title; return base }
@@ -292,7 +295,7 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_send", description: "Send a new message, or a video with an optional caption, to a chat or a phone number. It sends once and is never retried. wasync refuses unless the person granted the send scope and approved this chat; a number or chat you were not given is refused unless it is on the list of numbers the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message per number until it replies) or they have switched on open sending, so ask them to allow it rather than trying another route. A video counts as one message under the same rules.",
+		name: "whatsapp_send", description: "Send a new message, or a video with an optional caption, to a chat or a phone number. It sends once and is never retried. It works in every chat synced in wasync when the person granted the send scope. A chat that is not synced, or a new number, is refused unless the number is on the list the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message per number until it replies) or they have switched on open sending; otherwise call whatsapp_request_send so the person can approve that one message, rather than trying another route. A video counts as one message under the same rules.",
 		props: map[string]any{"chat": str("The chat JID, as listed by whatsapp_list_chats. Give this or to."), "to": str("A phone number with its country code, such as +15551230000. Give this or chat."), "text": str("The message text, or the video's caption (up to 16000 bytes). Needed unless video is given."), "video": str("Path to an MP4 file (H.264 video, AAC audio, up to 64 MiB) to send as a playable video; its preview is a frame taken with ffmpeg when installed.")},
 		ann:   hints("Send on WhatsApp", annotations{OpenWorldHint: true}),
 		deadline: func(a map[string]any) time.Duration {
@@ -336,7 +339,7 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_reply", description: "Send a reply that quotes one message. It sends once and is never retried. wasync refuses unless the person granted the send scope and approved this chat.",
+		name: "whatsapp_reply", description: "Send a reply that quotes one message. It sends once and is never retried. It works in every chat synced in wasync when the person granted the send scope; for a chat that is not synced, ask the person to sync it in wasync.",
 		props:    map[string]any{"ref": str("The ref (m1_...) of the message to quote."), "text": str("The reply text (up to 16000 bytes)."), "mentions": str("Comma-separated user JIDs to mention; the text must contain @NUMBER for each.")},
 		required: []string{"ref", "text"}, ann: hints("Reply on WhatsApp", annotations{OpenWorldHint: true}),
 		build: func(a map[string]any) ([]string, error) {
@@ -362,7 +365,7 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_react", description: "React to one message with an emoji, or clear your reaction. wasync refuses unless the person granted the react scope and approved this chat.",
+		name: "whatsapp_react", description: "React to one message with an emoji, or clear your reaction. It works in every chat synced in wasync when the person granted the react scope.",
 		props:    map[string]any{"ref": str("The message ref (m1_...)."), "emoji": str("One emoji. Leave out when removing."), "remove": flag("Clear your reaction instead of setting one.")},
 		required: []string{"ref"}, ann: hints("React on WhatsApp", annotations{IdempotentHint: true, OpenWorldHint: true}),
 		build: func(a map[string]any) ([]string, error) {
@@ -391,7 +394,7 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_edit", description: "Replace the text of one of your own recent messages. wasync refuses other people's messages, edits past WhatsApp's window, and anything without the edit.own scope.",
+		name: "whatsapp_edit", description: "Replace the text of one of your own recent messages. wasync refuses other people's messages, edits past WhatsApp's window, and anything without the edit.own scope, which is off unless the person granted it.",
 		props:    map[string]any{"ref": str("The ref (m1_...) of your own message."), "text": str("The new text (up to 16000 bytes).")},
 		required: []string{"ref", "text"}, ann: hints("Edit a WhatsApp message", annotations{DestructiveHint: true, OpenWorldHint: true}),
 		build: func(a map[string]any) ([]string, error) {
@@ -410,41 +413,41 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_request_access", description: "Ask the person for access to a chat this credential cannot use yet. Unless the person set wasync to sync all chats, this grants nothing by itself: the person picks the chat and the level on their own computer and confirms, and the request expires after 30 minutes. Then call whatsapp_access_status.",
-		props: map[string]any{"chat": str("The exact chat JID."), "match": str("A phone number or a contact or group name; wasync resolves it and only the person sees the candidates."), "send": flag("Also ask to send, reply and react, not only read.")},
-		ann:   hints("Ask for access to a WhatsApp chat", annotations{IdempotentHint: true}),
+		name: "whatsapp_request_send", description: "Ask the person to approve one text message to a chat that is not synced in wasync, or to a new phone number. Nothing is sent until the person approves this exact message on their own computer; wasync then sends it once. The request expires after 30 minutes and then sends nothing. Use it only when whatsapp_send is refused for that chat or number, then call whatsapp_send_request_status; do not ask again while one is pending.",
+		props:    map[string]any{"chat": str("The exact chat JID. Give this or to."), "to": str("A phone number with its country code, such as +15551230000. Give this or chat."), "text": str("The message text the person approves and wasync sends (text only, up to 4096 bytes).")},
+		required: []string{"text"}, ann: hints("Ask to send a WhatsApp message", annotations{IdempotentHint: true, OpenWorldHint: true}),
 		build: func(a map[string]any) ([]string, error) {
-			if err := unknown(a, "chat", "match", "send"); err != nil {
+			if err := unknown(a, "chat", "to", "text"); err != nil {
 				return nil, err
 			}
 			chat, err := getStr(a, "chat", false, 256)
 			if err != nil {
 				return nil, err
 			}
-			match, err := getStr(a, "match", false, 256)
+			to, err := getStr(a, "to", false, 64)
 			if err != nil {
 				return nil, err
 			}
-			if (chat == "") == (match == "") {
-				return nil, fmt.Errorf("give exactly one of chat or match")
+			if (chat == "") == (to == "") {
+				return nil, fmt.Errorf("give exactly one of chat or to")
 			}
-			send, err := getBool(a, "send")
+			text, err := getStr(a, "text", true, sendRequestTextMax)
 			if err != nil {
 				return nil, err
 			}
-			b := builder{args: []string{"access", "request"}}
-			b.add("--chat", chat)
-			b.add("--match", match)
-			if send {
-				b.args = append(b.args, "--send")
+			b := builder{args: []string{"send-request"}}
+			if to != "" {
+				b.args = append(b.args, "--to", to)
+			} else {
+				b.args = append(b.args, "--chat", chat)
 			}
-			return b.args, nil
+			return append(b.args, "--text", text), nil
 		},
 	},
 	{
-		name: "whatsapp_access_status", description: "Check the answer to a whatsapp_request_access request.",
-		props: map[string]any{"request_id": str("The 32-character request_id from whatsapp_request_access.")}, required: []string{"request_id"},
-		ann: hints("Check a WhatsApp access request", readHints),
+		name: "whatsapp_send_request_status", description: "Check the answer to a whatsapp_request_send request: pending (still waiting for the person), sent (wasync sent it once; do not send it again), declined, expired or failed.",
+		props: map[string]any{"request_id": str("The 32-character request_id from whatsapp_request_send.")}, required: []string{"request_id"},
+		ann: hints("Check a WhatsApp send request", readHints),
 		build: func(a map[string]any) ([]string, error) {
 			if err := unknown(a, "request_id"); err != nil {
 				return nil, err
@@ -453,7 +456,7 @@ var tools = []tool{
 			if err != nil {
 				return nil, err
 			}
-			return []string{"access", "status", id}, nil
+			return []string{"send-request", "status", id}, nil
 		},
 	},
 	{

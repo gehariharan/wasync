@@ -123,7 +123,7 @@ func (a *Authorizer) Authenticate(header string) (*Client, error) {
 	switch r.Status(a.now()) {
 	case "revoked":
 		e := unauthorized("agent credential for " + r.Name + " was revoked")
-		e.Help = "A human must issue a new credential in an interactive terminal: wasync agents grant " + r.Name + " --scope " + strings.Join(r.Scopes, ",") + chatFlags(r.Chats)
+		e.Help = "A human must issue a new credential in an interactive terminal: wasync agents grant " + r.Name + " --scope " + strings.Join(r.Scopes, ",") + chatFlags(&r.Client)
 		return nil, e
 	case "expired":
 		e := unauthorized("agent credential for " + r.Name + " expired")
@@ -180,11 +180,12 @@ func (a *Authorizer) Authorize(c *Client, scope string, chatJID string) error {
 	return nil
 }
 
-// AllowAccessRequest checks that c is still a valid credential and consumes one
-// rate-limit token. Any active client may ask for chat access, because asking
-// grants nothing: a human decides. The rate limit and the pending cap keep a
-// misbehaving agent from flooding the person with prompts.
-func (a *Authorizer) AllowAccessRequest(c *Client) error {
+// AllowRequest checks that c is still a valid credential and consumes one
+// rate-limit token, for a request that needs no scope of its own, such as
+// reading its send list's state or asking the person to approve a send:
+// asking grants nothing, because a human decides. The rate limit and the
+// pending cap keep a misbehaving agent from flooding the person with prompts.
+func (a *Authorizer) AllowRequest(c *Client) error {
 	if c == nil {
 		return unauthorized("agent credential required")
 	}
@@ -272,10 +273,14 @@ func cloneClient(c Client) Client {
 	return c
 }
 
-func chatFlags(chats []string) string {
+// chatFlags are the grant flags that give a new credential the chats c uses.
+func chatFlags(c *Client) string {
+	if c.SyncedChats {
+		return " --synced-chats"
+	}
 	var b strings.Builder
-	for _, c := range chats {
-		b.WriteString(" --chat " + c)
+	for _, chat := range c.Chats {
+		b.WriteString(" --chat " + chat)
 	}
 	return b.String()
 }

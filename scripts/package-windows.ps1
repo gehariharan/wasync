@@ -13,7 +13,7 @@ $licensePage = $null
 try {
  $commit = (git rev-parse --short=12 HEAD).Trim(); Check-Exit
  $built = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
- # wasync-axi (AXI for agents) ships in the ZIP and is an opt-in task in Setup.
+ # wasync-axi (AXI for agents) ships in the ZIP and Setup always installs it.
  # It is pure Go, so build it without the C toolchain, at the same version.
  $env:CGO_ENABLED = '0'
  $axiBuildinfo = 'github.com/gehariharan/wasync/axi/internal/buildinfo'

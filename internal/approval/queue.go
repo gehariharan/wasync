@@ -39,25 +39,29 @@ func (in Input) Validate() error {
 	return nil
 }
 
-// StatusPending is a request waiting for a human.
-const StatusPending = "pending_human_confirmation"
+// StatusPending is a request waiting for a human; StatusRejected one the
+// person declined.
+const (
+	StatusPending  = "pending_human_confirmation"
+	StatusRejected = "rejected"
+)
 
 type Request struct {
 	ID      string `json:"id"`
 	Account int64  `json:"account_id"`
 	Input
-	Access  *Access   `json:"access,omitempty"`
-	Expires time.Time `json:"expires_at"`
-	Status  string    `json:"status"`
-	Error   string    `json:"error,omitempty"`
+	Send    *AgentSend `json:"send,omitempty"`
+	Expires time.Time  `json:"expires_at"`
+	Status  string     `json:"status"`
+	Error   string     `json:"error,omitempty"`
 }
 type Queue struct {
 	mu       sync.Mutex
 	requests []Request
 	dir      string // where waiting requests are kept across restarts; see Persist
-	// OnAccess, when set, is called (outside the lock) for each newly queued
-	// chat access request, so a headless owner can tell its operator.
-	OnAccess func(Request)
+	// OnSend, when set, is called (outside the lock) for each newly queued
+	// agent send request, so a headless owner can tell its operator.
+	OnSend func(Request)
 	// OnRequest is called (outside the lock) for each newly queued destructive
 	// request, for the same reason.
 	OnRequest func(Request)
@@ -102,7 +106,7 @@ func (q *Queue) add(account int64, in Input) (Request, error) {
 			active++
 		}
 	}
-	if active >= 32 {
+	if active >= maxPendingAll {
 		return Request{}, fmt.Errorf("too many pending requests")
 	}
 	id := make([]byte, 16)
@@ -160,9 +164,6 @@ func (q *Queue) Take(account int64, id string) (Request, error) {
 	q.expire()
 	for i, r := range q.requests {
 		if r.Account == account && r.ID == id && r.Status == StatusPending {
-			if r.Kind == KindChatAccess && (r.Access.Chosen == "" || r.Access.History == "") {
-				return Request{}, fmt.Errorf("choose the chat and the history depth before approving")
-			}
 			q.requests[i].Status = "executing"
 			q.save()
 			return r.clone(), nil

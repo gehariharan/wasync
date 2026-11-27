@@ -217,12 +217,12 @@ func (a *App) ownerAction(offline, setupMode, appMode bool) action {
 			a.Setup = &setup.State{}
 		}
 		a.Operations = operationsOf(client)
-		a.Approvals = &approval.Queue{OnAccess: func(r approval.Request) {
+		a.Approvals = &approval.Queue{OnSend: func(r approval.Request) {
 			// Headless there is no dialog: say who asked and which request to open,
-			// never the chat or number. `wasync actions list` shows the details.
-			log.Info("chat access requested", "agent", r.Access.Agent, "request_id", r.ID)
-			fmt.Fprintf(a.Out, "Chat access requested by agent %s. Review: wasync approvals (page) or wasync actions list; approve: wasync actions approve %s\n", printable(r.Access.Agent), r.ID)
-			a.announce("Agent " + printable(r.Access.Agent) + " is asking for a WhatsApp chat. Run wasync approvals to review.")
+			// never the chat, number or text. `wasync actions list` shows the details.
+			log.Info("agent send requested", "agent", r.Send.Agent, "request_id", r.ID)
+			fmt.Fprintf(a.Out, "Agent %s asks to send a message. Review: wasync approvals (page) or wasync actions list; approve: wasync actions approve %s\n", printable(r.Send.Agent), r.ID)
+			a.announce("Agent " + printable(r.Send.Agent) + " asks to send a WhatsApp message. Run wasync approvals to review.")
 		}, OnRequest: func(approval.Request) {
 			a.announce("A request to delete data is waiting for you. Run wasync approvals to review.")
 		}}
@@ -233,6 +233,7 @@ func (a *App) ownerAction(offline, setupMode, appMode bool) action {
 		session.Approvals = a.Approvals
 		session.MediaRoot, session.DataDir = filepath.Join(cfg.DataDir, "media"), cfg.DataDir
 		session.Human = a.Human
+		session.Send = send
 		a.Approve = session.ApproveAction
 		a.Reject = session.RejectAction
 		a.Sync = session.Sync

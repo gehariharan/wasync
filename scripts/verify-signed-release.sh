@@ -47,7 +47,7 @@ retry_check xcrun stapler validate "$name.pkg"
 retry_check spctl --assess --type install --verbose=2 "$name.pkg"
 retry_check codesign --verify --strict --verbose=2 -R='notarized' --check-notarization archive/wasync
 pkgutil --expand-full "$name.pkg" expanded
-# The installer has two components; wasync is always installed, AXI for agents is a choice.
+# The installer has two components, wasync and AXI for agents, both always installed.
 cmp archive/wasync expanded/wasync.pkg/Payload/usr/local/bin/wasync
 mkdir axi
 tar -xzf "$axi_name.tar.gz" -C axi
@@ -62,7 +62,7 @@ xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-
 xattr -w com.apple.quarantine "0083;$(printf '%x' "$(date +%s)");wasync-release-check;" axi/wasync-axi
 [[ "$(axi/wasync-axi --version)" == "$version" ]]
 python3 "$project_dir/scripts/smoke-installed.py" "$work/archive/wasync" "$version" "$architecture" "$work/axi/wasync-axi"
-# The installer offers AXI for agents unticked and, on a hosted runner, installs both ways.
+# The installer locks both components on and, on a hosted runner, installs them.
 bash "$project_dir/scripts/test-macos-pkg.sh" "$work/$name.pkg" "$version" "$architecture" "$work/axi/wasync-axi"
 # The wasync app's disk image: Developer ID signed and stapled, holding an app
 # that is signed and stapled too, and carrying the very wasync and wasync-axi

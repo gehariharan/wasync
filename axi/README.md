@@ -49,33 +49,33 @@ The old `whatsapp_axi_*` JSON keys and the `whatsapp_axi_too_old` code (`legacy_
   prints the credential once; put it in `WASYNC_AXI_TOKEN` or that file yourself.
 - **wasync-axi never uses wasync's own tokens.** It refuses anything that is not a `wsa_` agent
   credential, so `api.token`, `send.token` and `approve.token` stay with wasync.
-- **Read-only by default, enforced by wasync.** Scopes, chat allowlists, rate limits, expiry and the audit
+- **Enforced by wasync.** A credential granted without `--scope` can only read; a connected agent can
+  also reply and react in synced chats. Scopes, chat allowlists, rate limits, expiry and the audit
   log are checked inside wasync's API. Flags, confirmations and agent skills in wasync-axi are
   convenience, not a security boundary.
-- **Writes need a scope you grant, per chat.** `wasync-axi send --chat CHAT_JID --text TEXT` (a new message; `--video FILE.mp4` sends a playable video with the text as its caption; `--to PHONE_NUMBER` instead of `--chat` works only for a number on the list the person approved for you, or while they have switched on open sending, in the wasync web app; the home view shows the list's allowance left this hour)
+- **A connected agent uses every synced chat.** An agent connected in wasync can read, reply and react
+  in every chat synced in wasync, now and later, with no per-chat prompt; editing is off unless the
+  person grants it. To read or reply in a chat that is not synced, the person syncs it in wasync.
+- **Writes need a scope you grant.** `wasync-axi send --chat CHAT_JID --text TEXT` (a new message; `--video FILE.mp4` sends a playable video with the text as its caption; `--to PHONE_NUMBER` instead of `--chat` works only for a number on the list the person approved for you, or while they have switched on open sending, in the wasync web app; the home view shows the list's allowance left this hour)
   and `wasync-axi reply REF --text TEXT` (a quoted reply) post to wasync's API,
-  which refuses them unless the credential holds `send` and the chat is in its allowlist
-  (`wasync agents grant <name> --scope read.chats,read.messages,send --on-demand`, then the person
-  approves each chat when you ask for it).
+  which refuses them unless the credential holds `send` and the chat is synced in wasync
+  (`wasync agents grant <name> --scope read.chats,read.messages,send --synced-chats`, or connect the
+  agent in wasync).
   `wasync-axi react REF EMOJI|--remove` needs the separate `react` scope the same way, and
   `wasync-axi edit REF --text TEXT` the `edit.own` scope; wasync also checks that the message is yours,
   is text and is inside WhatsApp's edit window. wasync-axi adds
-  no rules of its own and prints wasync's refusal unchanged. It sends once and never retries; offline
-  (`wasync query`) never writes.
-- **Chats can be approved on demand.** If a read or write is refused because the chat is not allowed,
-  `wasync-axi access request (--chat JID | --match TEXT) [--send] [--edit]` asks the person for it and
-  `wasync-axi access status REQUEST_ID` shows the answer. `--send` also asks to send, reply and react;
-  `--edit` also asks to edit your own messages. Asking grants nothing by itself: wasync queues a human
-  approval (the TUI dialog, the approval page or `wasync actions approve REQUEST_ID`, confirmed by the
-  person on their computer, 30-minute expiry, no replay) in which the person picks the chat, the access and the history depth (from now on
-  only, or a full history sync). The grant covers that one chat and never exceeds the scopes of your
-  credential. in ask-each-time mode wasync always answers `pending` and never says whether a name matched anything or which
-  chats it found; if it expires, try the phone number or the exact chat JID. If the person set wasync to
-  "sync all chats", a read, send, reply or react request for the one chat it matched is approved at
-  once (`status: approved` in the first reply), so in that mode a name or number probe both reveals and grants that chat; edit access and unmatched or ambiguous requests still
-  wait. A rejection or expiry changes nothing and is not retried. Needs the running API and a credential
-  created with `wasync agents grant NAME --on-demand` (or with a chat allowlist). Direct chats use the
-  saved contact name when WhatsApp provides one; a phone number always works.
+  no rules of its own and prints wasync's refusal unchanged, including wasync's help on the next step. It sends
+  once and never retries; offline (`wasync query`) never writes.
+- **Sending outside the synced chats needs the person, one message at a time.** To send to a chat
+  that is not synced or to a new number, `wasync-axi send-request (--chat JID | --to PHONE) --text TEXT`
+  asks the person to approve that one message, and `wasync-axi send-request status REQUEST_ID` shows
+  the answer. Nothing is sent until the person approves it on their own computer, in the Approvals
+  page of wasync or with `wasync actions approve REQUEST_ID`, confirmed by the computer's own check;
+  wasync then sends exactly that text once. The status is `pending`, `sent` (with the `message_id`;
+  do not send it again), `declined` (do not ask again unless the person asks), `expired` (after 30
+  minutes; nothing was sent) or `failed`. `already_allowed` means you can send it directly with
+  `wasync-axi send`. Asking again with the same chat and text while one is pending returns the same
+  request. Text only, at most 4096 bytes. Needs the running API and the `send` scope.
 - **Offline reads are not scoped.** `wasync query` reads the archive as your OS user, like opening your
   own files. wasync-axi says so when it uses the offline transport.
 - **Loopback only.** The API address must be a literal loopback IP. wasync-axi does not use proxies,
@@ -105,9 +105,8 @@ Installation options:
   go install github.com/gehariharan/wasync/axi/cmd/wasync-axi@latest
   ```
 
-You also need wasync. The wasync installers can install this tool for you as an
-optional choice (off by default); see
-[Choose whether to add AXI for agents](../README.md#choose-whether-to-add-axi-for-agents).
+You also need wasync. The wasync installers always install this tool alongside it; see
+[AXI for agents](../README.md#axi-for-agents).
 Direct-download users who prefer the standalone archive install both binaries from the
 [core installation guide](../README.md#install-a-prebuilt-package).
 
@@ -200,8 +199,9 @@ Protocol](https://modelcontextprotocol.io) tools over standard input and output,
 without a terminal such as the Codex desktop app. It opens no network port. Tools:
 `whatsapp_status`, `whatsapp_doctor`, `whatsapp_list_chats`, `whatsapp_read_messages`,
 `whatsapp_search`, `whatsapp_thread`, `whatsapp_message`, `whatsapp_changes`,
-`whatsapp_send`, `whatsapp_reply`, `whatsapp_react`, `whatsapp_edit`, `whatsapp_request_access`,
-`whatsapp_access_status` and `whatsapp_start_setup` (opens the wasync setup page in the
+`whatsapp_send`, `whatsapp_reply`, `whatsapp_react`, `whatsapp_edit`, `whatsapp_request_send`
+(asks the person to approve one message to a chat that is not synced or a new number),
+`whatsapp_send_request_status` and `whatsapp_start_setup` (opens the wasync setup page in the
 person's browser). There is deliberately no tool to approve, grant, revoke or reveal a
 credential. The Codex plugin that wires it up is `plugins/whatsapp/` at the repository root.
 

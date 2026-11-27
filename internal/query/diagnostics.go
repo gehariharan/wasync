@@ -133,11 +133,14 @@ type DiagnosticOwner struct {
 
 // DiagnosticAgent describes the calling agent client; never its secret.
 type DiagnosticAgent struct {
-	Name      string     `json:"name"`
-	Scopes    []string   `json:"scopes"`
-	Chats     []string   `json:"chats"` // pre-approved and human-approved chats
-	OnDemand  bool       `json:"on_demand"`
-	ExpiresAt *time.Time `json:"expires_at"`
+	Name     string   `json:"name"`
+	Scopes   []string `json:"scopes"`
+	Chats    []string `json:"chats"` // pre-approved and human-approved chats
+	OnDemand bool     `json:"on_demand"`
+	// SyncedChats marks an agent that uses every chat synced in wasync;
+	// Chats are then the ones synced now.
+	SyncedChats bool       `json:"synced_chats"`
+	ExpiresAt   *time.Time `json:"expires_at"`
 }
 
 type DiagnosticCheck struct {
@@ -182,7 +185,7 @@ func Diagnose(ctx context.Context, in DiagnosticsInput) Diagnostics {
 	registryErr := checkRegistry(in.DataDir)
 	d.AgentsRegistryPrivate = registryErr == nil
 	if in.Agent != nil {
-		d.Agent = &DiagnosticAgent{Name: in.Agent.Name, Scopes: nonNil(in.Agent.Scopes), Chats: nonNil(in.Agent.AllowedChats()), OnDemand: in.Agent.OnDemand, ExpiresAt: in.Agent.ExpiresAt}
+		d.Agent = &DiagnosticAgent{Name: in.Agent.Name, Scopes: nonNil(in.Agent.Scopes), Chats: nonNil(in.Agent.AllowedChats()), OnDemand: in.Agent.OnDemand, SyncedChats: in.Agent.SyncedChats, ExpiresAt: in.Agent.ExpiresAt}
 	}
 
 	add := func(name, status, detail, fix string) {

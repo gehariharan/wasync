@@ -109,9 +109,7 @@ func TestOpenSendingIsSwitchedOnOnlyAfterTheSystemConfirmation(t *testing.T) {
 
 func TestAgentsPageIsReadOnlyWithoutASystemConfirmation(t *testing.T) {
 	f, c, csrf := agentsFixture(t, nil)
-	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: []string{agentauth.ScopeReadChats, agentauth.ScopeReadMessages}, OnDemand: true}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	grantLegacyOnDemand(t, f.dir, "helper", agentauth.ScopeReadChats, agentauth.ScopeReadMessages)
 	_, page, _ := c.get("/ui/agents")
 	if !strings.Contains(page, "read-only") || strings.Contains(page, "Turn on for 1 hour") || strings.Contains(page, "Allow sending") {
 		t.Fatalf("a computer with no confirmation was offered a way to widen access:\n%s", page)
@@ -131,9 +129,7 @@ func TestAllowingAndStoppingSendingForAnAgent(t *testing.T) {
 	stub := &promptStub{}
 	f, c, csrf := agentsFixture(t, stub)
 	scopes := []string{agentauth.ScopeReadChats, agentauth.ScopeReadMessages, agentauth.ScopeSend}
-	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "helper", Scopes: scopes[:2], OnDemand: true}, time.Now()); err != nil {
-		t.Fatal(err)
-	}
+	grantLegacyOnDemand(t, f.dir, "helper", scopes[:2]...)
 	if _, _, err := agentauth.Grant(f.dir, agentauth.GrantRequest{Name: "everything", Scopes: scopes[:2]}, time.Now()); err != nil {
 		t.Fatal(err)
 	}

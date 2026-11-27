@@ -145,3 +145,138 @@ func TestSQLiteSettingsAndFTS5(t *testing.T) {
 		t.Fatalf("FTS5 query failed: %d %v", count, err)
 	}
 }
+
+// Capture switched on for an agent's approved list is marked as such until the
+// person enables the chat; a chat the person already syncs is never marked.
+func TestListCaptureIsMarkedUntilThePersonEnablesTheChat(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(privateTestDir(t), "archive.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	id, _ := s.UseAccount(ctx, "one@s.whatsapp.net")
+	if err = s.SaveGroups(ctx, id, []Group{{ID: "list@s.whatsapp.net", Name: "list"}, {ID: "mine@g.us", Name: "mine"}}); err != nil {
+		t.Fatal(err)
+	}
+	state := func() map[string]Group {
+		t.Helper()
+		groups, err := s.Groups(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		summaries, err := s.GroupSummaries(ctx, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]Group{}
+		for i, g := range groups {
+			out[g.ID] = g
+			for _, sg := range summaries {
+				if sg.ID == g.ID && (sg.Enabled != g.Enabled || sg.ListCapture != g.ListCapture) {
+					t.Fatalf("Groups and GroupSummaries disagree on %s: %+v %+v", g.ID, groups[i], sg)
+				}
+			}
+		}
+		return out
+	}
+	if err = s.SetEnabled(ctx, id, []string{"mine@g.us"}, true); err != nil {
+		t.Fatal(err)
+	}
+	for _, chat := range []string{"list@s.whatsapp.net", "mine@g.us"} {
+		if err = s.EnableListCapture(ctx, id, chat); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got := state()
+	if g := got["list@s.whatsapp.net"]; !g.Enabled || !g.ListCapture {
+		t.Fatalf("a chat switched on for a list: %+v", g)
+	}
+	if g := got["mine@g.us"]; !g.Enabled || g.ListCapture {
+		t.Fatalf("a chat the person synced became list capture: %+v", g)
+	}
+	if err = s.EnableCapture(ctx, id, "list@s.whatsapp.net", false); err != nil {
+		t.Fatal(err)
+	}
+	if g := state()["list@s.whatsapp.net"]; !g.Enabled || g.ListCapture {
+		t.Fatalf("the person enabled it but it is still list capture: %+v", g)
+	}
+	if err = s.SetEnabled(ctx, id, []string{"list@s.whatsapp.net"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.EnableListCapture(ctx, id, "list@s.whatsapp.net"); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetEnabled(ctx, id, []string{"list@s.whatsapp.net"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if g := state()["list@s.whatsapp.net"]; !g.Enabled || g.ListCapture {
+		t.Fatalf("enabling it from the TUI or CLI kept it as list capture: %+v", g)
+	}
+}
+
+// An archive from a release before list capture was recorded, with a synced
+// chat, is marked once; a new archive never is.
+func TestListCaptureBackfillRunsOnceAndOnlyOnUpgradedArchives(t *testing.T) {
+	ctx := context.Background()
+	fresh, err := Open(ctx, filepath.Join(privateTestDir(t), "archive.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer fresh.Close()
+	if pending, err := fresh.ListCaptureBackfillPending(ctx); err != nil || pending {
+		t.Fatalf("a new archive asks for the backfill: %v %v", pending, err)
+	}
+	id, _ := fresh.UseAccount(ctx, "one@s.whatsapp.net")
+	if err = fresh.SaveGroups(ctx, id, []Group{{ID: "mine@s.whatsapp.net", Name: "mine"}}); err != nil {
+		t.Fatal(err)
+	}
+	if err = fresh.SetEnabled(ctx, id, []string{"mine@s.whatsapp.net"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if err = fresh.BackfillListCapture(ctx, id, []string{"mine@s.whatsapp.net"}); err != nil {
+		t.Fatal(err)
+	}
+	if groups, _ := fresh.Groups(ctx, id); !groups[0].PersonSynced() {
+		t.Fatalf("a new archive's synced chat was marked: %+v", groups[0])
+	}
+
+	upgraded, err := Open(ctx, buildArchive(t, 7)) // one@g.us synced, two@g.us not
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer upgraded.Close()
+	if pending, err := upgraded.ListCaptureBackfillPending(ctx); err != nil || !pending {
+		t.Fatalf("an upgraded archive with a synced chat does not ask for the backfill: %v %v", pending, err)
+	}
+	if err = upgraded.BackfillListCapture(ctx, 1, []string{"one@g.us", "two@g.us"}); err != nil {
+		t.Fatal(err)
+	}
+	state := func() map[string]Group {
+		groups, err := upgraded.Groups(ctx, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out := map[string]Group{}
+		for _, g := range groups {
+			out[g.ID] = g
+		}
+		return out
+	}
+	if got := state(); !got["one@g.us"].ListCapture || got["two@g.us"].ListCapture {
+		t.Fatalf("backfill marks: %+v", got)
+	}
+	if pending, err := upgraded.ListCaptureBackfillPending(ctx); err != nil || pending {
+		t.Fatalf("the backfill is still pending after it ran: %v %v", pending, err)
+	}
+	// The person syncs it again; a later run marks nothing.
+	if err = upgraded.SetEnabled(ctx, 1, []string{"one@g.us"}, true); err != nil {
+		t.Fatal(err)
+	}
+	if err = upgraded.BackfillListCapture(ctx, 1, []string{"one@g.us"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := state(); !got["one@g.us"].PersonSynced() {
+		t.Fatalf("the backfill ran twice: %+v", got["one@g.us"])
+	}
+}

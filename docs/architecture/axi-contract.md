@@ -92,40 +92,37 @@ window; both are checked before anything is sent. `send_failed` (502) means the 
 automatically. A ref that does not decode names no chat and is refused with
 `forbidden` before the handler runs.
 
-### Access requests (feature `access.request`)
+### Agent send requests (feature `write.send.request`)
+
+A connected agent's credential covers every chat synced in wasync (`synced_chats: true` in `agents.json`;
+its chat list is kept equal to the synced chats), so it reads, replies and reacts there with no per-chat
+request. Only a send to a chat that is not synced, or to a new number, needs the person, one message at a time.
 
 | Endpoint | AXI command | Authorization |
 |---|---|---|
-| `POST /api/v1/access-requests` body `{"chat":JID}` or `{"match":TEXT}`, optional `"send":true`, `"edit":true` | `access request` | any active agent credential that is on-demand or has a chat allowlist; rate limited |
-| `GET /api/v1/access-requests/{id}` | `access status` | the credential that made the request |
+| `POST /api/v1/send-requests` body `{"chat":JID,"text":TEXT}` or `{"to":PHONE,"text":TEXT}` | `send-request --chat JID --text TEXT`, `send-request --to PHONE --text TEXT` | an agent credential holding `send` |
+| `GET /api/v1/send-requests/{id}` | `send-request status ID` | the credential that made the request; any other is `404 not_found` |
 
-A request grants nothing by itself. wasync resolves `chat`/`match` (JID, phone number, or name using the same
-tiers as `chats?match=`, which includes the saved contact name of direct chats) to at most ten candidate chats
-across the whole archive and queues a `grant-chat-access` request in the human approval queue (30-minute
-expiry, no replay, one request per agent and query, at most three unanswered per agent). It returns `202` with
-the request ID, the access asked for (`read`, `send`, `edit`; read is always included) and `approve_with`, the
-command the person runs. The agent never receives the candidates, and the reply is the same whether zero, one or
-several chats matched: a request that matched nothing is queued with no candidates, shown to the person as "no
-chat matched", cannot be approved and simply stays `pending` until it is rejected or expires, exactly like a
-request nobody has answered. Status is `pending`, `approved` (with `chat` and `history`), `rejected`,
-`expired` or `failed`. `already_allowed` (200) means a JID the agent already may use needs no approval.
-`400` for an unrestricted credential (nothing to approve) or a malformed body, `403` when the credential lacks a
-read scope, or lacks every scope of a requested send/edit family, `429` when too many requests wait or the rate
-limit is hit, `503` when no owner is running.
+Exactly one of `chat` and `to`; `text` is required, text only, at most 4096 bytes. A request sends nothing
+by itself: it returns `202` with `request_id`, `status: pending`, `chat`, `new_number`, `expires_at` and
+`approve_with` (the command the person can run). The person sees the agent, the chat and the full text and
+approves with the computer's own check (Touch ID, Windows Hello or a passkey) in wasync; on approval wasync
+itself sends exactly that text once. Asking again with the same chat and text while one is pending returns
+the same request. `200` with `status: already_allowed` means `POST /api/v1/messages` would take that
+send right now: the chat is one the agent may use, or the agent's approved list (for a listed number)
+or else open sending would admit it. When that list or open sending would refuse it (a paused list, a
+number that has not replied yet, an hourly limit used up), the request is queued for the person instead. `403 forbidden` without `send`, `429 rate_limited` when the agent already has 5
+requests waiting, `503 owner_offline` when no owner runs. Status is `pending`, `sent` (with `message_id`),
+`declined`, `expired` or `failed`; `expires_at` is present only while pending. Requests expire after
+30 minutes and then change nothing.
 
-On approval, `read` covers the read-family scopes the credential holds, `send` adds `send` and `react` where
-held, and `edit` adds `edit.own` where held; other scopes are never requestable.
+A send with `POST /api/v1/messages` to a chat the agent may not use still fails with `403 forbidden`; its
+help tells the agent to raise a send request (`wasync-axi send-request ...`).
 
-When the owner chose "sync all chats" (`wasync access mode all`, stored in `access-mode.json`), a request without
-`edit` that matched exactly one chat is approved at once: the same request is recorded, the chosen history depth
-is applied, the audit log records `access_grant_auto`, and the first reply is `200` with `status: approved`.
-That is the only case where an agent can tell a match from none: in sync-all mode agents can discover and access any
-chat by name or number, because a matching request is granted at once, so a name probe both reveals and grants that
-chat. Ask-each-time mode reveals nothing. Requests with `edit`, no match or several matches still wait for a person, and destructive
-actions are never automatic. The mode is changed only through `POST /api/access/mode`, signed with the
-interactive approval credential, or the owner's approval page; choosing sync all also needs the operating-system
-confirmation where the computer has one (see the [threat model](threat-model.md)). No `/api/v1` route and no
-agent credential reaches it.
+Per-chat access requests are removed: `POST /api/v1/access-requests` and `GET /api/v1/access-requests/{id}`
+answer `410` with `invalid_argument` and a help line, the feature `access.request` is no longer listed,
+and wasync-axi no longer has an `access` command (an old invocation is a usage error that points at
+`send-request`).
 
 ### Message content safety
 

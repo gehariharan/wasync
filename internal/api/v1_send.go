@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/opensend"
 	"github.com/gehariharan/wasync/internal/query"
 	"github.com/gehariharan/wasync/internal/sendlist"
@@ -137,7 +138,7 @@ func (h *handler) authorizeSend(w http.ResponseWriter, r *http.Request, id strin
 		err := h.agents.AuthorizeAndAudit(c, agentauth.ScopeSend, target, "", id, true)
 		var denied *agentauth.Error
 		if numberGiven && errors.As(err, &denied) && denied.Code == agentauth.CodeForbidden {
-			denied.Help = "Sending to a number you were not given needs the person to approve it in a list for you, or to switch on Open sending, on the Agents page of the wasync web app (wasync web). Do not try another route."
+			denied.Help = "Sending to a number you were not given needs the person to approve it. For this one message, run `wasync-axi send-request --to " + approval.PhoneNumber(target) + " --text TEXT` (or POST /api/v1/send-requests) and wait until they approve it in wasync. For many numbers, the person can approve a list for you, or switch on Open sending, on the Agents page of the wasync web app (wasync web). Do not try another route."
 		}
 		return err
 	})
@@ -221,18 +222,43 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 // openSendRoom enforces open sending's hourly caps and marks the sent-log entry.
 // It answers 429 itself when there is no room.
 func (h *handler) openSendRoom(w http.ResponseWriter, r *http.Request, id, chat string, entry *sentlog.Entry) bool {
-	if _, on := opensend.ActiveNow(h.dataDir, time.Now()); !on {
-		v1Fail(w, id, 403, query.CodeForbidden, "open sending has just been switched off", "ask the person to approve this chat or switch open sending on again")
+	newNumber, no := h.openSendCheck(r.Context(), chat)
+	if no != nil {
+		no.write(w, id)
 		return false
 	}
+	entry.Open, entry.NewNumber = true, newNumber
+	return true
+}
+
+// sendRefusal is why open sending or an approved list will not take a
+// message right now. A known retryAt is sent as Retry-After.
+type sendRefusal struct {
+	status              int
+	code, message, help string
+	retryAt             time.Time
+}
+
+func (no *sendRefusal) write(w http.ResponseWriter, id string) {
+	if no.status == 429 {
+		retryLater(w, id, no.retryAt, no.message, no.help)
+		return
+	}
+	v1Fail(w, id, no.status, no.code, no.message, no.help)
+}
+
+// openSendCheck reports whether open sending has room for a message to chat
+// right now, and whether chat would count as a new number.
+func (h *handler) openSendCheck(ctx context.Context, chat string) (newNumber bool, no *sendRefusal) {
+	if _, on := opensend.ActiveNow(h.dataDir, time.Now()); !on {
+		return false, &sendRefusal{status: 403, code: query.CodeForbidden, message: "open sending has just been switched off", help: "ask the person to approve this chat or switch open sending on again"}
+	}
 	if h.sent == nil {
-		v1Fail(w, id, 503, query.CodeInternal, "the sent log is unavailable, so open sending is refused", "restart wasync")
-		return false
+		return false, &sendRefusal{status: 503, code: query.CodeInternal, message: "the sent log is unavailable, so open sending is refused", help: "restart wasync"}
 	}
 	recent, err := h.sent.Recent(1000)
 	if err != nil {
-		v1Fail(w, id, 503, query.CodeInternal, "the sent log cannot be read, so open sending is refused", "check the permissions of the wasync data directory")
-		return false
+		return false, &sendRefusal{status: 503, code: query.CodeInternal, message: "the sent log cannot be read, so open sending is refused", help: "check the permissions of the wasync data directory"}
 	}
 	since := time.Now().Add(-opensend.Window)
 	messages, fresh := 0, map[string]bool{}
@@ -246,41 +272,35 @@ func (h *handler) openSendRoom(w http.ResponseWriter, r *http.Request, id, chat 
 		}
 	}
 	if messages >= opensend.MaxMessages {
-		v1Fail(w, id, 429, query.CodeRateLimited, fmt.Sprintf("open sending allows %d messages an hour and they are used up", opensend.MaxMessages), "wait for the hour to pass, or ask the person to approve this chat")
-		return false
+		return false, &sendRefusal{status: 429, code: query.CodeRateLimited, message: fmt.Sprintf("open sending allows %d messages an hour and they are used up", opensend.MaxMessages), help: "wait for the hour to pass, or ask the person to approve this chat"}
 	}
-	known, err := h.knownChat(r.Context(), chat)
+	known, _, err := h.knownChat(ctx, chat)
 	if err != nil {
-		v1Fail(w, id, 503, query.CodeInternal, "the archive is unavailable, so open sending is refused", "")
-		return false
+		return false, &sendRefusal{status: 503, code: query.CodeInternal, message: "the archive is unavailable, so open sending is refused", help: ""}
 	}
 	if !known && !fresh[chat] && len(fresh) >= opensend.MaxNewNumbers {
-		v1Fail(w, id, 429, query.CodeRateLimited, fmt.Sprintf("open sending allows %d new numbers an hour and they are used up", opensend.MaxNewNumbers), "message a number from an existing chat, wait for the hour to pass, or ask the person to approve this one")
-		return false
+		return false, &sendRefusal{status: 429, code: query.CodeRateLimited, message: fmt.Sprintf("open sending allows %d new numbers an hour and they are used up", opensend.MaxNewNumbers), help: "message a number from an existing chat, wait for the hour to pass, or ask the person to approve this one"}
 	}
-	entry.Open, entry.NewNumber = true, !known
-	return true
+	return !known, nil
 }
 
-// knownChat reports whether the archive already has this chat.
-func (h *handler) knownChat(ctx context.Context, chat string) (bool, error) {
+// knownChat reports whether the archive already has this chat, and whether
+// the person synced it.
+func (h *handler) knownChat(ctx context.Context, chat string) (known, synced bool, err error) {
 	account, err := h.store.Account(ctx)
-	if err != nil {
-		return false, err
+	if err != nil || account == nil {
+		return false, false, err
 	}
-	if account == nil {
-		return false, nil
-	}
-	groups, err := h.store.GroupSummaries(ctx, account.ID)
+	groups, err := h.store.Groups(ctx, account.ID)
 	if err != nil {
-		return false, err
+		return false, false, err
 	}
 	for _, g := range groups {
 		if g.ID == chat {
-			return true, nil
+			return true, g.PersonSynced(), nil
 		}
 	}
-	return false, nil
+	return false, false, nil
 }
 
 // agentName is the authenticated agent's name for the sent log.

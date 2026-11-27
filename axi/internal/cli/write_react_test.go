@@ -62,8 +62,8 @@ func TestReactReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
 		code   string
 		help   string
 	}{
-		{"missing scope", 403, "forbidden", "Missing scope react. A human must re-grant the client in an interactive terminal: wasync agents grant writer --scope react"},
-		{"chat not allowed", 403, "forbidden", "Chat one@g.us is not in the allowlist for scope react."},
+		{"missing scope", 403, "forbidden", "Missing scope react. A human must re-grant the client in an interactive terminal: wasync agents revoke writer && wasync agents grant writer --scope read.chats,read.messages,react --chat one@g.us --rate 60"},
+		{"chat not allowed", 403, "forbidden", "Chat two@g.us is not in the allowlist for scope react. A human must re-grant the client in an interactive terminal: wasync agents revoke writer && wasync agents grant writer --scope read.chats,read.messages,react --chat one@g.us --chat two@g.us --rate 60"},
 		{"rate limited", 429, "rate_limited", "Retry after 7s."},
 		{"unknown message", 404, "not_found", "it may have expired"},
 		{"deleted target", 409, "target_unavailable", "choose a message that is still present in the conversation"},
@@ -83,6 +83,9 @@ func TestReactReportsWasyncRefusalsWithoutRetrying(t *testing.T) {
 			if tc.help != "" {
 				mustContain(t, out, tc.help)
 			}
+			if strings.Contains(out, "sync it in wasync") {
+				t.Errorf("%s %v: syncing never widens a fixed chat list, yet the output says to sync:\n%s", tc.name, args, out)
+			}
 			if methods, _ := mutations(srv); len(methods) != 1 {
 				t.Errorf("%s %v: %d requests; a refused or unknown write must not be retried", tc.name, args, len(methods))
 			}
@@ -98,7 +101,7 @@ func TestReactNeedsReactScopeCredentialHelp(t *testing.T) {
 	if code != ExitError {
 		t.Fatalf("exit %d\n%s", code, out)
 	}
-	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,react --on-demand", "offers to save the credential")
+	mustContain(t, out, "credential_missing", "--scope read.chats,read.messages,react --synced-chats", "offers to save the credential")
 	if methods, _ := mutations(srv); len(methods) != 0 {
 		t.Fatalf("sent without a credential: %v", methods)
 	}

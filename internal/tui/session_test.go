@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gehariharan/wasync/internal/accessmode"
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
@@ -63,7 +62,7 @@ func humanSession(t *testing.T, stub *promptStub) (*Session, int64, string) {
 func TestTUIApprovalWaitsForThePerson(t *testing.T) {
 	stub := &promptStub{}
 	s, account, id := humanSession(t, stub)
-	err := s.ConfirmApproval(account, id, "", "")
+	err := s.ConfirmApproval(account, id)
 	if err == nil || !strings.Contains(err.Error(), "nothing changed") {
 		t.Fatalf("declined prompt: %v", err)
 	}
@@ -71,49 +70,32 @@ func TestTUIApprovalWaitsForThePerson(t *testing.T) {
 		t.Fatalf("prompt: %q", stub.asked)
 	}
 	stub.confirm = true
-	if err = s.ConfirmApproval(account, id, "", ""); err != nil {
+	if err = s.ConfirmApproval(account, id); err != nil {
 		t.Fatal(err)
 	}
 }
 
-func TestTUIConfirmationIsSkippedWithoutAPromptOrForAsk(t *testing.T) {
+func TestTUIConfirmationIsSkippedWithoutAPrompt(t *testing.T) {
 	stub := &promptStub{}
 	s, account, id := humanSession(t, stub)
 	s.Human = nil
-	if err := s.ConfirmApproval(account, id, "", ""); err != nil {
+	if err := s.ConfirmApproval(account, id); err != nil {
 		t.Fatalf("no prompt on this computer: %v", err)
-	}
-	s.Human = humancheck.NewGate(stub)
-	if err := s.ConfirmAccessMode(accessmode.Mode{Mode: accessmode.Ask}); err != nil || len(stub.asked) != 0 {
-		t.Fatalf("ask each time prompted: %v %q", err, stub.asked)
-	}
-	if err := s.ConfirmAccessMode(accessmode.Mode{Mode: accessmode.All, History: accessmode.HistoryNow}); err == nil {
-		t.Fatal("sync all went ahead when the person declined")
-	}
-	if len(stub.asked) != 1 || !strings.Contains(stub.asked[0], "ALL chats") {
-		t.Fatalf("prompt: %q", stub.asked)
 	}
 }
 
-// The TUI prompt names the chat and history the person picked, and nothing is
-// recorded until the prompt is confirmed.
-func TestTUIAccessPromptNamesTheChoiceAndRecordsNothing(t *testing.T) {
+// The TUI prompt for an agent's send names the agent, the chat and the text.
+func TestTUISendPromptNamesTheMessage(t *testing.T) {
 	stub := &promptStub{}
 	s, account, _ := humanSession(t, stub)
-	r, err := s.Approvals.AddAccess(account, approval.Access{Agent: "jit", AgentID: "0123abcd", Scopes: []string{"read.chats"}, Query: "club", Candidates: []approval.Candidate{{Chat: "one@g.us", Name: "Book Club"}, {Chat: "two@g.us", Name: "Chess Club"}}})
+	r, _, err := s.Approvals.AddSend(account, "one@g.us", approval.AgentSend{Agent: "codex", AgentID: "0123abcd", Text: "Meeting moved to 7"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = s.ConfirmApproval(account, r.ID, "three@g.us", approval.HistoryNow); err == nil || len(stub.asked) != 0 {
-		t.Fatalf("a chat that is not a candidate reached the prompt: %v %q", err, stub.asked)
-	}
-	if err = s.ConfirmApproval(account, r.ID, "two@g.us", approval.HistoryFull); err == nil {
+	if err = s.ConfirmApproval(account, r.ID); err == nil {
 		t.Fatal("declined prompt went ahead")
 	}
-	if len(stub.asked) != 1 || !strings.Contains(stub.asked[0], `"Chess Club"`) || !strings.Contains(stub.asked[0], "full history") {
+	if len(stub.asked) != 1 || !strings.Contains(stub.asked[0], `agent "codex" send this message to "Book Club", a chat that was not synced when it asked: "Meeting moved to 7"`) {
 		t.Fatalf("prompt: %q", stub.asked)
-	}
-	if got := s.Approvals.Get(account, r.ID); got.Access.Chosen != "" || got.Access.History != "" {
-		t.Fatalf("choice recorded by the prompt: %+v", got.Access)
 	}
 }

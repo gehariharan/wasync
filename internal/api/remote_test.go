@@ -203,23 +203,16 @@ func TestRemotePagesNeverRaiseTheSystemPrompt(t *testing.T) {
 	stub := &promptStub{confirm: true}
 	f := setupAccessWith(t, humancheck.NewGate(stub))
 	allowTailnet(t, f)
-	r, err := f.queue.AddAccess(f.account, accessRequest(t, f, "family"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	r := f.askSend(t, familyChat, "hello")
 	c := newTailnetClient(t, f, tailnetLogin)
 	code, page, _ := c.get("/ui/approvals")
 	if code != 200 || !strings.Contains(page, "set it up with a passkey") || strings.Contains(page, `value="approve"`) {
 		t.Fatalf("remote approvals page: %d\n%s", code, page)
 	}
 	csrf := csrfOf(t, page)
-	_, _, hd := c.post("/ui/decide", url.Values{"csrf": {csrf}, "id": {r.ID}, "action": {"approve"}, "chat": {familyChat}, "history": {"now"}})
+	_, _, hd := c.post("/ui/decide", url.Values{"csrf": {csrf}, "id": {r.ID}, "action": {"approve"}})
 	if !strings.Contains(hd.Get("Location"), "n=remote") {
 		t.Fatalf("remote approve: %q", hd.Get("Location"))
-	}
-	_, _, hd = c.post("/ui/mode", url.Values{"csrf": {csrf}, "mode": {"all"}, "history": {"now"}})
-	if !strings.Contains(hd.Get("Location"), "n=remote") {
-		t.Fatalf("remote sync all: %q", hd.Get("Location"))
 	}
 	_, _, hd = c.post("/ui/agents", url.Values{"csrf": {csrf}, "action": {"openon"}})
 	if !strings.Contains(hd.Get("Location"), "n=remote") {

@@ -33,7 +33,7 @@ func AddScope(dir, name, scope string, now time.Time) (client Client, err error)
 			if r.Name != name || r.RevokedAt != nil || r.Status(now) != "active" {
 				continue
 			}
-			if !r.OnDemand && len(r.Chats) == 0 {
+			if !r.Client.Restricted() {
 				return fmt.Errorf("agent %s reads every chat, so it cannot be given %s here; re-grant it in a terminal with a chat list", name, scope)
 			}
 			if !contains(r.Scopes, scope) {
