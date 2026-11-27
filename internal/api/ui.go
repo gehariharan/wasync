@@ -257,6 +257,8 @@ var notices = map[string]struct {
 	"updnone":    {"There is no update to install. Check for updates again.", false},
 	"updbusy":    {"An update is already under way.", false},
 	"updhere":    {"Update wasync on the computer running it.", false},
+	"nofolder":   {"wasync could not open the folder on this computer.", false},
+	"folderhere": {"Open the folder on the computer running wasync.", false},
 }
 
 func (h *handler) serveUI(w http.ResponseWriter, r *http.Request) {
@@ -365,6 +367,8 @@ func (h *handler) uiDispatch(w http.ResponseWriter, r *http.Request, sess uiSess
 		h.setupDisconnect(w, r, sess)
 	case r.Method == http.MethodGet && r.URL.Path == "/ui/setup/connections":
 		h.setupConnections(w, r, sess)
+	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/folder":
+		h.setupFolder(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/service":
 		h.setupService(w, r, sess)
 	case r.Method == http.MethodPost && r.URL.Path == "/ui/setup/devices":

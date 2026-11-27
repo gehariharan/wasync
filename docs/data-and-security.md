@@ -9,13 +9,42 @@ in it, which credentials protect what, and what wasync does and does not protect
 All commands use the same private data directory, normally:
 
 - macOS: `~/Library/Application Support/wasync`
-- Linux: `$XDG_CONFIG_HOME/wasync` or `~/.config/wasync`
-- Windows Setup/ZIP: `%APPDATA%\wasync`
+- Linux: `$XDG_DATA_HOME/wasync` or `~/.local/share/wasync`
+- Windows Setup/ZIP: `%LOCALAPPDATA%\wasync`
 - Windows Microsoft Store build: `%USERPROFILE%\.wasync` (see
   [Store archive location and migration](windows.md#store-archive-location-and-migration))
 
+The **Storage** section of the Set up page says where it is, and **Show folder** opens it in
+Finder, File Explorer or your file manager.
+
 Override it using `WASYNC_DATA_DIR` or the global `--data-dir` flag; flags win.
 Global flags precede the command.
+
+### Moving from an older version's folder
+
+Versions before this one kept the data in `%APPDATA%\wasync` on Windows, which Windows copies
+between computers on managed profiles, and in `$XDG_CONFIG_HOME/wasync` (`~/.config/wasync`) on
+Linux, which is meant for settings. The first time wasync starts after the update (`wasync
+setup`, `wasync serve`, the login item, the terminal UI or a command such as `wasync status`), it
+moves the data to the new folder by itself; until then, read-only queries and agents keep reading
+the old one:
+
+1. It waits until no other wasync uses the old folder, then holds it so none can start.
+2. It copies everything to a temporary folder beside the new one and checks the copy: every
+   file and folder is there with its size, nothing changed in the old folder meanwhile, and each
+   SQLite database passes `PRAGMA integrity_check`.
+3. Only then does the copy become the new folder. The old one is renamed to
+   `wasync.moved-DATE` with a note, `MOVED-TO-NEW-FOLDER.txt`, saying where the data went, and
+   the new folder gets a note, `OLD-FOLDER-KEPT.txt`, saying where the old one is. On Windows it
+   goes to `%LOCALAPPDATA%\wasync.moved-DATE`, so it no longer roams between computers; if it
+   cannot be moved there, it stays beside where it was and wasync says so. On Linux it stays
+   beside where it was. Delete it once everything works.
+
+If anything fails, wasync says why, removes the copy and keeps using the old folder as it was;
+the next start tries again. A login item or script that still passes the old folder with
+`--data-dir` (or `WASYNC_DATA_DIR`) keeps working: naming either default folder means the one in
+use. Any other `--data-dir` or `WASYNC_DATA_DIR` is never moved. macOS and the Microsoft Store
+edition keep their folders, so nothing moves there.
 
 ```sh
 wasync --data-dir "$PWD/.local/wasync" serve

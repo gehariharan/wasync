@@ -24,6 +24,7 @@ import (
 	"github.com/gehariharan/wasync/internal/approval"
 	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/avatars"
+	"github.com/gehariharan/wasync/internal/datadir"
 	"github.com/gehariharan/wasync/internal/humancheck"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/prefs"
@@ -150,6 +151,9 @@ type Owner struct {
 	Unlink func(context.Context) error
 	// Stop shuts the owner down cleanly.
 	Stop func()
+	// ShowFolder opens a folder in the file manager; nil uses the system's
+	// (datadir.Show).
+	ShowFolder func(dir string) error
 	// Update checks for and installs a newer wasync; nil when this owner cannot.
 	Update Updater
 	// Pictures fetches a chat's profile picture from WhatsApp; nil while there
@@ -180,6 +184,10 @@ func StartOwner(o Owner) (*Server, error) {
 	h.setup, h.service, h.serviceSpec, h.axiPath, h.agentEnv = o.Setup, o.Service, o.ServiceSpec, o.AxiPath, o.AgentConnect
 	h.info, h.paired, h.unlink, h.stop = o.Info, o.Paired, o.Unlink, o.Stop
 	h.update = o.Update
+	h.showFolder = o.ShowFolder
+	if h.showFolder == nil {
+		h.showFolder = datadir.Show
+	}
 	h.prefs, h.phoneOf = prefs.Open(dir), o.PhoneOf
 	h.avatars = avatars.New(dir, o.Pictures)
 	{ // Policy configuration is available even when the media owner is offline.
@@ -240,6 +248,7 @@ type handler struct {
 	unlink           func(context.Context) error
 	stop             func()
 	update           Updater
+	showFolder       func(string) error
 	approveToken     string
 	syncer           whatsapp.Syncer
 	approvals        *approval.Queue

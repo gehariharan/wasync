@@ -64,7 +64,7 @@ func (a *App) runSend(ctx context.Context, cfg config.Config, args []string) (re
 	if err := localfs.EnsureDir(cfg.DataDir); err != nil {
 		return err
 	}
-	lock, err := processlock.Acquire(filepath.Join(cfg.DataDir, "device.lock"))
+	lock, err := acquireData(cfg.DataDir)
 	if errors.Is(err, processlock.ErrBusy) {
 		return a.sendThroughOwner(ctx, cfg, in)
 	}

@@ -33,7 +33,7 @@ type Host struct {
 	Wasync string
 	// App is the app's own program; wasync's start-at-login opens it.
 	App string
-	// Config holds the data directory and the local API address.
+	// Config holds the data directory and the local API address; see DataDir.
 	Config config.Config
 	// Log receives what the wasync the app started says for a person.
 	Log io.Writer
@@ -88,17 +88,28 @@ func (h *Host) Ensure(ctx context.Context) (own bool, err error) {
 	c := h.child
 	h.mu.Unlock()
 	if c == nil || !c.alive() {
-		if st := h.CLI.Status(ctx, h.Config); st.Running {
+		if st := h.CLI.Status(ctx, h.config()); st.Running {
 			return h.useOther(), nil
 		}
 		if c, err = h.start(); err != nil {
 			return false, err
 		}
 	}
-	if err = h.waitReady(ctx, c); err != nil && !c.alive() && h.CLI.Status(ctx, h.Config).Running {
+	if err = h.waitReady(ctx, c); err != nil && !c.alive() && h.CLI.Status(ctx, h.config()).Running {
 		return h.useOther(), nil
 	}
 	return true, err
+}
+
+// DataDir is the data directory in use. It follows a move of the data out of
+// the folder earlier versions used that another wasync finishes after the
+// app started.
+func (h *Host) DataDir() string { return config.Resolve(h.Config.DataDir) }
+
+func (h *Host) config() config.Config {
+	c := h.Config
+	c.DataDir = h.DataDir()
+	return c
 }
 
 // useOther notes that another wasync holds the data directory, so no failed
@@ -149,7 +160,7 @@ func (h *Host) start() (*child, error) {
 	if h.child != nil && h.child.alive() {
 		return h.child, nil
 	}
-	cmd := h.command(h.Wasync, "--data-dir", h.Config.DataDir, "--api-addr", h.Config.APIAddr, "setup", "--app")
+	cmd := h.command(h.Wasync, "--data-dir", h.DataDir(), "--api-addr", h.Config.APIAddr, "setup", "--app")
 	cmd.Env = append(cmd.Environ(), cli.DesktopAppEnv+"="+h.App)
 	cmd.Stderr = h.Log
 	stdin, err := cmd.StdinPipe()
@@ -216,7 +227,7 @@ func (h *Host) exited(c *child, ran time.Duration) {
 		h.lastExit, h.failures = "", 0
 		quitting := h.quitting
 		h.mu.Unlock()
-		if !quitting && h.OnUpdate != nil && update.Pending(h.Config.DataDir) {
+		if !quitting && h.OnUpdate != nil && update.Pending(h.DataDir()) {
 			h.OnUpdate()
 		}
 		close(c.done)
@@ -304,10 +315,10 @@ func (h *Host) StartLink(ctx context.Context) (string, error) {
 // The First open screen itself belongs to the setup pages; until they show
 // it, this opens setup.
 func (h *Host) StartPage(ctx context.Context) string {
-	if pending, err := firstopen.Pending(h.Config.DataDir); err != nil || pending {
+	if pending, err := firstopen.Pending(h.DataDir()); err != nil || pending {
 		return "setup"
 	}
-	if st := h.CLI.Status(ctx, h.Config); st.Paired == nil || !*st.Paired {
+	if st := h.CLI.Status(ctx, h.config()); st.Paired == nil || !*st.Paired {
 		return "setup"
 	}
 	return "chats"
@@ -319,7 +330,7 @@ func (h *Host) Status(ctx context.Context) string {
 	own := h.child != nil && h.child.alive()
 	lastExit := h.lastExit
 	h.mu.Unlock()
-	return Describe(h.CLI.Status(ctx, h.Config), own, lastExit)
+	return Describe(h.CLI.Status(ctx, h.config()), own, lastExit)
 }
 
 // Describe says in a few words how wasync is doing.

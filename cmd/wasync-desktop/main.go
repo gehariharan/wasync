@@ -12,6 +12,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"errors"
@@ -90,22 +91,20 @@ func run() error {
 	if *wasync == "" {
 		*wasync = filepath.Join(filepath.Dir(self), wasyncName())
 	}
-	if err = localfs.EnsureDir(cfg.DataDir); err != nil {
-		return err
-	}
-	logFile, err := localfs.OpenFile(filepath.Join(cfg.DataDir, "desktop.log"))
+	cfg, logFile, err := openData(context.Background(), cfg)
 	if err != nil {
 		return err
 	}
-	defer logFile.Close()
-	if _, err = logFile.Seek(0, io.SeekEnd); err != nil {
-		return err
+	logOut := &logSink{w: os.Stderr}
+	if logFile != nil {
+		defer logFile.Close()
+		logOut.w = logFile
 	}
-	log := slog.New(slog.NewTextHandler(logFile, nil))
+	log := slog.New(slog.NewTextHandler(logOut, nil))
 	log.Info("wasync app starting", "version", buildinfo.Version, "data_dir", cfg.DataDir, "background", *background)
 
-	host := &desktop.Host{Wasync: *wasync, App: self, Config: cfg, Log: logFile, CLI: &cli.App{Out: io.Discard, Err: logFile}, Command: wasyncCommand}
-	d := &desktopApp{host: host, log: log}
+	host := &desktop.Host{Wasync: *wasync, App: self, Config: cfg, Log: logOut, CLI: &cli.App{Out: io.Discard, Err: logOut}, Command: wasyncCommand}
+	d := &desktopApp{host: host, log: log, logOut: logOut, held: logFile == nil}
 	host.OnUpdate = func() {
 		log.Info("wasync stopped to install an update; the update opens the app again")
 		d.app.Quit()
@@ -113,9 +112,81 @@ func run() error {
 	return d.run(*background)
 }
 
+// openData moves the data out of the folder earlier versions used, as every
+// wasync does before it opens anything there, and opens the app's log in the
+// folder in use, starting with what the move did. While another wasync holds
+// the old folder, which may be moving it, nothing is opened there and the log
+// file is nil: this app then only reaches that wasync, or is a second copy
+// that hands over to the first.
+func openData(ctx context.Context, cfg config.Config) (config.Config, *os.File, error) {
+	var report bytes.Buffer
+	dir, held := cli.MoveData(ctx, cfg.DataDir, &report)
+	cfg.DataDir = dir
+	if held {
+		return cfg, nil, nil
+	}
+	if err := localfs.EnsureDir(cfg.DataDir); err != nil {
+		return cfg, nil, err
+	}
+	logFile, err := localfs.OpenFile(filepath.Join(cfg.DataDir, "desktop.log"))
+	if err != nil {
+		return cfg, nil, err
+	}
+	if _, err = logFile.Seek(0, io.SeekEnd); err == nil {
+		_, err = logFile.Write(report.Bytes())
+	}
+	if err != nil {
+		return cfg, nil, errors.Join(err, logFile.Close())
+	}
+	return cfg, logFile, nil
+}
+
+// heldWait bounds how long the app waits for another wasync to let go of
+// the old data folder before it opens its log there.
+const heldWait = 5 * time.Minute
+
+// logSink is where the app logs: stderr until its log file is open.
+type logSink struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func (s *logSink) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
+}
+
+func (s *logSink) use(w io.Writer) {
+	s.mu.Lock()
+	s.w = w
+	s.mu.Unlock()
+}
+
+// openDataWhenFree opens the app's log once no other wasync holds the old
+// data folder, moving the data first where that is still to do, as openData
+// does. It gives up at until, returning no file.
+func openDataWhenFree(ctx context.Context, cfg config.Config, until time.Time) (*os.File, error) {
+	for {
+		_, f, err := openData(ctx, cfg)
+		if err != nil || f != nil || !time.Now().Before(until) {
+			return f, err
+		}
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
 type desktopApp struct {
-	host *desktop.Host
-	log  *slog.Logger
+	host   *desktop.Host
+	log    *slog.Logger
+	logOut *logSink
+	// held is set when another wasync held the old data folder as the app
+	// started, so its log is not open yet.
+	held bool
 	app  *application.App
 
 	mu     sync.Mutex
@@ -175,6 +246,9 @@ func (d *desktopApp) run(background bool) error {
 	d.trayIcon()
 	d.app.Event.OnApplicationEvent(events.Mac.ApplicationShouldHandleReopen, func(*application.ApplicationEvent) { d.openWindow() })
 	d.app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		if d.held {
+			go d.openLog()
+		}
 		go d.keepStatus()
 		if background {
 			go func() {
@@ -187,6 +261,23 @@ func (d *desktopApp) run(background bool) error {
 		d.openWindow()
 	})
 	return d.app.Run()
+}
+
+// openLog opens the app's log once the wasync that held the old data folder
+// as the app started lets go of it. Only the one copy of the app that runs
+// does this.
+func (d *desktopApp) openLog() {
+	f, err := openDataWhenFree(context.Background(), d.host.Config, time.Now().Add(heldWait))
+	if err != nil {
+		d.log.Warn("opening the app's log", "error", err)
+		return
+	}
+	if f == nil {
+		d.log.Warn("another wasync still holds the data folder; the app logs here until it is opened again", "data_dir", d.host.DataDir())
+		return
+	}
+	d.logOut.use(f)
+	d.log.Info("wasync app log opened", "data_dir", d.host.DataDir())
 }
 
 // trayIcon adds the menu-bar (macOS) or notification-area (Windows) icon.
