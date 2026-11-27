@@ -520,7 +520,13 @@ func TestCodexPlugin(t *testing.T) {
 	}
 	var ran []string
 	e.Run = func(_ context.Context, env []string, name string, args ...string) ([]byte, error) {
-		ran = append(ran, strings.Join(env, " ")+" "+filepath.Base(name)+" "+strings.Join(args, " "))
+		var kept []string
+		for _, v := range env {
+			if !strings.HasPrefix(v, "PATH=") { // TestCodexPluginRunsWithLoginItemPath covers PATH
+				kept = append(kept, v)
+			}
+		}
+		ran = append(ran, strings.Join(kept, " ")+" "+filepath.Base(name)+" "+strings.Join(args, " "))
 		return nil, nil
 	}
 	data := t.TempDir()
@@ -566,5 +572,44 @@ func TestNoCodexCommandMeansNoPlugin(t *testing.T) {
 	}
 	if m, pl, err := e.InstallCodexPlugin(context.Background(), p); m || pl || err != nil {
 		t.Fatal("installed without codex")
+	}
+}
+
+// A login item starts wasync with a bare PATH. codex installed by npm or
+// Homebrew is a "#!/usr/bin/env node" script, so the folder wasync found
+// codex in (and the other package-manager folders) must be on codex's PATH,
+// or env cannot find node.
+func TestCodexPluginRunsWithLoginItemPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shebang scripts")
+	}
+	e := testEnv(t)
+	bin := filepath.Join(e.Home, "brew", "bin")
+	ran := filepath.Join(e.Home, "ran")
+	writeExec := func(path, content string) {
+		write(t, path, content)
+		if err := os.Chmod(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeExec(filepath.Join(bin, "fakenode"), "#!/bin/sh\necho \"$@\" >> "+ran+"\n")
+	writeExec(filepath.Join(bin, "codex"), "#!/usr/bin/env fakenode\n")
+	e.ExtraPath = []string{bin}
+	e.Getenv = func(name string) string {
+		if name == "PATH" {
+			return "/usr/bin:/bin"
+		}
+		return ""
+	}
+	e.Run = runCommand
+	p, err := e.PlanCodexPlugin(t.TempDir())
+	if err != nil || p.Codex == "" {
+		t.Fatalf("%+v %v", p, err)
+	}
+	if _, _, err := e.InstallCodexPlugin(context.Background(), p); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, ran); !strings.Contains(got, "plugin marketplace add") || !strings.Contains(got, "plugin add whatsapp@wasync") {
+		t.Fatalf("codex ran with %q", got)
 	}
 }

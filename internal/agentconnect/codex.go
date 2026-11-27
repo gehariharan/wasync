@@ -73,7 +73,7 @@ func (e Env) codex(ctx context.Context, path string, args ...string) error {
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return err
 	}
-	out, err := e.Run(ctx, []string{"CODEX_HOME=" + home}, path, args...)
+	out, err := e.Run(ctx, []string{"CODEX_HOME=" + home, "PATH=" + e.childPath(path)}, path, args...)
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if len(msg) > 300 {
@@ -82,6 +82,29 @@ func (e Env) codex(ctx context.Context, path string, args ...string) error {
 		return fmt.Errorf("codex %s: %v: %s", strings.Join(args, " "), err, msg)
 	}
 	return nil
+}
+
+// childPath is the PATH a program found by Command runs with: wasync's own
+// PATH, then the program's folder and ExtraPath. A login item's PATH lacks
+// the package-manager folders, and codex from npm or Homebrew is a
+// "#!/usr/bin/env node" script that needs node from that same folder.
+func (e Env) childPath(program string) string {
+	var dirs []string
+	seen := map[string]bool{"": true}
+	add := func(dir string) {
+		if !seen[dir] {
+			seen[dir] = true
+			dirs = append(dirs, dir)
+		}
+	}
+	for _, dir := range filepath.SplitList(e.getenv("PATH")) {
+		add(dir)
+	}
+	add(filepath.Dir(program))
+	for _, dir := range e.ExtraPath {
+		add(dir)
+	}
+	return strings.Join(dirs, string(os.PathListSeparator))
 }
 
 // InstallCodexPlugin carries out p. added says what it added, so removing
