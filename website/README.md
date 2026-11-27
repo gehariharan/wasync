@@ -24,8 +24,7 @@ its `www` host; the rest of the site is served by its own Worker. The Worker
 Everything else is a static file from `public/`. Release information comes from
 the public GitHub Releases API and is cached for two minutes, so new releases
 appear without redeploying. No credentials, WhatsApp sessions, archives or user
-data are used by this website. If GitHub's anonymous rate limit is ever reached,
-add a read-only `GITHUB_TOKEN` secret to the Worker.
+data are used by this website.
 
 The pages use the app's own design system. `npm run design` copies `tokens.css`,
 `components.css`, the bundled Inter font and the logo from

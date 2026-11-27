@@ -1,13 +1,11 @@
 // Shared by /wasync/ (landing) and /wasync/installoptions/ (install options).
 // Every link works without this script: /wasync/download/<key> is a redirect the
 // Worker resolves to the newest release file.
-import { archFrom, forcedPlatform, megabytes, osFromUA, shortVersion } from "./detect.mjs";
+import { archFrom, chipFor, megabytes, osFromUA, shortVersion } from "./detect.mjs";
 
 const base = document.body.dataset.base || "";
 
 async function detect() {
-  const forced = forcedPlatform(location.search);
-  if (forced) return forced;
   const ua = navigator.userAgent;
   const os = osFromUA(ua, navigator.maxTouchPoints || 0);
   let hints = null;
@@ -29,13 +27,15 @@ function selectTab(os) {
   document.querySelectorAll("[data-panel]").forEach(panel => { panel.hidden = panel.dataset.panel !== os; });
 }
 
-function show({ os, arch }) {
+function show(visitor) {
+  const { os, arch } = visitor;
   document.body.dataset.os = os;
   document.body.dataset.arch = arch;
   document.querySelectorAll("[data-for]").forEach(el => { el.hidden = !el.dataset.for.split(" ").includes(os); });
-  document.querySelectorAll("[data-arch-for]").forEach(el => { el.hidden = !el.dataset.archFor.split(" ").includes(arch); });
+  const macChip = chipFor("mac", visitor);
+  document.querySelectorAll("[data-arch-for]").forEach(el => { el.hidden = !el.dataset.archFor.split(" ").includes(macChip); });
   if (os !== "mobile") selectTab(os);
-  if (arch === "arm64") {
+  if (chipFor("linux", visitor) === "arm64") {
     const button = document.querySelector("[data-linux-btn]");
     if (button) { button.href = `${base}download/linux-arm64`; button.dataset.dl = "linux-arm64"; }
     const meta = document.querySelector("[data-linux-meta]");
@@ -80,7 +80,8 @@ function fill(release) {
     });
     document.querySelectorAll(`[data-dl="${key}"]`).forEach(a => { a.title = item.file; });
   }
-  const linuxKey = document.body.dataset.arch === "arm64" ? "linux-arm64" : "linux-amd64";
+  const { os, arch } = document.body.dataset;
+  const linuxKey = chipFor("linux", { os, arch }) === "arm64" ? "linux-arm64" : "linux-amd64";
   const linux = release.downloads[linuxKey];
   if (linux) {
     document.querySelectorAll("[data-linux-file]").forEach(el => { el.textContent = linux.file; });

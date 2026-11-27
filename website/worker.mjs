@@ -42,7 +42,6 @@ function describe(releases) {
   }
   return {
     version,
-    prerelease: Boolean(release.prerelease),
     published_at: release.published_at,
     html_url: `${github}/releases/tag/v${version}`,
     checksums_url: `${github}/releases/download/v${version}/checksums.txt`,
@@ -53,15 +52,13 @@ function describe(releases) {
 // The release description, or null while no release has the app installers.
 // Both answers are cached for two minutes, so GitHub sees at most one request
 // per data centre in that time.
-async function releaseInfo(request, env, context) {
+async function releaseInfo(request, context) {
   const cacheURL = new URL(`${base}/releases.json`, request.url);
   cacheURL.hostname = "gehariharan.com";
   const cacheKey = new Request(cacheURL);
   const cached = await caches.default.match(cacheKey);
   if (cached) return (await cached.json()).release;
   const headers = { Accept: "application/vnd.github+json", "User-Agent": "wasync-site" };
-  // Optional read-only token, if GitHub's anonymous limit is ever reached.
-  if (env.GITHUB_TOKEN) headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
   const response = await fetch(`https://api.github.com/repos/${repository}/releases?per_page=20`, {
     headers, signal: AbortSignal.timeout(10000),
   });
@@ -87,7 +84,7 @@ export default {
       return new Response("Method not allowed", { status: 405, headers: { Allow: "GET, HEAD" } });
     }
     try {
-      const info = await releaseInfo(request, env, context);
+      const info = await releaseInfo(request, context);
       if (download) {
         const target = info?.downloads[key]?.url || `${github}/releases`;
         return new Response(null, { status: 302, headers: { Location: target, "Cache-Control": "public, max-age=60" } });

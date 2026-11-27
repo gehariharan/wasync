@@ -1,7 +1,7 @@
 // Which download the pages offer for real browsers' identities.
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { archFrom, forcedPlatform, megabytes, osFromUA, shortVersion } from "../public/wasync/detect.mjs";
+import { archFrom, chipFor, megabytes, osFromUA, shortVersion } from "../public/wasync/detect.mjs";
 
 const ua = {
   macChrome: "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/158.0.0.0 Safari/537.36",
@@ -50,12 +50,17 @@ test("Linux reads the chip from the user agent; Windows on Arm is reported", () 
   assert.equal(archFrom("windows", ua.windowsEdge, null), "unknown");
 });
 
-test("support links can force a view, and nothing else", () => {
-  assert.deepEqual(forcedPlatform("?platform=windows"), { os: "windows", arch: "unknown" });
-  assert.deepEqual(forcedPlatform("?platform=mac-amd64"), { os: "mac", arch: "amd64" });
-  assert.equal(forcedPlatform("?platform=solaris"), null);
-  assert.equal(forcedPlatform("?platform=mac-<script>"), null);
-  assert.equal(forcedPlatform(""), null);
+test("a chip detected on one system is not assumed for another system's tile", () => {
+  const windowsX64 = { os: "windows", arch: archFrom("windows", ua.windowsEdge, { platform: "Windows", architecture: "x86", bitness: "64" }) };
+  assert.equal(windowsX64.arch, "amd64");
+  // A Windows visitor opening the Mac tile gets both Mac downloads, not Intel only.
+  assert.equal(chipFor("mac", windowsX64), "unknown");
+  assert.equal(chipFor("windows", windowsX64), "amd64");
+  const appleSilicon = { os: "mac", arch: archFrom("mac", ua.macChrome, { platform: "macOS", architecture: "arm", bitness: "64" }) };
+  assert.equal(chipFor("mac", appleSilicon), "arm64");
+  // An Apple silicon Mac opening the Linux tile gets the x86-64 default, not ARM64.
+  assert.equal(chipFor("linux", appleSilicon), "unknown");
+  assert.equal(chipFor("linux", { os: "linux", arch: archFrom("linux", ua.linuxArm, null) }), "arm64");
 });
 
 test("versions and sizes read naturally", () => {

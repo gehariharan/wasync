@@ -34,11 +34,10 @@ export function archFrom(os, ua, hints) {
   return "unknown";
 }
 
-// "?platform=windows" or "?platform=mac-amd64" forces a view, for support links.
-export function forcedPlatform(search) {
-  const value = new URLSearchParams(search).get("platform");
-  const match = /^(mac|windows|linux|mobile|any)(?:-(arm64|amd64))?$/.exec(value || "");
-  return match ? { os: match[1], arch: match[2] || "unknown" } : null;
+// The chip to assume for one platform's tile. The visitor's chip says nothing
+// about another system, so other tiles treat it as unknown.
+export function chipFor(tile, visitor) {
+  return tile === visitor.os ? visitor.arch : "unknown";
 }
 
 // "0.1.0-preview.20261126105548" reads as "0.1.0 preview".

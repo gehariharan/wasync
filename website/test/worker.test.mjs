@@ -121,11 +121,3 @@ test("only GET and HEAD reach the release routes", async () => {
   assert.equal(response.status, 405);
   assert.equal(githubCalls.length, 0);
 });
-
-test("an optional GitHub token is sent when configured", async () => {
-  await get("/wasync/releases.json", { env: { GITHUB_TOKEN: "read-only-test-token" } });
-  assert.equal(githubCalls[0].init.headers.Authorization, "Bearer read-only-test-token");
-  cache.clear();
-  await get("/wasync/releases.json");
-  assert.equal(githubCalls[1].init.headers.Authorization, undefined);
-});
