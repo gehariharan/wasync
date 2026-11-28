@@ -6,7 +6,9 @@ The pages at `https://gehariharan.com/wasync/`:
   visitor's own system already selected, and its download button under them.
   On a Mac whose browser does not report the chip (Safari, Firefox), the Mac tile
   offers Apple silicon and Intel. Phones get a "send the link to my computer"
-  button instead.
+  button instead. Below the four feature notes, app screenshots from
+  `public/wasync/img/` (WebP in light and dark, with a PNG fallback) show the
+  app with sample chats.
 - `/wasync/installoptions/` lists every download with its size, install steps,
   Homebrew, system requirements, checksums and the full "wasync is not WhatsApp"
   note.
@@ -43,7 +45,7 @@ From `website/`:
 
 ```sh
 npm ci
-npm test        # the Worker's routes and the platform detection
+npm test        # the Worker's routes, the platform detection and the screenshots
 npm run dev     # serves http://localhost:8787/wasync/ with the real Worker
 npm run check   # builds exactly what a deploy uploads, and uploads nothing
 ```
