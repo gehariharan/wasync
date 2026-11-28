@@ -205,16 +205,23 @@ func TestConnectCodexWritesItsSettingsOnlyAfterThePersonConfirms(t *testing.T) {
 		t.Fatal("the secret reached the page")
 	}
 
-	// Waiting, then the agent's first call shows as its last call.
+	// Ready, not pending, until the agent's first call shows it in use.
 	row := connections(t, c)["codex"]
-	if !row.Connected || row.Credential != "active" || !row.InSettings || row.LastCall != nil || !row.CodexPlugin || !strings.Contains(row.Status, "Waiting") {
+	ready := "Ready. Ask ChatGPT or Codex about your WhatsApp to try it."
+	if !row.Connected || row.Credential != "active" || !row.InSettings || row.LastCall != nil || !row.CodexPlugin || row.Status != ready {
 		t.Fatalf("row after connect: %+v", row)
+	}
+	if _, page, _ := c.get("/ui/setup/agent?app=codex"); !strings.Contains(page, ready) || !strings.Contains(page, "Not seeing it?") || strings.Contains(page, "Waiting for") {
+		t.Fatalf("the connected app does not read as ready:\n%s", page)
 	}
 	if code, body := f.do(t, "GET", "/api/v1/chats", secret, nil); code != 200 {
 		t.Fatalf("agent call: %d %s", code, body)
 	}
-	if row = connections(t, c)["codex"]; row.LastCall == nil || !strings.Contains(row.Status, "last call") {
+	if row = connections(t, c)["codex"]; row.LastCall == nil || !strings.HasPrefix(row.Status, "In use, last used ") {
 		t.Fatalf("row after a call: %+v", row)
+	}
+	if _, page, _ := c.get("/ui/setup/agent?app=codex"); !strings.Contains(page, "In use, last used ") || strings.Contains(page, "Not seeing it?") {
+		t.Fatalf("the used app does not read as in use:\n%s", page)
 	}
 	if _, _, hd := c.post("/ui/setup/connect", form); !strings.Contains(hd.Get("Location"), "n=agentalready") {
 		t.Fatalf("second connect: %v", hd)

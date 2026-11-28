@@ -84,6 +84,23 @@ func TestOnlyChooseChatsFitsTheWindow(t *testing.T) {
 	}
 }
 
+// Every setup step says plainly how to go on, beside the button that does it.
+func TestEverySetupStepSaysHowToContinue(t *testing.T) {
+	f := setupAccess(t)
+	c := newPageClient(t, f)
+	c.get(linkPath(t, f))
+	for path, want := range map[string]string{
+		"/ui/setup/link":    "Click Next to continue.",
+		"/ui/setup/chats":   "Click Next to continue.",
+		"/ui/setup/running": "Click Next to continue.",
+		"/ui/setup/agent":   "Connect an app, or skip for now.",
+	} {
+		if _, page, _ := c.get(path); !strings.Contains(page, want) {
+			t.Errorf("%s does not say %q", path, want)
+		}
+	}
+}
+
 func TestTheRailMarksTheCurrentPageAndCountsWaitingRequests(t *testing.T) {
 	f := setupAccess(t)
 	c := newPageClient(t, f)

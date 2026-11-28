@@ -59,16 +59,18 @@ type Agent struct {
 	Kind Kind
 	// Title is the app's name on screen.
 	Title string
-	// Next is what the person does after connecting, since wasync never
-	// quits another app.
+	// Ask names the app in "Ask … about your WhatsApp to try it".
+	Ask string
+	// Next is what the person does when the app does not see wasync yet,
+	// since wasync never quits another app.
 	Next string
 }
 
 // Agents lists the apps in the order they are offered.
 var Agents = []Agent{
-	{Kind: Codex, Title: "ChatGPT & Codex", Next: "Quit and reopen the ChatGPT or Codex app (or start a new codex session) so it loads the WhatsApp tools."},
-	{Kind: ClaudeCode, Title: "Claude Code", Next: "Start a new Claude Code session so it loads the WhatsApp tools."},
-	{Kind: ClaudeDesktop, Title: "Claude Desktop", Next: "Quit Claude Desktop completely and open it again so it loads the WhatsApp tools."},
+	{Kind: Codex, Title: "ChatGPT & Codex", Ask: "ChatGPT or Codex", Next: "Reopen the ChatGPT or Codex app, or start a new codex session."},
+	{Kind: ClaudeCode, Title: "Claude Code", Ask: "Claude Code", Next: "Start a new Claude Code session."},
+	{Kind: ClaudeDesktop, Title: "Claude Desktop", Ask: "Claude Desktop", Next: "Quit Claude Desktop completely and open it again."},
 }
 
 // Lookup returns the agent of this kind.

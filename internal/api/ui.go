@@ -249,7 +249,7 @@ var notices = map[string]struct {
 	"exists":     {"An agent with that name already exists. Choose another name, or revoke it first.", false},
 	"replace":    {"wasync-axi already has a different saved credential. Tick the box to replace it, or choose another place.", false},
 	"badname":    {"The name must be 1 to 32 characters: a to z, 0 to 9 and dashes.", false},
-	"connected":  {"Connected. The credential was saved where wasync-axi reads it and is not shown anywhere.", true},
+	"connected":  {"Connected. wasync-axi has its credential.", true},
 	"loginon":    {"On. wasync starts at every login.", true},
 	"loginhere":  {"Start-at-login is about the computer running wasync. Change it there.", false},
 	"loginoff":   {"wasync will no longer start by itself when you log in.", true},

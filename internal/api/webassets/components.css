@@ -472,7 +472,7 @@ body.setup-shell { min-height: 100vh; min-height: 100dvh; display: flex; flex-di
 }
 .topbar .brand { display: flex; align-items: center; gap: var(--s2); font-weight: 700; font-size: var(--fs-lg); color: var(--fg); text-decoration: none; }
 .topbar .brand img { width: 1.75rem; height: 1.75rem; }
-body.setup-shell main { flex: 1; max-width: 46rem; }
+body.setup-shell main { flex: 1; max-width: 46rem; padding-bottom: var(--s4); }
 body.setup-shell main.wide { max-width: var(--wide-w); }
 .stepper {
   display: flex;
@@ -518,6 +518,13 @@ body.refreshing .stage { view-transition-name: none; }
   border-top: 1px solid var(--line);
 }
 .step-foot form { margin: 0; }
+/* the way forward: a short hint beside the button that continues */
+.foot-go { display: flex; align-items: center; gap: var(--s3); }
+.foot-go .btn, .foot-go button { margin: 0; }
+/* on the setup steps the footer stays at the bottom of the window, so the
+   button that continues never needs scrolling to */
+body.setup-shell .step-foot { position: sticky; bottom: 0; z-index: 1; padding-bottom: var(--s3); background: var(--bg); }
+.center .status-line { justify-content: center; }
 .step-foot button, .step-foot .btn { margin: 0; }
 .step-foot .mut { font-size: var(--fs-sm); }
 
@@ -635,6 +642,7 @@ body.refreshing .stage { view-transition-name: none; }
 .selected-foot label input { margin-top: calc((var(--lh) * var(--fs) - 1rem) / 2); }
 .selected-foot label .sub { grid-column: 2; font-weight: 400; }
 .selected-foot .btn, .selected-foot button.go { width: 100%; margin: 0; }
+.selected-foot .next-hint { margin: 0 0 var(--s2); text-align: right; }
 .selected-foot .row-btns { display: flex; gap: var(--s2); align-items: center; justify-content: space-between; }
 .selected-foot .row-btns .btn, .selected-foot .row-btns button { width: auto; white-space: nowrap; }
 /* the chat list keeps its scroll bar in view, also where the system hides it */

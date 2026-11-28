@@ -190,8 +190,8 @@ var connectTemplate = template.Must(template.New("connect").Funcs(uiFuncs).Parse
 <section class="card center">
 <div class="done-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
 <h2>{{template "agenticon" .Agent}} {{.Title}} is connected</h2>
-{{if .LastCall}}<p>Last call {{$.Ago}}. {{.Title}} can use the chats you sync.</p>{{else if and (eq .Credential "active") .InSettings}}<p class="waiting">Waiting for {{.Title}} to call wasync…</p><p>{{.Next}}</p>{{else}}<p class="bad">{{.Status}}</p>{{end}}
-<p class="mut">It may read, reply and react in every chat you sync, now and later; editing stays off. To message a chat you don't sync, or a new number, it asks under Approvals.</p>
+{{if and (eq .Credential "active") .InSettings}}<p class="status-line" role="status">{{.Status}}</p>{{if not .LastCall}}<p class="sub">Not seeing it? {{.Next}}</p>{{end}}{{else}}<p class="bad">{{.Status}}</p>{{end}}
+<p class="sub">It can read, reply and react in chats you sync. Anything else asks under Approvals.</p>
 <form method="post" action="/ui/setup/disconnect" class="btn-row center"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Agent}}"><input type="hidden" name="back" value="{{$.Back}}"><button>Disconnect</button></form>
 </section>
 {{else}}
@@ -221,7 +221,7 @@ var connectTemplate = template.Must(template.New("connect").Funcs(uiFuncs).Parse
 {{else}}<p class="notice bad">This computer cannot show a system confirmation, so agents cannot be connected here.</p>{{end}}
 <p>Then add this to the app's tool servers:</p><pre>{{.Block}}</pre>
 </section>{{end}}
-{{if .InSetup}}<form method="post" action="/ui/setup/finish" class="step-foot"><input type="hidden" name="csrf" value="{{.CSRF}}"><a class="btn ghost" href="/ui/setup/running">← Back</a>{{if .Connected}}<button class="go">Open wasync</button>{{else}}<button class="ghost">Skip for now</button>{{end}}</form>
+{{if .InSetup}}<form method="post" action="/ui/setup/finish" class="step-foot"><input type="hidden" name="csrf" value="{{.CSRF}}"><a class="btn ghost" href="/ui/setup/running">← Back</a><span class="foot-go">{{if .Connected}}<span class="sub">Click Open wasync to finish.</span><button class="go">Open wasync</button>{{else}}<span class="sub">Connect an app, or skip for now.</span><button class="ghost">Skip for now</button>{{end}}</span></form>
 {{else}}<p><a href="/ui/agents">← Agents</a></p>{{end}}
 </div>
 </main></body></html>

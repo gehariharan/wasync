@@ -304,7 +304,7 @@ var pickTemplate = template.Must(template.New("pick").Funcs(uiFuncs).Parse(uiHea
 </ul>
 <div class="selected-foot">
 <label><input type="checkbox" name="save_media" value="on"{{if .SaveMedia}} checked{{end}}> Also save photos, videos and files<span class="sub">Untick to save text only.</span></label>
-{{if .InSetup}}<div class="row-btns"><a class="btn ghost" href="/ui/setup/link">← Back</a><button class="go" name="action" value="next">Next →</button></div>
+{{if .InSetup}}<p class="sub next-hint">Click Next to continue.</p><div class="row-btns"><a class="btn ghost" href="/ui/setup/link">← Back</a><button class="go" name="action" value="next">Next →</button></div>
 {{else}}<button class="go" name="action" value="done">Done</button>{{end}}
 </div>
 </aside>
