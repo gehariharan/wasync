@@ -13,7 +13,7 @@ assets="$(cd "$assets" && pwd)"
 : "${WASYNC_NOTARY_PROFILE:?Set the notarytool profile}"
 : "${WASYNC_SIGNING_KEYCHAIN:?Set the signing Keychain path}"
 work="$(mktemp -d)"
-trap 'result=$?; for m in "$work"/*-mount; do [[ -d "$m" ]] && hdiutil detach "$m" -quiet -force >/dev/null 2>&1; done; if [[ $result == 0 ]]; then rm -rf "$work"; else printf "Signing stopped; diagnostic files retained in %s\n" "$work" >&2; fi' EXIT
+trap 'result=$?; set +e; for m in "$work"/*-mount; do [[ -d "$m" ]] && hdiutil detach "$m" -quiet -force >/dev/null 2>&1 || true; done; if [[ $result == 0 ]]; then rm -rf "$work"; else printf "Signing stopped; diagnostic files retained in %s\n" "$work" >&2; fi; exit "$result"' EXIT
 
 # Unlock and use credentials in this same SSH session. Password input is handled
 # by security's terminal prompt, never an argument or a script variable.
