@@ -75,7 +75,7 @@ func TestAReplacementThatIsRefusedAgainStopsThere(t *testing.T) {
 
 // A "no" from the person is never asked again.
 func TestADeniedWriteIsNeverRetried(t *testing.T) {
-	for _, status := range []int{statusUserCanceled, statusAuthFailed, statusInteractionNotAllowed} {
+	for _, status := range []int{statusUserCanceled, statusAuthFailed} {
 		s := &script{adds: []int{statusDuplicate}, updates: []int{status}}
 		if err := setItem(s, "approve:a", legacy, "/d"); !errors.Is(err, ErrAccessDenied) || calls(s) != "add,update" {
 			t.Fatalf("status %d: %v %s", status, err, calls(s))
@@ -84,6 +84,22 @@ func TestADeniedWriteIsNeverRetried(t *testing.T) {
 	s := &script{adds: []int{statusDuplicate}, updates: []int{statusInvalidOwnerEdit}, removes: []int{statusUserCanceled}}
 	if err := setItem(s, "approve:a", legacy, "/d"); !errors.Is(err, ErrAccessDenied) || calls(s) != "add,update,remove" {
 		t.Fatalf("%v %s", err, calls(s))
+	}
+}
+
+// -25308: the Keychain is locked. wasync's calls never show a window, so this
+// says the Keychain is locked instead of reading as a refusal.
+func TestALockedKeychainIsNotARefusal(t *testing.T) {
+	s := &script{adds: []int{statusInteractionNotAllowed}}
+	if err := setItem(s, "approve:a", legacy, "/d"); !errors.Is(err, ErrLocked) || errors.Is(err, ErrAccessDenied) || calls(s) != "add" {
+		t.Fatalf("%v %s", err, calls(s))
+	}
+	s = &script{adds: []int{statusDuplicate}, updates: []int{statusInvalidOwnerEdit}, removes: []int{statusInteractionNotAllowed}}
+	if err := setItem(s, "approve:a", legacy, "/d"); !errors.Is(err, ErrLocked) || calls(s) != "add,update,remove" {
+		t.Fatalf("%v %s", err, calls(s))
+	}
+	if !errors.Is(readError(statusInteractionNotAllowed), ErrLocked) || !errors.Is(deleteError(statusInteractionNotAllowed), ErrLocked) {
+		t.Fatal("a locked Keychain must read as locked")
 	}
 }
 
@@ -99,10 +115,18 @@ func TestReadAndDeleteResultsMapToTheErrorsWasyncKnows(t *testing.T) {
 	if !errors.Is(readError(statusNotFound), ErrNotFound) {
 		t.Fatal("not found")
 	}
-	for _, status := range []int{statusUserCanceled, statusAuthFailed, statusInteractionNotAllowed} {
-		if !errors.Is(readError(status), ErrAccessDenied) || !errors.Is(deleteError(status), ErrAccessDenied) {
+	if !errors.Is(readError(statusUserCanceled), ErrAccessDenied) {
+		t.Fatal("a cancelled request is not a denial")
+	}
+	for _, status := range []int{statusUserCanceled, statusAuthFailed} {
+		if !errors.Is(deleteError(status), ErrAccessDenied) {
 			t.Fatalf("status %d is not a denial", status)
 		}
+	}
+	// With the Keychain's windows off, -25293 on a read means the item belongs
+	// to a program macOS would have asked the person about.
+	if err := readError(statusAuthFailed); !errors.Is(err, ErrForeignItem) || !strings.Contains(err.Error(), "-25293") {
+		t.Fatalf("auth failed: %v", err)
 	}
 	if err := readError(-25244); err == nil || errors.Is(err, ErrAccessDenied) || !strings.Contains(err.Error(), "-25244") {
 		t.Fatalf("%v", err)

@@ -70,7 +70,7 @@ func (a *App) runKeychain(cfg config.Config, args []string) error {
 	}
 	items, err := approvecred.Items()
 	if errors.Is(err, errors.ErrUnsupported) {
-		_, err = fmt.Fprintln(a.Out, "This computer keeps the approval credential in a private file, not a Keychain, so there is nothing to clean up.")
+		_, err = fmt.Fprintln(a.Out, "This wasync keeps the approval credential in a private file in the data directory, not the Keychain (only a signed macOS release uses the Keychain), so there is nothing to clean up.")
 		return err
 	}
 	if err != nil {

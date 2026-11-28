@@ -3,4 +3,4 @@
 package approvecred
 
 // platform has no Keychain here, so the credential stays a private file.
-func platform() Backend { return nil }
+func platform() (Backend, string) { return nil, "" }
