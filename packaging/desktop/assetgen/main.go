@@ -24,7 +24,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 
 	"github.com/leaanthony/dmg/icns"
 	"github.com/srwiley/oksvg"
@@ -287,18 +286,10 @@ func face(f *opentype.Font, size float64, scale int) font.Face {
 	return ff
 }
 
-// centred draws one line of text centred across the picture with its baseline at y.
-// The line must fit inside the window with a margin, so a long subtitle cannot clip.
+// centred draws text centred across the picture with its baseline at y.
 func centred(img draw.Image, f font.Face, c color.Color, text string, y int) {
-	if strings.Contains(text, "\n") {
-		log.Fatalf("disk image text must stay one line: %q", text)
-	}
 	d := &font.Drawer{Dst: img, Src: &image.Uniform{c}, Face: f}
 	width := d.MeasureString(text)
-	margin := fixed.I(img.Bounds().Dx() / 20) // 5% each side of the window
-	if width > fixed.I(img.Bounds().Dx())-margin*2 {
-		log.Fatalf("disk image text is wider than the window: %q", text)
-	}
 	d.Dot = fixed.Point26_6{X: (fixed.I(img.Bounds().Dx()) - width) / 2, Y: fixed.I(y)}
 	d.DrawString(text)
 }

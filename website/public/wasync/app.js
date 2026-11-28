@@ -2,7 +2,6 @@
 // Every link works without this script: /wasync/download/<key> is a redirect the
 // Worker resolves to the newest release file.
 import { archFrom, chipFor, megabytes, osFromUA, shortVersion } from "./detect.mjs";
-import { fillMacSteps } from "./mac-steps.mjs";
 
 const base = document.body.dataset.base || "";
 
@@ -118,7 +117,6 @@ function wireCopy() {
   }
 }
 
-fillMacSteps(document);
 wireCopy();
 wireTabs();
 detect().then(show).then(() => fetch(`${base}releases.json`))
