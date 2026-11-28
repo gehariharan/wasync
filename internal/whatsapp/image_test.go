@@ -110,7 +110,7 @@ func TestSendImageArrivesAsAnImageAndIsArchived(t *testing.T) {
 		height  uint32
 		caption string
 	}{
-		"file jpeg":       {SendInput{To: "123@g.us", File: path, Type: "image", Text: "Compare screen"}, jpg, "image/jpeg", 120, 80, "Compare screen"},
+		"file jpeg":       {SendInput{To: "123@g.us", File: path, Type: "image", Text: "Compare screen"}, jpg, "image/jpeg", 0, 0, "Compare screen"},
 		"bytes jpeg":      {SendInput{To: "123@g.us", Image: jpg, Type: "image", Text: "Compare screen"}, jpg, "image/jpeg", 120, 80, "Compare screen"},
 		"bytes png":       {SendInput{To: "123@g.us", Image: pngData, Type: "image", Text: "Compare screen"}, pngData, "image/png", 64, 96, "Compare screen"},
 		"uncaptioned png": {SendInput{To: "123@g.us", Image: pngData, Type: "image"}, pngData, "image/png", 64, 96, ""},
@@ -184,5 +184,30 @@ func TestSendImageAsDocumentStaysADocument(t *testing.T) {
 	}
 	if wa.mediaType != whatsmeow.MediaDocument || wa.sent.GetDocumentMessage().GetFileName() != "compare.png" {
 		t.Fatalf("%q %v", wa.mediaType, wa.sent)
+	}
+}
+
+func TestSendImageFileKeepsTheOwnerPathUnchecked(t *testing.T) {
+	c, _, _ := historyClient(t)
+	truncated := []byte{0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10}
+	path := filepath.Join(t.TempDir(), "partial.jpg")
+	if err := os.WriteFile(path, truncated, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wa := &fakeWhatsApp{}
+	if _, err := c.send(context.Background(), wa, ownJID, SendInput{To: "123@g.us", File: path, Type: "image"}); err != nil {
+		t.Fatal(err)
+	}
+	img := wa.sent.GetImageMessage()
+	if wa.mediaType != whatsmeow.MediaImage || img == nil || img.Caption == nil || img.Width != nil || img.Height != nil || !bytes.Equal(wa.uploaded, truncated) {
+		t.Fatalf("%q %v", wa.mediaType, wa.sent)
+	}
+	gifPath := filepath.Join(t.TempDir(), "a.gif")
+	if err := os.WriteFile(gifPath, gifOf(t, 8, 8), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	wa = &fakeWhatsApp{}
+	if _, err := c.send(context.Background(), wa, ownJID, SendInput{To: "123@g.us", File: gifPath, Type: "image"}); err == nil || wa.sent != nil {
+		t.Fatalf("gif file sent as an image: %v", err)
 	}
 }

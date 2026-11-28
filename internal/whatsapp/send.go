@@ -173,11 +173,16 @@ func attachmentMessage(ctx context.Context, wa messageSender, in SendInput) (*wa
 	var thumbnail []byte
 	switch in.Type {
 	case "image":
-		var err error
-		if img, err = ProbeImage(content, size); err != nil {
-			return nil, err
+		if len(in.Image) > 0 {
+			var err error
+			if img, err = ProbeImage(content, size); err != nil {
+				return nil, err
+			}
+			mime = img.MIME
+		} else if mime != "image/jpeg" && mime != "image/png" {
+			return nil, fmt.Errorf("image sending supports JPEG and PNG; use document for other files")
 		}
-		mediaType, mime = whatsmeow.MediaImage, img.MIME
+		mediaType = whatsmeow.MediaImage
 	case "video":
 		var err error
 		if video, err = ProbeMP4(content, size); err != nil {
@@ -197,10 +202,12 @@ func attachmentMessage(ctx context.Context, wa messageSender, in SendInput) (*wa
 	message := &waE2E.Message{}
 	switch mediaType {
 	case whatsmeow.MediaImage:
-		message.ImageMessage = &waE2E.ImageMessage{Mimetype: proto.String(mime), URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey, FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256, FileLength: &uploaded.FileLength,
-			Width: proto.Uint32(img.Width), Height: proto.Uint32(img.Height)}
-		if in.Text != "" {
-			message.ImageMessage.Caption = proto.String(in.Text)
+		message.ImageMessage = &waE2E.ImageMessage{Caption: proto.String(in.Text), Mimetype: proto.String(mime), URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey, FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256, FileLength: &uploaded.FileLength}
+		if len(in.Image) > 0 {
+			message.ImageMessage.Width, message.ImageMessage.Height = proto.Uint32(img.Width), proto.Uint32(img.Height)
+			if in.Text == "" {
+				message.ImageMessage.Caption = nil
+			}
 		}
 	case whatsmeow.MediaVideo:
 		message.VideoMessage = &waE2E.VideoMessage{Mimetype: proto.String(mime), URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey, FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256, FileLength: &uploaded.FileLength,
