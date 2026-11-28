@@ -260,11 +260,20 @@ const (
 // same as enabling the chat in the TUI; without it capture starts from now on
 // and no history is requested.
 func (s *Store) EnableCapture(ctx context.Context, account int64, chat string, withHistory bool) error {
+	return s.EnableCaptureMany(ctx, account, []string{chat}, withHistory)
+}
+
+// EnableCaptureMany turns capture on for the named cached chats in one
+// transaction, following the same history rule as EnableCapture.
+func (s *Store) EnableCaptureMany(ctx context.Context, account int64, chats []string, withHistory bool) error {
+	if len(chats) == 0 {
+		return nil
+	}
 	mode := historyNever
 	if withHistory {
 		mode = historyAlways
 	}
-	return s.setEnabled(ctx, account, []string{chat}, true, mode, false)
+	return s.setEnabled(ctx, account, chats, true, mode, false)
 }
 
 // EnableListCapture turns capture on for one cached chat, from now on only,

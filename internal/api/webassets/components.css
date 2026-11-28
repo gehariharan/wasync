@@ -563,10 +563,12 @@ body.refreshing .stage { view-transition-name: none; }
 /* Choose chats: the list to search on the left, what is selected on the right */
 .pick-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(16rem, 21rem); gap: var(--s4); align-items: start; }
 .pick-find .search { margin-top: 0; }
-.pick-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); margin: var(--s2) 0; }
+.pick-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--s2); margin: var(--s2) 0; }
+.pick-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s1); }
 .pick-tabs a { padding: .3rem .7rem; border-radius: var(--r); text-decoration: none; color: var(--fg-2); font-size: var(--fs-sm); font-weight: 600; }
 .pick-tabs a[aria-current="true"] { background: var(--brand-50); color: var(--brand-strong); }
 .pick-tabs .n { font-weight: 500; color: var(--mut); margin-left: .2rem; }
+.pick-all { margin: 0; padding: .3rem .7rem; font-size: var(--fs-sm); white-space: nowrap; }
 .pick-list { border: 1px solid var(--line); border-radius: var(--r-lg); background: var(--surface); max-height: 62vh; overflow: auto; }
 .pick-list form { margin: 0; }
 .pick-row {

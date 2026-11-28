@@ -13,6 +13,41 @@
   var csrf = form.getAttribute("data-csrf");
   var list = form.querySelector("[data-selected]");
   var count = form.querySelector("[data-count]");
+  var bar = form.querySelector(".pick-bar");
+  var tabInput = form.querySelector('input[name="tab"]');
+  var qInput = form.querySelector('input[name="q"]');
+  var loadedQuery = qInput ? qInput.value : "";
+  var search = document.querySelector('input[type="search"][form="pick-search"]');
+  var searchForm = document.getElementById("pick-search");
+
+  function syncSelectAllDisabled() {
+    var btn = bar && bar.querySelector('button[name="action"][value="selectall"]');
+    if (btn && search) {
+      btn.disabled = search.value.trim() !== loadedQuery.trim();
+    }
+  }
+
+  function showSelectAll(n) {
+    var btn = bar && bar.querySelector('button[name="action"][value="selectall"]');
+    if (!n || n <= 0) {
+      if (btn) {
+        btn.remove();
+      }
+      return;
+    }
+    if (!btn && bar) {
+      btn = document.createElement("button");
+      btn.type = "submit";
+      btn.name = "action";
+      btn.value = "selectall";
+      btn.className = "pick-all";
+      bar.append(btn);
+    }
+    if (btn) {
+      btn.textContent = "Select all " + n;
+      syncSelectAllDisabled();
+    }
+  }
 
   function post(path, fields) {
     var body = new URLSearchParams();
@@ -86,14 +121,20 @@
   form.addEventListener("submit", function (event) {
     var button = event.submitter;
     if (bypass || !button || (button.name !== "sync" && button.name !== "stop")) {
-      return; // Clear, Next and Done go to the server as they are
+      return; // Select all, Clear, Next and Done go to the server as they are
     }
     event.preventDefault();
     var chat = button.value;
     var on = button.name === "sync";
     var history = form.querySelector('input[name="history"]');
     button.disabled = true;
-    post("/ui/api/chats/sync", { chat: chat, sync: on ? "on" : "off", history: history && history.checked ? "yes" : "no" })
+    post("/ui/api/chats/sync", {
+      chat: chat,
+      sync: on ? "on" : "off",
+      history: history && history.checked ? "yes" : "no",
+      tab: tabInput ? tabInput.value : "",
+      q: qInput ? qInput.value : ""
+    })
       .then(function (answer) {
         var row = rowFor(chat);
         if (row) {
@@ -107,6 +148,9 @@
         }
         if (count) {
           count.textContent = answer.syncing;
+        }
+        if (typeof answer.select_all === "number") {
+          showSelectAll(answer.select_all);
         }
       })
       .catch(function () {
@@ -126,11 +170,10 @@
     });
   }
 
-  var search = document.querySelector('input[type="search"][form="pick-search"]');
-  var searchForm = document.getElementById("pick-search");
   if (search && searchForm) {
     var timer;
     search.addEventListener("input", function () {
+      syncSelectAllDisabled();
       clearTimeout(timer);
       timer = setTimeout(function () {
         searchForm.requestSubmit();

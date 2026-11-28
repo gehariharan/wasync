@@ -219,4 +219,14 @@ func TestEnableCaptureHistoryDepth(t *testing.T) {
 	if err = s.EnableCapture(ctx, account, "missing@g.us", false); err == nil {
 		t.Fatal("enabled an uncached chat")
 	}
+	// EnableCaptureMany updates all chats atomically: a missing chat rolls back the whole batch.
+	if err = s.SetEnabled(ctx, account, []string{"two@g.us"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if err = s.EnableCaptureMany(ctx, account, []string{"two@g.us", "missing@g.us"}, true); err == nil || state("two@g.us") != "off:" {
+		t.Fatalf("EnableCaptureMany did not roll back: %v %q", err, state("two@g.us"))
+	}
+	if err = s.EnableCaptureMany(ctx, account, []string{"two@g.us"}, true); err != nil || state("two@g.us") != "on:queued" {
+		t.Fatalf("EnableCaptureMany single batch: %v %q", err, state("two@g.us"))
+	}
 }
