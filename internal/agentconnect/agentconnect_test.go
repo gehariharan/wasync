@@ -458,6 +458,8 @@ func TestPaths(t *testing.T) {
 
 func TestFound(t *testing.T) {
 	e := testEnv(t)
+	e.GOOS = "darwin"
+	e.AppDirs = []string{t.TempDir()}
 	for _, k := range []Kind{Codex, ClaudeCode, ClaudeDesktop} {
 		if e.Found(k) {
 			t.Fatalf("%s found on an empty computer", k)
@@ -474,6 +476,17 @@ func TestFound(t *testing.T) {
 		if !e.Found(k) {
 			t.Fatalf("%s not found", k)
 		}
+	}
+
+	// On macOS an installed application alone is enough.
+	e = testEnv(t)
+	e.GOOS = "darwin"
+	e.AppDirs = []string{t.TempDir()}
+	if err := os.MkdirAll(filepath.Join(e.AppDirs[0], "Claude.app"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if !e.Found(ClaudeDesktop) || e.Found(Codex) {
+		t.Fatal("Claude.app in the Applications folder should find Claude Desktop and only it")
 	}
 }
 

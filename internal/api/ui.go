@@ -249,7 +249,7 @@ var notices = map[string]struct {
 	"exists":     {"An agent with that name already exists. Choose another name, or revoke it first.", false},
 	"replace":    {"wasync-axi already has a different saved credential. Tick the box to replace it, or choose another place.", false},
 	"badname":    {"The name must be 1 to 32 characters: a to z, 0 to 9 and dashes.", false},
-	"connected":  {"Connected. The credential was saved where wasync-axi reads it and is not shown anywhere.", true},
+	"connected":  {"Connected. wasync-axi has its credential.", true},
 	"loginon":    {"On. wasync starts at every login.", true},
 	"loginhere":  {"Start-at-login is about the computer running wasync. Change it there.", false},
 	"loginoff":   {"wasync will no longer start by itself when you log in.", true},
@@ -631,6 +631,9 @@ type uiData struct {
 	Refresh      int
 	Wide         bool // use the wide two-pane frame
 	Full         bool // with Wide, fill the whole browser window
+	// Fit, with Wide, fits the page to the window on wider screens: the page
+	// does not scroll, and its own list scrolls instead.
+	Fit bool
 	// Warn is a short line on every page while wasync would stop with its
 	// terminal; WarnSetup links it to Start at login.
 	Warn      string
@@ -762,8 +765,8 @@ const uiHead = `{{define "head"}}<!doctype html>
 <link rel="preload" href="/ui/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/ui/tokens.css?v={{tokensv}}"><link rel="stylesheet" href="/ui/components.css?v={{componentsv}}">
 {{if .Script}}<script src="/ui/passkey.js" defer></script>{{end}}{{range .Scripts}}<script src="{{.}}" defer></script>{{end}}
-</head><body class="{{if .Signedout}}bare{{else if .Welcome}}bare welcome-shell{{else if .Setup}}setup-shell{{else}}app-shell{{end}}{{if .Refresh}} refreshing{{end}}">
-{{if .Signedout}}{{else if .Welcome}}{{else if .Setup}}{{template "topbar" .}}{{else}}{{template "rail" .}}{{end}}<main{{if .Full}} class="full"{{else if .Wide}} class="wide"{{end}}>
+</head><body class="{{if .Signedout}}bare{{else if .Welcome}}bare welcome-shell{{else if .Setup}}setup-shell{{else}}app-shell{{end}}{{if .Fit}} fit{{end}}{{if .Refresh}} refreshing{{end}}">
+{{if .Signedout}}{{else if .Welcome}}{{else if .Setup}}{{template "topbar" .}}{{else}}{{template "rail" .}}{{end}}<main{{if .Full}} class="full"{{else if .Wide}} class="wide{{if .Fit}} fit{{end}}"{{end}}>
 {{with .Setup}}{{template "stepper" .}}{{end}}{{if .Warn}}<p class="notice warn" role="status"><strong>{{.Warn}}</strong>{{if .WarnSetup}} <a href="/ui/settings#login">Start at login</a>{{end}}</p>{{end}}{{if .UpdateNote}}<p class="notice ok" role="status"><strong>{{.UpdateNote}}</strong> <a href="/ui/settings#update">Update</a></p>{{end}}{{end}}
 {{define "notice"}}{{if .Notice}}<p role="status" class="notice {{if .NoticeOK}}ok{{else}}bad{{end}}"><strong>{{.Notice}}</strong></p>{{end}}{{end}}
 {{define "rail"}}<nav class="rail" aria-label="wasync">

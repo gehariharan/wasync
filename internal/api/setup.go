@@ -356,7 +356,7 @@ var linkTemplate = template.Must(template.New("link").Funcs(uiFuncs).Parse(uiHea
 <label class="choice"><input type="radio" name="use" value="chats"{{if eq .Use "chats"}} checked{{end}}><span><strong>Also read my chats here</strong></span><span class="mut">Your synced chats also show up in wasync, with search and replies.</span></label>
 </div>
 <p class="mut">You can change this later in Settings.</p>
-<div class="step-foot"><span></span><button class="go">Next →</button></div>
+<div class="step-foot"><span></span><span class="foot-go"><span class="sub">Click Next to continue.</span><button class="go">Next →</button></span></div>
 </form>
 {{else}}<h1>Link your phone</h1>
 {{if .Pairing}}<div class="link-grid"><div class="qr">{{.QR}}</div>
@@ -383,7 +383,7 @@ var runningTemplate = template.Must(template.New("running").Funcs(uiFuncs).Parse
 <button class="switch" role="switch" aria-checked="{{.On}}" aria-labelledby="login-label" name="action" value="{{if .On}}remove{{else}}install{{end}}"></button>
 <span class="switch-text"><strong id="login-label">Start wasync when I log in</strong><span class="mut">{{.Quietly}}</span></span></form>{{end}}
 </section>
-<div class="step-foot"><a class="btn ghost" href="/ui/setup/chats">← Back</a><a class="btn go" href="/ui/setup/agent">Next →</a></div>
+<div class="step-foot"><a class="btn ghost" href="/ui/setup/chats">← Back</a><span class="foot-go"><span class="sub">Click Next to continue.</span><a class="btn go" href="/ui/setup/agent">Next →</a></span></div>
 </div>
 </main></body></html>
 `))

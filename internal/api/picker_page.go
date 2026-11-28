@@ -121,7 +121,7 @@ func (h *handler) chatsStep(w http.ResponseWriter, r *http.Request, sess uiSessi
 }
 
 func (h *handler) pickView(w http.ResponseWriter, r *http.Request, sess uiSession, inSetup bool) {
-	d := &pickData{uiData: uiData{CSRF: sess.csrf, Title: "Choose chats to sync · wasync", Wide: true, Scripts: []string{"/ui/picker.js"}}, InSetup: inSetup, Base: pickPagePath, DoneHref: h.homePath()}
+	d := &pickData{uiData: uiData{CSRF: sess.csrf, Title: "Choose chats to sync · wasync", Wide: true, Fit: true, Scripts: []string{"/ui/picker.js"}}, InSetup: inSetup, Base: pickPagePath, DoneHref: h.homePath()}
 	if inSetup {
 		d.Base, d.Setup = pickSetupPath, h.setupFrameFor(stepChats, true)
 	}
@@ -279,7 +279,7 @@ var pickTemplate = template.Must(template.New("pick").Funcs(uiFuncs).Parse(uiHea
 {{if not .Paired}}<p class="card mut">No WhatsApp is linked yet. <a href="/ui/setup">Link it</a> first.</p>
 {{else}}
 <p class="lead">wasync copies these chats to this computer and keeps them up to date, for you and your agents. Nothing changes on your phone.</p>
-<form method="post" action="{{.Base}}" id="pick" data-csrf="{{.CSRF}}">
+<form method="post" action="{{.Base}}" id="pick" class="pick-form" data-csrf="{{.CSRF}}">
 <input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="tab" value="{{.Tab}}"><input type="hidden" name="q" value="{{.Query}}"><input type="hidden" name="show" value="{{.Show}}"><input type="hidden" name="historybox" value="1">
 <div class="pick-grid">
 <div class="pick-find">
@@ -304,7 +304,7 @@ var pickTemplate = template.Must(template.New("pick").Funcs(uiFuncs).Parse(uiHea
 </ul>
 <div class="selected-foot">
 <label><input type="checkbox" name="save_media" value="on"{{if .SaveMedia}} checked{{end}}> Also save photos, videos and files<span class="sub">Untick to save text only.</span></label>
-{{if .InSetup}}<div class="row-btns"><a class="btn ghost" href="/ui/setup/link">← Back</a><button class="go" name="action" value="next">Next →</button></div>
+{{if .InSetup}}<p class="sub next-hint">Click Next to continue.</p><div class="row-btns"><a class="btn ghost" href="/ui/setup/link">← Back</a><button class="go" name="action" value="next">Next →</button></div>
 {{else}}<button class="go" name="action" value="done">Done</button>{{end}}
 </div>
 </aside>

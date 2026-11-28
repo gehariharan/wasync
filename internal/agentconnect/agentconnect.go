@@ -59,16 +59,18 @@ type Agent struct {
 	Kind Kind
 	// Title is the app's name on screen.
 	Title string
-	// Next is what the person does after connecting, since wasync never
-	// quits another app.
+	// Ask names the app in "Ask … about your WhatsApp to try it".
+	Ask string
+	// Next is what the person does when the app does not see wasync yet,
+	// since wasync never quits another app.
 	Next string
 }
 
 // Agents lists the apps in the order they are offered.
 var Agents = []Agent{
-	{Kind: Codex, Title: "ChatGPT & Codex", Next: "Quit and reopen the ChatGPT or Codex app (or start a new codex session) so it loads the WhatsApp tools."},
-	{Kind: ClaudeCode, Title: "Claude Code", Next: "Start a new Claude Code session so it loads the WhatsApp tools."},
-	{Kind: ClaudeDesktop, Title: "Claude Desktop", Next: "Quit Claude Desktop completely and open it again so it loads the WhatsApp tools."},
+	{Kind: Codex, Title: "ChatGPT & Codex", Ask: "ChatGPT or Codex", Next: "Reopen the ChatGPT or Codex app, or start a new codex session."},
+	{Kind: ClaudeCode, Title: "Claude Code", Ask: "Claude Code", Next: "Start a new Claude Code session."},
+	{Kind: ClaudeDesktop, Title: "Claude Desktop", Ask: "Claude Desktop", Next: "Quit Claude Desktop completely and open it again."},
 }
 
 // Lookup returns the agent of this kind.
@@ -92,6 +94,8 @@ type Env struct {
 	// ExtraPath are folders searched after LookPath. wasync may run as a
 	// login item whose PATH lacks the folders package managers use.
 	ExtraPath []string
+	// AppDirs are the folders searched for macOS applications.
+	AppDirs []string
 	// Run runs a program with extra environment variables and returns what it printed.
 	Run func(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
 	// Now is the clock; nil is time.Now.
@@ -105,6 +109,7 @@ func SystemEnv() Env {
 	home, _ := os.UserHomeDir()
 	cfg, _ := os.UserConfigDir()
 	e := Env{GOOS: runtime.GOOS, Home: home, ConfigDir: cfg, Getenv: os.Getenv, LookPath: exec.LookPath, Run: runCommand}
+	e.AppDirs = []string{"/Applications", filepath.Join(home, "Applications")}
 	if self, err := os.Executable(); err == nil {
 		e.Self = self
 	}
@@ -179,7 +184,12 @@ func (e Env) app(name string) bool {
 	if e.GOOS != "darwin" {
 		return false
 	}
-	return exists(filepath.Join("/Applications", name+".app")) || exists(filepath.Join(e.Home, "Applications", name+".app"))
+	for _, dir := range e.AppDirs {
+		if exists(filepath.Join(dir, name+".app")) {
+			return true
+		}
+	}
+	return false
 }
 
 // Command finds a program the person installed, or returns "".

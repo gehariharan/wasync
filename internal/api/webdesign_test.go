@@ -65,6 +65,42 @@ func TestEveryPageUsesTheSharedStylesheetsAndNoInlineStyles(t *testing.T) {
 	}
 }
 
+// Choose chats fits the window, so its own list scrolls and Back, Next and
+// Done stay in view; the other pages scroll as a whole.
+func TestOnlyChooseChatsFitsTheWindow(t *testing.T) {
+	f := setupAccess(t)
+	c := newPageClient(t, f)
+	c.get(linkPath(t, f))
+	fitBody := regexp.MustCompile(`<body class="[^"]*\bfit\b`)
+	for _, path := range []string{"/ui/approvals", "/ui/chats", "/ui/chats/pick", "/ui/sent", "/ui/agents", "/ui/settings", "/ui/setup/link", "/ui/setup/chats", "/ui/setup/running", "/ui/setup/agent"} {
+		_, page, _ := c.get(path)
+		want := path == "/ui/chats/pick" || path == "/ui/setup/chats"
+		if got := fitBody.MatchString(page) && strings.Contains(page, `<main class="wide fit">`); got != want {
+			t.Errorf("%s: fits the window %v, want %v", path, got, want)
+		}
+		if want && !strings.Contains(page, `id="pick" class="pick-form"`) {
+			t.Errorf("%s: the chats form lacks the class the fitted layout uses", path)
+		}
+	}
+}
+
+// Every setup step says plainly how to go on, beside the button that does it.
+func TestEverySetupStepSaysHowToContinue(t *testing.T) {
+	f := setupAccess(t)
+	c := newPageClient(t, f)
+	c.get(linkPath(t, f))
+	for path, want := range map[string]string{
+		"/ui/setup/link":    "Click Next to continue.",
+		"/ui/setup/chats":   "Click Next to continue.",
+		"/ui/setup/running": "Click Next to continue.",
+		"/ui/setup/agent":   "Connect an app, or skip for now.",
+	} {
+		if _, page, _ := c.get(path); !strings.Contains(page, want) {
+			t.Errorf("%s does not say %q", path, want)
+		}
+	}
+}
+
 func TestTheRailMarksTheCurrentPageAndCountsWaitingRequests(t *testing.T) {
 	f := setupAccess(t)
 	c := newPageClient(t, f)

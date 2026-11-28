@@ -32,7 +32,7 @@ func init() {
 		text string
 		ok   bool
 	}{
-		"agentconnected":    {"Connected. Its credential is saved for it and is not shown anywhere; a copy of its settings file was kept first. Follow the next step below.", true},
+		"agentconnected":    {"Connected.", true},
 		"pluginfail":        {"Connected, but the WhatsApp plugin could not be added to Codex. The WhatsApp tools still work; follow the next step below.", true},
 		"agentalready":      {"That app is already connected. Disconnect it first to connect it again.", false},
 		"noaxi":             {"wasync-axi, the program agents use to reach wasync, is not installed next to wasync, so nothing changed.", false},
@@ -179,8 +179,10 @@ func connectProblem(err error) string {
 
 // connectRow is one app on the setup page and in the status answer.
 type connectRow struct {
-	Agent       string     `json:"agent"`
-	Title       string     `json:"title"`
+	Agent string `json:"agent"`
+	Title string `json:"title"`
+	// Ask names the app in the Ready line.
+	Ask         string     `json:"-"`
 	Found       bool       `json:"found"`
 	Connected   bool       `json:"connected"`
 	Name        string     `json:"name,omitempty"`
@@ -202,7 +204,7 @@ func (h *handler) connectRows(now time.Time) []connectRow {
 	clients, _ := agentauth.List(h.dataDir)
 	var rows []connectRow
 	for _, a := range agentconnect.Agents {
-		row := connectRow{Agent: string(a.Kind), Title: a.Title, Found: env.Found(a.Kind), ConfigPath: env.ConfigPath(a.Kind), Next: a.Next, Status: "Not connected."}
+		row := connectRow{Agent: string(a.Kind), Title: a.Title, Ask: a.Ask, Found: env.Found(a.Kind), ConfigPath: env.ConfigPath(a.Kind), Next: a.Next, Status: "Not connected."}
 		c, err := agentconnect.Find(h.dataDir, a.Kind)
 		if err != nil {
 			row.Status = "wasync cannot read its record of connected agents."
@@ -235,9 +237,9 @@ func connectStatus(row connectRow, now time.Time) string {
 	case !row.InSettings:
 		return "wasync's entry is no longer in " + row.Title + "'s settings. Disconnect, then connect it again."
 	case row.LastCall == nil:
-		return "Waiting for " + row.Title + " to call wasync…"
+		return "Ready. Ask " + row.Ask + " about your WhatsApp to try it."
 	}
-	return "Connected, last call " + ago(now.Sub(*row.LastCall)) + "."
+	return "In use, last used " + ago(now.Sub(*row.LastCall)) + "."
 }
 
 func ago(d time.Duration) string {
