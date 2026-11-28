@@ -111,10 +111,10 @@ can be retried; it must not change already published binaries or tags.
 The root `release.yml` also supports a manually requested version or root tag,
 producing a draft only. To sign and publish such a draft when `auto-release.yml`
 is disabled, run **Sign draft macOS release** (`sign-release.yml`,
-`workflow_dispatch` only) with the draft version or tag — it downloads the draft,
+`workflow_dispatch` only) with the draft version or tag. It downloads the draft,
 signs and notarizes both Mac architectures on the `wasync-signing` runner, and
-uploads the signed Mac assets, `checksums.txt` and `wasync.rb` back to the draft
-— and then run **Verify and publish signed release** (`publish-signed.yml`). Do
+uploads the signed Mac assets, `checksums.txt` and `wasync.rb` back to the draft.
+Then run **Verify and publish signed release** (`publish-signed.yml`). Do
 not bypass notarization by publishing a draft directly. Windows previews retain
 their existing unsigned status. Linux core binaries target glibc 2.35+; AXI
 binaries are static.
