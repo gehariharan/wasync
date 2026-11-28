@@ -191,7 +191,7 @@ var connectTemplate = template.Must(template.New("connect").Funcs(uiFuncs).Parse
 <div class="done-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12.5 4.5 4.5L19 7.5"/></svg></div>
 <h2>{{template "agenticon" .Agent}} {{.Title}} is connected</h2>
 {{if and (eq .Credential "active") .InSettings}}<p class="status-line" role="status">{{.Status}}</p>{{if not .LastCall}}<p class="sub">Not seeing it? {{.Next}}</p>{{end}}{{else}}<p class="bad">{{.Status}}</p>{{end}}
-<p class="sub">It can read, reply and react in chats you sync. Anything else asks under Approvals.</p>
+<p class="sub">It can read, reply and react in chats you sync, now and later. Messaging any other chat asks under Approvals.</p>
 <form method="post" action="/ui/setup/disconnect" class="btn-row center"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="agent" value="{{.Agent}}"><input type="hidden" name="back" value="{{$.Back}}"><button>Disconnect</button></form>
 </section>
 {{else}}
