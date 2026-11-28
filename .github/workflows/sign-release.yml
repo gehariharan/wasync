@@ -1,0 +1,130 @@
+name: Sign draft macOS release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Draft release version or tag to sign and notarize (e.g. 0.1.0-preview.20261127093330 or v0.1.0-preview.20261127093330)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Serialize manual signing runs and never interrupt notarization.
+concurrency:
+  group: sign-release
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    # GitHub hides draft releases from tokens without push access, even when
+    # downloading only. This job does not modify the draft; it transfers the
+    # verified unsigned assets via workflow artifact so the self-hosted signing
+    # runner never receives a write token.
+    permissions:
+      contents: write
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+    steps:
+      - name: Validate draft release and download assets
+        id: validate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          version="${REQUESTED_VERSION#v}"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9][A-Za-z0-9.-]*)?$ ]]; then
+            echo 'Invalid release version' >&2
+            exit 1
+          fi
+          if [[ "$(gh release view "v$version" --json isDraft --jq .isDraft)" != true ]]; then
+            echo 'Refusing to sign a release that is not a draft.' >&2
+            exit 1
+          fi
+          mkdir -p dist/draft
+          gh release download "v$version" --dir dist/draft
+          (cd dist/draft && sha256sum --check checksums.txt)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: unsigned-draft
+          path: |
+            dist/draft/*.tar.gz
+            dist/draft/*.pkg
+            dist/draft/*.dmg
+            dist/draft/*.zip
+            dist/draft/*.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  sign:
+    needs: prepare
+    runs-on: [self-hosted, macOS, ARM64, wasync-signing]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: unsigned-draft
+          path: dist/signing
+      - name: Sign and notarize both Mac architectures (archives, installers and app disk images)
+        env:
+          PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
+          WASYNC_CODESIGN_IDENTITY: 'Developer ID Application: Xaurum Fintech Private Limited (57V379V642)'
+          WASYNC_INSTALLER_IDENTITY: 'Developer ID Installer: Xaurum Fintech Private Limited (57V379V642)'
+          WASYNC_NOTARY_PROFILE: wasync-notary
+          WASYNC_SIGNING_UNATTENDED: '1'
+        run: |
+          export WASYNC_SIGNING_KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
+          caffeinate -i bash scripts/sign-release-macos.sh "$PACKAGE_VERSION" dist/signing
+      - name: Generate signed checksums and Homebrew cask
+        env:
+          PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
+          PRIVATE_REPOSITORY: ${{ github.event.repository.private }}
+        run: |
+          extra=()
+          if [[ "$PRIVATE_REPOSITORY" == true ]]; then extra+=(--private); fi
+          python3 scripts/homebrew-cask.py "$PACKAGE_VERSION" dist/signing dist/signing/wasync.rb "${extra[@]}"
+          cd dist/signing
+          shasum -a 256 ./*.tar.gz ./*.pkg ./*.dmg ./*.zip ./*.exe > checksums.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: signed-release
+          path: |
+            dist/signing/*darwin*.tar.gz
+            dist/signing/*darwin*.pkg
+            dist/signing/*darwin*.dmg
+            dist/signing/checksums.txt
+            dist/signing/wasync.rb
+          if-no-files-found: error
+          retention-days: 7
+
+  update-draft:
+    needs: [prepare, sign]
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: signed-release
+          path: dist/signed
+      - name: Replace draft assets with signed packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          PACKAGE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          if [[ "$(gh release view "v$PACKAGE_VERSION" --json isDraft --jq .isDraft)" != true ]]; then
+            echo 'Refusing to overwrite a published release.' >&2
+            exit 1
+          fi
+          gh release upload "v$PACKAGE_VERSION" dist/signed/* --clobber

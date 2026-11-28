@@ -109,10 +109,15 @@ workflow token, then runs Homebrew installation checks. A failed publishing step
 can be retried; it must not change already published binaries or tags.
 
 The root `release.yml` also supports a manually requested version or root tag,
-producing a draft only. To publish such a draft, run the signing and verification
-stages; do not bypass notarization by publishing it directly. Windows previews
-retain their existing unsigned status. Linux core binaries target glibc 2.35+;
-AXI binaries are static.
+producing a draft only. To sign and publish such a draft when `auto-release.yml`
+is disabled, run **Sign draft macOS release** (`sign-release.yml`,
+`workflow_dispatch` only) with the draft version or tag — it downloads the draft,
+signs and notarizes both Mac architectures on the `wasync-signing` runner, and
+uploads the signed Mac assets, `checksums.txt` and `wasync.rb` back to the draft
+— and then run **Verify and publish signed release** (`publish-signed.yml`). Do
+not bypass notarization by publishing a draft directly. Windows previews retain
+their existing unsigned status. Linux core binaries target glibc 2.35+; AXI
+binaries are static.
 
 ### Signing runner operation
 
