@@ -292,6 +292,39 @@ func TestSettingsSwitchesHowWasyncIsUsedAndMedia(t *testing.T) {
 	}
 }
 
+func TestSettingsAppearanceDefaultsToTheSystemAndIsRemembered(t *testing.T) {
+	sf, c, csrf := newSetupFixture(t, true)
+	_, page, _ := c.get("/ui/settings")
+	if !strings.Contains(page, `value="system" aria-pressed="true">System`) || !strings.Contains(page, `<html lang="en">`) || !strings.Contains(page, `media="(prefers-color-scheme: dark)"`) {
+		t.Fatalf("a new install does not follow the system:\n%s", page)
+	}
+	if _, _, hd := c.post("/ui/settings", url.Values{"csrf": {csrf}, "action": {"theme"}, "theme": {"dark"}}); !strings.HasPrefix(hd.Get("Location"), "/ui/settings") {
+		t.Fatalf("dark: %v", hd)
+	}
+	if s, _ := prefs.Open(sf.dir).Get(); s.Theme != prefs.ThemeDark {
+		t.Fatalf("dark was not saved: %+v", s)
+	}
+	// Every page, not only Settings, now draws itself dark.
+	for _, path := range []string{"/ui/settings", "/ui/agents"} {
+		if _, page, _ = c.get(path); !strings.Contains(page, `<html lang="en" data-theme="dark">`) || strings.Contains(page, "prefers-color-scheme") {
+			t.Fatalf("%s is not dark:\n%s", path, page)
+		}
+	}
+	if !strings.Contains(page, `href="/ui/settings" title="Settings"`) {
+		t.Fatalf("the rail has no Settings:\n%s", page)
+	}
+	c.post("/ui/settings", url.Values{"csrf": {csrf}, "action": {"theme"}, "theme": {"system"}})
+	if s, _ := prefs.Open(sf.dir).Get(); s.Theme != "" {
+		t.Fatalf("system was not saved: %+v", s)
+	}
+	if code, _, _ := c.post("/ui/settings", url.Values{"csrf": {csrf}, "action": {"theme"}, "theme": {"sepia"}}); code != 400 {
+		t.Fatalf("bad appearance: %d", code)
+	}
+	if code, _, _ := c.post("/ui/settings", url.Values{"csrf": {"forged"}, "action": {"theme"}, "theme": {"dark"}}); code != 403 {
+		t.Fatalf("forged appearance: %d", code)
+	}
+}
+
 func TestAgentsPageRemovesAnAgentOnlyAfterTheComputerConfirms(t *testing.T) {
 	sf, c, csrf := newSetupFixture(t, true)
 	_, page, _ := c.get("/ui/agents")

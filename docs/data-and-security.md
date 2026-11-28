@@ -14,7 +14,7 @@ All commands use the same private data directory, normally:
 - Windows Microsoft Store build: `%USERPROFILE%\.wasync` (see
   [Store archive location and migration](windows.md#store-archive-location-and-migration))
 
-The **Storage** section of Settings says where it is, and **Show folder** opens it in
+The **About** section of Settings says where it is, and **Show folder** opens it in
 Finder, File Explorer or your file manager.
 
 Override it using `WASYNC_DATA_DIR` or the global `--data-dir` flag; flags win.
@@ -68,7 +68,7 @@ encrypt data at rest.
 | `agent-connections.json` | Apps connected from the setup page: which credential each got, the settings file wasync changed, its backup, the entry wasync wrote and any entry it replaced, so Disconnect undoes exactly that |
 | `codex-marketplace/` | The WhatsApp plugin as a local Codex marketplace, written from the copy built into wasync when Codex is connected; removed again on Disconnect |
 | `access-mode.json` | Only in data folders from earlier releases, for the removed access mode; no longer read, and safe to delete |
-| `settings.json` | Everyday settings: "For my AI agents only" or "Also read my chats here", whether photos, videos and files are saved, and whether the setup steps are finished and the furthest one reached, so an unfinished setup opens where it was left |
+| `settings.json` | Everyday settings: "For my AI agents only" or "Also read my chats here", whether photos, videos and files are saved, the Appearance choice (light or dark; absent means follow the system), and whether the setup steps are finished and the furthest one reached, so an unfinished setup opens where it was left |
 | `pending-approvals.json` | Requests waiting for a person, so a restart does not lose them |
 | `send-lists.json` | Approved phone-number lists for agents, their pacing, the numbers each list dropped after a STOP (so its agent's list status can name them), and for up to 30 days who a removed list already messaged |
 | `send-record.json` | Kept for good: when each number first and last got a list message, and the numbers that replied STOP (numbers and times only, never message text) |

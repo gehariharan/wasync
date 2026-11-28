@@ -146,8 +146,9 @@ side:
   numbers for one agent, or switch on open sending for an hour.
 - **Approvals**: messages agents are asking to send (also `wasync approvals`), each approved on
   its own, and your own delete confirmations.
-- **Settings** (the gear at the foot of the rail): how you use wasync, chats and media,
-  start at login, agents, other devices, storage, updates, and **Remove wasync**.
+- **Settings** (the gear at the foot of the rail): how you use wasync, Appearance (System,
+  the default, Light or Dark), start at login, chats and media, agents, other devices, updates,
+  where your data is stored, and **Remove wasync**.
 
 Anything that gives an agent more power asks your computer to confirm, and the operating-system
 prompt names exactly what you are approving. Stopping things never needs confirmation. The page

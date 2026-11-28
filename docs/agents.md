@@ -50,7 +50,7 @@ add that scope in a terminal; other scopes and an expiry also need `wasync agent
 wasync keeps the agent's chat list equal to your synced chats by itself: before each request from
 the agent, when wasync starts, and when the Agents page opens. Each change is recorded in the
 audit log as `synced_chats`. To widen or narrow what the agent can use, sync or unsync a chat:
-in **Choose chats to sync** (setup's second step, or **Settings > Chats > Change**), with `wasync chats enable` or `wasync chats disable`, or in
+in **Choose chats to sync** (setup's second step, or **Settings > Chats and agents > Change**), with `wasync chats enable` or `wasync chats disable`, or in
 the [terminal UI](tui.md). The agent cannot sync a chat itself.
 
 If you would rather fix the list, `--chat "Family"` pre-approves a chat by the name in your
