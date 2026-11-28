@@ -12,8 +12,8 @@ release workflow produces these downloads:
 
 | Platform | Download | Installation |
 | --- | --- | --- |
-| macOS 15+, Apple Silicon, the wasync app | `wasync_VERSION_darwin_arm64.dmg` | Open the disk image and drag wasync to Applications |
-| macOS 15+, Intel, the wasync app | `wasync_VERSION_darwin_amd64.dmg` | Open the disk image and drag wasync to Applications |
+| macOS 15+, Apple Silicon, the wasync app | `wasync_VERSION_darwin_arm64.dmg` | Drag wasync to Applications, eject the wasync installer disk, then open wasync from Applications or Spotlight |
+| macOS 15+, Intel, the wasync app | `wasync_VERSION_darwin_amd64.dmg` | Drag wasync to Applications, eject the wasync installer disk, then open wasync from Applications or Spotlight |
 | macOS 15+, Apple Silicon, the command only | `wasync_VERSION_darwin_arm64.pkg` | Open the package and follow Installer |
 | macOS 15+, Intel, the command only | `wasync_VERSION_darwin_amd64.pkg` | Open the package and follow Installer |
 | Linux x86-64, glibc 2.35+ | `wasync_VERSION_linux_amd64.tar.gz` | Extract and run `./install.sh` |
@@ -56,6 +56,16 @@ and the old environment variables, config folder, skill and hooks still work.
 
 No installer changes your agents' settings. When you want an AI agent to use your
 archive, connect it from wasync's **Connect an agent** step.
+
+## macOS app
+
+Open the downloaded disk image, then:
+
+1. Drag wasync to Applications.
+2. Eject the "wasync" installer disk.
+3. Open wasync from Applications or Spotlight.
+
+The disk image window says the same. The mounted disk stays on the desktop until you eject it; its icon opens that installer window again, not the app.
 
 ## macOS package
 
