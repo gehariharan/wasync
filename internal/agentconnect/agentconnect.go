@@ -94,6 +94,8 @@ type Env struct {
 	// ExtraPath are folders searched after LookPath. wasync may run as a
 	// login item whose PATH lacks the folders package managers use.
 	ExtraPath []string
+	// AppDirs are the folders searched for macOS applications.
+	AppDirs []string
 	// Run runs a program with extra environment variables and returns what it printed.
 	Run func(ctx context.Context, env []string, name string, args ...string) ([]byte, error)
 	// Now is the clock; nil is time.Now.
@@ -107,6 +109,7 @@ func SystemEnv() Env {
 	home, _ := os.UserHomeDir()
 	cfg, _ := os.UserConfigDir()
 	e := Env{GOOS: runtime.GOOS, Home: home, ConfigDir: cfg, Getenv: os.Getenv, LookPath: exec.LookPath, Run: runCommand}
+	e.AppDirs = []string{"/Applications", filepath.Join(home, "Applications")}
 	if self, err := os.Executable(); err == nil {
 		e.Self = self
 	}
@@ -181,7 +184,12 @@ func (e Env) app(name string) bool {
 	if e.GOOS != "darwin" {
 		return false
 	}
-	return exists(filepath.Join("/Applications", name+".app")) || exists(filepath.Join(e.Home, "Applications", name+".app"))
+	for _, dir := range e.AppDirs {
+		if exists(filepath.Join(dir, name+".app")) {
+			return true
+		}
+	}
+	return false
 }
 
 // Command finds a program the person installed, or returns "".
