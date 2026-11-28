@@ -14,7 +14,6 @@
   var list = form.querySelector("[data-selected]");
   var count = form.querySelector("[data-count]");
   var bar = form.querySelector(".pick-bar");
-  var selectedHead = form.querySelector(".selected-head");
   var tabInput = form.querySelector('input[name="tab"]');
   var qInput = form.querySelector('input[name="q"]');
   var loadedQuery = qInput ? qInput.value : "";
@@ -47,24 +46,6 @@
     if (btn) {
       btn.textContent = "Select all " + n;
       syncSelectAllDisabled();
-    }
-  }
-
-  function showClear(n) {
-    var btn = selectedHead && selectedHead.querySelector('button[name="action"][value="clearall"]');
-    if (!n || n <= 0) {
-      if (btn) {
-        btn.remove();
-      }
-      return;
-    }
-    if (!btn && selectedHead) {
-      btn = document.createElement("button");
-      btn.name = "action";
-      btn.value = "clearall";
-      btn.className = "ghost";
-      btn.textContent = "Clear";
-      selectedHead.append(btn);
     }
   }
 
@@ -132,13 +113,6 @@
     if (li) {
       li.remove();
     }
-    if (list && !list.querySelector("li")) {
-      var empty = document.createElement("li");
-      empty.className = "mut";
-      empty.setAttribute("data-empty", "");
-      empty.textContent = "Nothing is syncing yet.";
-      list.append(empty);
-    }
   }
 
   // bypass lets a change the background could not save go to the server
@@ -175,7 +149,6 @@
         if (count) {
           count.textContent = answer.syncing;
         }
-        showClear(answer.syncing);
         if (typeof answer.select_all === "number") {
           showSelectAll(answer.select_all);
         }
