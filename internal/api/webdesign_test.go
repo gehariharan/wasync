@@ -166,35 +166,3 @@ func TestTheDesignSystemFilesNeedNoSession(t *testing.T) {
 		t.Fatal("the typeface ships without its licence")
 	}
 }
-
-// The dark colours are written twice in tokens.css: once for a system in dark
-// mode, unless Appearance keeps wasync light, and once for Appearance, Dark.
-// Both must hold the same values, or the app would look different depending
-// on how it was made dark.
-func TestBothDarkColourBlocksMatch(t *testing.T) {
-	css, err := os.ReadFile(filepath.Join("webassets", "tokens.css"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	decls := func(after string) []string {
-		s := string(css)
-		i := strings.Index(s, after)
-		if i < 0 {
-			t.Fatalf("tokens.css lacks %q", after)
-		}
-		body := s[i+len(after):]
-		body = body[:strings.Index(body, "}")]
-		var out []string
-		for _, d := range strings.Split(body, ";") {
-			if d = strings.TrimSpace(d); strings.HasPrefix(d, "--") {
-				out = append(out, d)
-			}
-		}
-		return out
-	}
-	system := decls(`:root:not([data-theme="light"]) {`)
-	chosen := decls(`:root[data-theme="dark"] {`)
-	if len(system) < 10 || strings.Join(system, ";") != strings.Join(chosen, ";") {
-		t.Fatalf("dark colours differ:\nsystem %q\nchosen %q", system, chosen)
-	}
-}

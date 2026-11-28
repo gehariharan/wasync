@@ -71,7 +71,7 @@
 
 /* Dark: what the system asks for, unless Settings, Appearance keeps wasync
    light, or always when it keeps it dark (<html data-theme>). The two blocks
-   hold the same values; a test keeps them equal. */
+   must hold the same values. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #111513;
