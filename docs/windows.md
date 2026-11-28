@@ -37,9 +37,9 @@ entry is preserved on uninstall. The portable ZIP uses the same data directory u
 `--data-dir` is set. Local data uses a private Windows ACL for your user and SYSTEM;
 concurrent capture uses an exclusive Windows file lock. Native Windows ARM64 is not yet packaged.
 
-**Windows previews are unsigned while Microsoft Artifact Signing is being set up.**
-Signing for macOS remains unchanged. Windows release signing is a separate step
-and is not yet configured; signing credentials are never bundled in downloads.
+Windows release executables (`wasync.exe`, `wasync-desktop.exe`, `wasync-axi.exe`,
+`whatsapp-axi.exe`) and the Setup installer are Authenticode signed and timestamped
+with Microsoft Artifact Signing. Signing credentials are never bundled in downloads.
 
 ### Install script
 

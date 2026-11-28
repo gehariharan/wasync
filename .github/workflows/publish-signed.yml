@@ -47,8 +47,35 @@ jobs:
           ARCHITECTURE: ${{ matrix.architecture }}
         run: bash scripts/verify-signed-release.sh "$PACKAGE_VERSION" "$ARCHITECTURE"
 
+  verify-windows:
+    # GitHub hides draft releases from tokens without push access, even when
+    # downloading only. This job does not modify the draft.
+    permissions:
+      contents: write
+    runs-on: windows-2022
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Download and verify signed Windows draft assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PACKAGE_VERSION: ${{ inputs.version }}
+        run: |
+          $isDraft = (gh release view "v$env:PACKAGE_VERSION" --json isDraft --jq .isDraft | Out-String).Trim()
+          if ($LASTEXITCODE -ne 0 -or $isDraft -ne 'true') {
+            throw 'Only draft releases may be published by this workflow.'
+          }
+          $dir = Join-Path $env:RUNNER_TEMP "verify-windows-$env:PACKAGE_VERSION"
+          New-Item -ItemType Directory -Force $dir | Out-Null
+          gh release download "v$env:PACKAGE_VERSION" --pattern '*windows*' --dir $dir
+          if ($LASTEXITCODE -ne 0) { throw 'Failed to download Windows draft assets' }
+          ./scripts/verify-windows-signatures.ps1 -Version $env:PACKAGE_VERSION -DistDir $dir
+
   publish:
-    needs: verify
+    needs: [verify, verify-windows]
     runs-on: ubuntu-22.04
     # Serialize writes to the shared Homebrew tap across releases.
     concurrency:
@@ -84,7 +111,7 @@ jobs:
           Prebuilt preview packages. No Go compiler is required.
 
           macOS 15+: the wasync app is the matching darwin_arm64 or darwin_amd64 .dmg: open it and drag wasync to Applications. The disk image and the app in it are Developer ID signed, notarized and stapled. Apple Silicon and Intel executables are Developer ID signed and notarized. The matching .pkg installers (the wasync command) are signed, notarized, and carry stapled tickets. Each installer always installs "AXI for agents" (wasync-axi) with wasync and changes no agent settings.
-          Windows 10/11 x64: download the windows_amd64-setup.exe for a per-user installation of the wasync app (it always installs AXI for agents, wasync-axi.exe), or extract the portable ZIP, which includes wasync-desktop.exe and wasync-axi.exe. Windows previews are currently unsigned; Microsoft Artifact Signing integration is pending.
+          Windows 10/11 x64: download the windows_amd64-setup.exe for a per-user installation of the wasync app (it always installs AXI for agents, wasync-axi.exe), or extract the portable ZIP, which includes wasync-desktop.exe and wasync-axi.exe. Windows executables and Setup are Authenticode signed with Microsoft Artifact Signing.
           Linux: extract the matching archive and run ./install.sh (glibc 2.35+). It installs wasync and wasync-axi (AXI for agents) without asking. Agents are connected later, from wasync's Connect an agent step.
           Homebrew: follow the platform-specific installation and dependency-trust instructions in https://github.com/gehariharan/wasync#homebrew-installation. Linux installs both tools through the AXI formula; macOS uses the signed core cask alongside the AXI formula. Intel and Apple Silicon downloads select the native architecture automatically.
           Run wasync for the TUI, or wasync query --help for the agent query interface.
