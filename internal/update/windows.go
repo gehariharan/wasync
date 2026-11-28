@@ -12,9 +12,9 @@ import (
 
 // Windows updates a copy installed by Setup (packaging/windows/wasync.iss) by
 // running the new Setup program silently. Setup reuses the folder and the
-// choices (tasks) of the earlier install. Windows previews are not signed yet,
-// so the checksum is the check; once the running wasync.exe is signed, an
-// update must be signed by the same publisher.
+// choices (tasks) of the earlier install. When the running wasync.exe is
+// signed, an update must be signed by the same publisher; older unsigned
+// previews rely on the checksum alone.
 type Windows struct {
 	Run Runner
 	// Getenv reads the environment; nil uses os.Getenv.

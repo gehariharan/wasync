@@ -31,7 +31,7 @@ try {
  # 1. Default choices: wasync, the wasync app and AXI for agents are all installed, and no agent settings change.
  $plain = Join-Path $temp 'plain'
  Install-Wasync $plain '!addtopath'
- foreach ($name in 'wasync.exe', 'wasync-axi.exe', 'whatsapp-axi.exe') { if (-not (Test-Path (Join-Path $plain $name))) { throw "Setup did not install $name" } }
+ foreach ($name in 'wasync.exe', 'wasync-desktop.exe', 'wasync-axi.exe', 'whatsapp-axi.exe') { if (-not (Test-Path (Join-Path $plain $name))) { throw "Setup did not install $name" } }
  foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Setup changed agent settings: $folder" } }
  if (((& (Join-Path $plain 'wasync.exe') version) | Out-String) -notmatch [regex]::Escape("wasync $Version ")) { throw 'Installed wasync reports the wrong version' }
  # The wasync app is installed beside wasync, and the Start menu opens it (not the terminal UI).

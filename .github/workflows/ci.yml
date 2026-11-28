@@ -104,6 +104,17 @@ jobs:
       - name: Install Setup, which always includes AXI for agents, start the wasync app, and check the ZIP
         shell: pwsh
         run: ./scripts/test-windows-installer.ps1 -Version 0.1.0-preview.pr
+      - name: Check signature verification rejects unsigned executables
+        shell: pwsh
+        run: |
+          $failed = $false
+          try {
+            ./scripts/verify-windows-signatures.ps1 -Version 0.1.0-preview.pr
+          } catch {
+            if ($_.Exception.Message -notmatch 'not validly signed') { throw "Unexpected failure: $($_.Exception.Message)" }
+            $failed = $true
+          }
+          if (-not $failed) { throw 'verify-windows-signatures.ps1 accepted an unsigned Setup installer' }
       - name: Check the agent install script in Windows PowerShell 5.1 and PowerShell 7
         run: |
           powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-windows.ps1 -DryRun

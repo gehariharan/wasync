@@ -131,8 +131,8 @@ downloads the installer for your computer and checks its SHA-256 against the rel
 `checksums.txt` and against GitHub's own digest of the file. Then:
 
 - Windows: when your installed `wasync.exe` is signed, the new Setup must be signed by the
-  same publisher (Windows previews are not signed yet, so the checksum is the check). Setup
-  runs silently, in the same folder and with the choices you made before.
+  same publisher (older unsigned previews use the checksum alone). Setup runs silently, in
+  the same folder and with the choices you made before.
 - macOS: wasync copies the app out of the release's disk image
   (`wasync_VERSION_darwin_ARCH.dmg`), requires it to be notarized and signed by the same Apple
   developer team as the app you have, and puts it in place of your app.

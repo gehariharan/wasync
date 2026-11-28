@@ -107,9 +107,13 @@ jobs:
           retention-days: 7
 
   windows:
-    needs: version
+    needs: [version, axi]
     runs-on: windows-2022
     timeout-minutes: 30
+    environment: windows-signing
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -129,11 +133,100 @@ jobs:
             choco install innosetup --yes --no-progress
             if ($LASTEXITCODE -ne 0) { throw 'Inno Setup installation failed' }
           }
-      - name: Build Windows executable, portable ZIP and installer
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: axi-dist
+          path: ${{ runner.temp }}\axi-dist
+      - name: Build Windows executables for signing
         shell: pwsh
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
-        run: ./scripts/package-windows.ps1 -Version $env:PACKAGE_VERSION
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          ARTIFACT_SIGNING_ENDPOINT: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          ARTIFACT_SIGNING_ACCOUNT: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          ARTIFACT_SIGNING_PROFILE: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+        run: |
+          foreach ($name in 'AZURE_CLIENT_ID','AZURE_TENANT_ID','AZURE_SUBSCRIPTION_ID','ARTIFACT_SIGNING_ENDPOINT','ARTIFACT_SIGNING_ACCOUNT','ARTIFACT_SIGNING_PROFILE') {
+            if ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($name))) {
+              throw "Missing required windows-signing environment variable: $name"
+            }
+          }
+          $signRoot = Join-Path $env:RUNNER_TEMP 'wasync-sign'
+          if (Test-Path $signRoot) { Remove-Item -Recurse -Force $signRoot }
+          New-Item -ItemType Directory -Force $signRoot | Out-Null
+          ./scripts/package-windows.ps1 -Version $env:PACKAGE_VERSION -BuildOnly -StageDir (Join-Path $signRoot 'wasync')
+          foreach ($arch in 'amd64', 'arm64') {
+            $axiZip = Join-Path $env:RUNNER_TEMP "axi-dist\wasync-axi_$($env:PACKAGE_VERSION)_windows_$arch.zip"
+            if (-not (Test-Path $axiZip)) { throw "Missing standalone AXI Windows archive: $axiZip" }
+            $dest = Join-Path $signRoot "axi-$arch"
+            Expand-Archive -LiteralPath $axiZip -DestinationPath $dest
+            # Remove the unsigned alias copy; it will be copied from the signed wasync-axi.exe before repacking.
+            Remove-Item -LiteralPath (Join-Path $dest 'whatsapp-axi.exe') -Force
+          }
+      - name: Azure login
+        uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Sign Windows executables with Artifact Signing
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files-folder: ${{ runner.temp }}\wasync-sign
+          files-folder-filter: exe
+          files-folder-recurse: true
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-azure-cli-credential: false
+      - name: Package signed Windows ZIPs and Setup installer
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          $signRoot = Join-Path $env:RUNNER_TEMP 'wasync-sign'
+          ./scripts/package-windows.ps1 -Version $env:PACKAGE_VERSION -PackageOnly -StageDir (Join-Path $signRoot 'wasync')
+          $out = Join-Path (Get-Location) "dist/$($env:PACKAGE_VERSION)/windows_amd64"
+          foreach ($arch in 'amd64', 'arm64') {
+            $axiStage = Join-Path $signRoot "axi-$arch"
+            Copy-Item -Force (Join-Path $axiStage 'wasync-axi.exe') (Join-Path $axiStage 'whatsapp-axi.exe')
+            Compress-Archive -Path "$axiStage/*" -DestinationPath (Join-Path $out "wasync-axi_$($env:PACKAGE_VERSION)_windows_$arch.zip") -Force
+          }
+          Remove-Item -Recurse -Force $signRoot
+      - name: Sign Windows Setup installer with Artifact Signing
+        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
+        with:
+          endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+          signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+          certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+          files: ${{ github.workspace }}\dist\${{ needs.version.outputs.value }}\windows_amd64\wasync_${{ needs.version.outputs.value }}_windows_amd64-setup.exe
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          exclude-environment-credential: true
+          exclude-azure-cli-credential: false
+      - name: Update Windows package checksums after signing
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.version.outputs.value }}
+        run: |
+          $out = Join-Path (Get-Location) "dist/$($env:PACKAGE_VERSION)/windows_amd64"
+          foreach ($name in "wasync_$($env:PACKAGE_VERSION)_windows_amd64.zip", "wasync_$($env:PACKAGE_VERSION)_windows_amd64-setup.exe") {
+            $path = Join-Path $out $name
+            $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLower()
+            "$hash  $name" | Set-Content -Encoding ascii "$path.sha256"
+          }
+      - name: Verify Authenticode signatures on all shipped Windows executables
+        shell: pwsh
+        env:
+          PACKAGE_VERSION: ${{ needs.version.outputs.value }}
+        run: ./scripts/verify-windows-signatures.ps1 -Version $env:PACKAGE_VERSION
       - name: Check Setup installs the wasync app and always installs AXI for agents, and the ZIP carries them
         shell: pwsh
         env:
@@ -174,8 +267,14 @@ jobs:
       - run: bash scripts/check-dist.sh "${{ needs.version.outputs.value }}"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: release-axi
+          name: axi-dist
           path: axi/dist/${{ needs.version.outputs.value }}/*
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: release-axi
+          path: axi/dist/${{ needs.version.outputs.value }}/*.tar.gz
           if-no-files-found: error
           retention-days: 7
 
@@ -199,7 +298,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with:
-          name: release-axi
+          name: axi-dist
           path: dist
       - name: Verify and run native AXI archive
         shell: bash
@@ -266,7 +365,7 @@ jobs:
 
           - macOS 15+: the wasync app is the matching darwin_arm64 (Apple Silicon) or darwin_amd64 (Intel) .dmg: open it and drag wasync to Applications. The .pkg installs the wasync command instead; it always installs "AXI for agents" (wasync-axi) with wasync and changes no agent settings.
           - Linux: download the matching linux archive, extract it and run `./install.sh`. It installs wasync and wasync-axi (AXI for agents) without asking and changes no agent settings unless you pass `--axi-skill` or `--axi-hooks`; `--without-axi` is no longer accepted. Builds target glibc 2.35 or newer.
-          - Windows: Setup installs the wasync app (Start menu) and always installs AXI for agents (wasync-axi.exe), and changes no agent settings; the portable ZIP includes wasync-desktop.exe and wasync-axi.exe.
+          - Windows: Setup installs the wasync app (Start menu) and always installs AXI for agents (wasync-axi.exe), and changes no agent settings; the portable ZIP includes wasync-desktop.exe and wasync-axi.exe. Windows executables and Setup are Authenticode signed with Microsoft Artifact Signing.
           - Agents are connected later, from wasync's Connect an agent step.
           - `wasync query --help` documents the agent query interface.
           - Verify downloads against checksums.txt.

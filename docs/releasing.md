@@ -101,9 +101,9 @@ stay in that runner's Keychain. The certificate organization and core installer
 identifier are unchanged by the repository rename. AXI's signing identifier is
 `com.gehariharan.wasynctuicli.axi`. Legacy standalone AXI Mac archives were unsigned.
 
-`publish-signed.yml` independently verifies the signed draft on both Mac CPUs,
-checks the full asset checksum manifest and generated formula contents, and
-publishes it. It updates `Casks/wasync.rb`, `Formula/wasync.rb` and
+`publish-signed.yml` independently verifies the signed draft on both Mac CPUs
+and Windows, checks the full asset checksum manifest and generated formula
+contents, and publishes it. It updates `Casks/wasync.rb`, `Formula/wasync.rb` and
 `Formula/wasync-axi.rb` on this same repository's main branch with the normal
 workflow token, then runs Homebrew installation checks. A failed publishing step
 can be retried; it must not change already published binaries or tags.
@@ -115,9 +115,11 @@ is disabled, run **Sign draft macOS release** (`sign-release.yml`,
 signs and notarizes both Mac architectures on the `wasync-signing` runner, and
 uploads the signed Mac assets, `checksums.txt` and `wasync.rb` back to the draft.
 Then run **Verify and publish signed release** (`publish-signed.yml`). Do
-not bypass notarization by publishing a draft directly. Windows previews retain
-their existing unsigned status. Linux core binaries target glibc 2.35+; AXI
-binaries are static.
+not bypass notarization by publishing a draft directly. Windows release
+executables and the Setup installer are Authenticode signed and timestamped in
+`release.yml` using Microsoft Artifact Signing (`windows-signing` environment,
+OIDC) and verified before the draft is created. Linux core binaries target
+glibc 2.35+; AXI binaries are static.
 
 ### Signing runner operation
 
