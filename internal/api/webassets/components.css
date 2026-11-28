@@ -624,16 +624,43 @@ body.refreshing .stage { view-transition-name: none; }
 .selected-head button { margin: 0; padding: .2rem .5rem; font-size: var(--fs-xs); }
 .selected-list { flex: 1; min-height: 4rem; overflow: auto; margin: 0; padding: var(--s1) 0; list-style: none; }
 .selected-list li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr) auto; gap: var(--s2); align-items: center; padding: .3rem var(--s4); font-size: var(--fs-sm); }
+.selected-list li[data-empty] { display: block; }
 .selected-list li .nm { font-weight: 500; }
 .selected-list button { margin: 0; padding: .1rem .45rem; border-color: transparent; background: none; color: var(--mut); font-size: var(--fs); line-height: 1; }
 .selected-list button:hover { color: var(--danger); background: var(--surface-2); }
 .selected-foot { padding: var(--s3) var(--s4); border-top: 1px solid var(--line); }
 .selected-foot form { margin: 0; }
 .selected-foot label { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 var(--s2); margin: 0 0 var(--s3); font-weight: 600; }
+/* the box sits centred on the label's first line, not on top of it */
+.selected-foot label input { margin-top: calc((var(--lh) * var(--fs) - 1rem) / 2); }
 .selected-foot label .sub { grid-column: 2; font-weight: 400; }
 .selected-foot .btn, .selected-foot button.go { width: 100%; margin: 0; }
 .selected-foot .row-btns { display: flex; gap: var(--s2); align-items: center; justify-content: space-between; }
 .selected-foot .row-btns .btn, .selected-foot .row-btns button { width: auto; white-space: nowrap; }
+/* the chat list keeps its scroll bar in view, also where the system hides it */
+.pick-list { scrollbar-gutter: stable; }
+.pick-list::-webkit-scrollbar { width: .75rem; }
+.pick-list::-webkit-scrollbar-track { background: transparent; }
+.pick-list::-webkit-scrollbar-thumb { background: var(--line-2); border: 3px solid var(--surface); border-radius: var(--r-pill); }
+.pick-list::-webkit-scrollbar-thumb:hover { background: var(--mut); }
+
+/* a page that fits the window (main.fit): the page itself does not scroll,
+   its list does, so the top bar and the Back and Next buttons stay in view.
+   Narrow screens stack the panels and scroll the page as before. */
+@media (min-width: 761px) {
+  body.fit { height: 100vh; height: 100dvh; }
+  main.fit { display: flex; flex-direction: column; min-height: 0; padding-bottom: var(--s4); }
+  body.app-shell main.fit { height: 100vh; height: 100dvh; }
+  body.setup-shell main.fit { flex: 1; }
+  main.fit > .stage { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .fit .pick-form { flex: 1; min-height: 0; display: flex; flex-direction: column; margin: 0; }
+  .fit .pick-grid { flex: 1; min-height: 0; grid-template-rows: minmax(0, 1fr); align-items: stretch; }
+  .fit .pick-find { display: flex; flex-direction: column; min-height: 0; }
+  .fit .pick-find > * { flex: none; }
+  .fit .pick-find > .pick-list { flex: 1; min-height: 8rem; max-height: none; }
+  .fit .pick-find > label { margin: var(--s2) 0 0; }
+  .fit .selected { position: static; min-height: 0; max-height: none; }
+}
 
 /* Connect an agent: one tile per app */
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr)); gap: var(--s3); margin: var(--s3) 0; }
