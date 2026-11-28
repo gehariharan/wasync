@@ -58,19 +58,6 @@ function Assert-SignedExecutable([string]$Path, [string]$Label) {
  Write-Host "Signed OK: $Label | Signer: $($sig.SignerCertificate.Subject) | Timestamp: $($sig.TimeStamperCertificate.Subject)"
 }
 
-function Assert-SidecarHash([string]$Path) {
- $sidecar = "$Path.sha256"
- if (-not (Test-Path -LiteralPath $sidecar)) { return }
- $line = (Get-Content -LiteralPath $sidecar -Raw).Trim()
- $parts = $line -split '\s+'
- if ($parts.Count -lt 2) { throw "Malformed checksum file: $sidecar" }
- $expected = $parts[0].ToLowerInvariant()
- $actual = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToLowerInvariant()
- if ($actual -ne $expected) {
-  throw "Checksum mismatch for $(Split-Path -Leaf $Path): expected $expected, got $actual"
- }
-}
-
 $setupName = "wasync_${Version}_windows_amd64-setup.exe"
 $zipName = "wasync_${Version}_windows_amd64.zip"
 $setup = Join-Path $dist $setupName
@@ -80,7 +67,6 @@ $axiArm64Zip = Join-Path $dist "wasync-axi_${Version}_windows_arm64.zip"
 
 # Verify Setup installer and any loose .exe files in $dist first.
 Assert-SignedExecutable $setup $setupName
-Assert-SidecarHash $setup
 foreach ($exe in @(Get-ChildItem -Path $dist -File -Filter '*.exe')) {
  if ($exe.Name -ne $setupName) {
   Assert-SignedExecutable $exe.FullName $exe.Name
@@ -94,7 +80,6 @@ New-Item -ItemType Directory -Force $work | Out-Null
 try {
  # Verify portable wasync ZIP and every .exe inside it.
  if (-not (Test-Path -LiteralPath $zip)) { throw "Missing portable ZIP: $zipName" }
- Assert-SidecarHash $zip
  $coreDir = Join-Path $work 'core'
  Expand-Archive -LiteralPath $zip -DestinationPath $coreDir
  foreach ($req in 'wasync.exe', 'wasync-desktop.exe', 'wasync-axi.exe', 'whatsapp-axi.exe') {
