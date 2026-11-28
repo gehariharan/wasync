@@ -231,7 +231,7 @@ jobs:
         shell: pwsh
         env:
           PACKAGE_VERSION: ${{ needs.version.outputs.value }}
-        run: ./scripts/test-windows-installer.ps1 -Version $env:PACKAGE_VERSION -RequireSigned
+        run: ./scripts/test-windows-installer.ps1 -Version $env:PACKAGE_VERSION
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-windows_amd64

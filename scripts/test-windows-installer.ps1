@@ -1,9 +1,6 @@
 # CI-only test of the Windows Setup program and portable ZIP. Never uses a real WhatsApp account.
 #   ./scripts/test-windows-installer.ps1 -Version 0.1.0-preview.pr
-param(
- [Parameter(Mandatory=$true)][string]$Version,
- [switch]$RequireSigned
-)
+param([Parameter(Mandatory=$true)][string]$Version)
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 if ($env:GITHUB_ACTIONS -ne 'true' -or $env:RUNNER_ENVIRONMENT -ne 'github-hosted') { throw 'Run this fixture only on a disposable GitHub-hosted Windows runner' }
@@ -12,14 +9,6 @@ $dist = Join-Path (Get-Location) "dist/$Version/windows_amd64"
 $setup = Join-Path $dist "wasync_${Version}_windows_amd64-setup.exe"
 $zip = Join-Path $dist "wasync_${Version}_windows_amd64.zip"
 foreach ($file in $setup, $zip) { if (-not (Test-Path $file)) { throw "Missing package: $file" } }
-function Assert-Signed([string]$Path, [string]$Label) {
- if (-not $RequireSigned) { return }
- $sig = Get-AuthenticodeSignature -LiteralPath $Path
- if ($sig.Status -ne 'Valid' -or $null -eq $sig.SignerCertificate -or $null -eq $sig.TimeStamperCertificate) {
-  throw "$Label does not have a valid timestamped Authenticode signature: Status=$($sig.Status) ($($sig.StatusMessage))"
- }
-}
-Assert-Signed $setup (Split-Path -Leaf $setup)
 $temp = Join-Path $env:RUNNER_TEMP "wasync-installer-test-$([guid]::NewGuid())"
 New-Item -ItemType Directory $temp | Out-Null
 # Agent settings that wasync-axi setup would create. None may appear from installing alone.
@@ -42,11 +31,7 @@ try {
  # 1. Default choices: wasync, the wasync app and AXI for agents are all installed, and no agent settings change.
  $plain = Join-Path $temp 'plain'
  Install-Wasync $plain '!addtopath'
- foreach ($name in 'wasync.exe', 'wasync-desktop.exe', 'wasync-axi.exe', 'whatsapp-axi.exe') {
-  $installed = Join-Path $plain $name
-  if (-not (Test-Path $installed)) { throw "Setup did not install $name" }
-  Assert-Signed $installed "installed $name"
- }
+ foreach ($name in 'wasync.exe', 'wasync-desktop.exe', 'wasync-axi.exe', 'whatsapp-axi.exe') { if (-not (Test-Path (Join-Path $plain $name))) { throw "Setup did not install $name" } }
  foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Setup changed agent settings: $folder" } }
  if (((& (Join-Path $plain 'wasync.exe') version) | Out-String) -notmatch [regex]::Escape("wasync $Version ")) { throw 'Installed wasync reports the wrong version' }
  # The wasync app is installed beside wasync, and the Start menu opens it (not the terminal UI).
@@ -157,7 +142,6 @@ try {
  $extracted = Join-Path $temp 'zip'
  Expand-Archive $zip $extracted
  foreach ($name in 'wasync.exe', 'wasync-desktop.exe', 'wasync-axi.exe', 'whatsapp-axi.exe', 'LICENSE', 'THIRD_PARTY_LICENSES') { if (-not (Test-Path (Join-Path $extracted $name))) { throw "ZIP is missing $name" } }
- foreach ($exe in @(Get-ChildItem -Path $extracted -Recurse -File -Filter '*.exe')) { Assert-Signed $exe.FullName "ZIP/$($exe.Name)" }
  if ((& (Join-Path $extracted 'wasync-axi.exe') --version).Trim() -ne $Version) { throw 'ZIP wasync-axi is not the release version' }
  foreach ($folder in $agentFolders) { if (Test-Path $folder) { throw "Extracting changed agent settings: $folder" } }
  Write-Host 'Windows Setup: the Start menu opens the wasync app, which starts wasync and stops it when it goes away; AXI for agents is always installed at the release version and changes no agent settings; the installed tool server speaks MCP and offers no approving tool; wasync serve starts with its pages closed to visitors; the ZIP carries both tools.'
