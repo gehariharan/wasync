@@ -4,8 +4,8 @@ The pages at `https://gehariharan.com/wasync/`:
 
 - `/wasync/` is the landing page. Three tiles (Mac, Windows, Linux) with the
   visitor's own system already selected, and its download button under them.
-  The Mac tile also lists three install steps: drag wasync to Applications,
-  eject the wasync installer disk, then open wasync from Applications or Spotlight.
+  The Mac tile also lists the install steps from
+  [Installing wasync](../docs/install.md#macos-app).
   On a Mac whose browser does not report the chip (Safari, Firefox), the Mac tile
   offers Apple silicon and Intel. Phones get a "send the link to my computer"
   button instead. Below the four feature notes, app screenshots from

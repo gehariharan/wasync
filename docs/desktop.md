@@ -104,8 +104,8 @@ page.
 ## Packages
 
 - **macOS:** `wasync_VERSION_darwin_ARCH.dmg`, a disk image whose window asks you to
-  drag `wasync.app` onto Applications, then eject the disk and open wasync from Applications.
-  The app carries `wasync-desktop` (the app),
+  drag `wasync.app` onto Applications (the full steps are in
+  [Installing wasync](install.md#macos-app)). The app carries `wasync-desktop` (the app),
   `wasync` and `wasync-axi`; the agent command is always there and does nothing until
   an agent is connected. The app's bundle identifier is the one the `wasync` command
   is signed with (`com.gehariharan.wasynctuicli`), so the Keychain trusts the app, its

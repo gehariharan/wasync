@@ -12,8 +12,8 @@ release workflow produces these downloads:
 
 | Platform | Download | Installation |
 | --- | --- | --- |
-| macOS 15+, Apple Silicon, the wasync app | `wasync_VERSION_darwin_arm64.dmg` | Drag wasync to Applications, eject the wasync installer disk, then open wasync from Applications or Spotlight |
-| macOS 15+, Intel, the wasync app | `wasync_VERSION_darwin_amd64.dmg` | Drag wasync to Applications, eject the wasync installer disk, then open wasync from Applications or Spotlight |
+| macOS 15+, Apple Silicon, the wasync app | `wasync_VERSION_darwin_arm64.dmg` | Open the disk image and follow the [macOS app](#macos-app) steps |
+| macOS 15+, Intel, the wasync app | `wasync_VERSION_darwin_amd64.dmg` | Open the disk image and follow the [macOS app](#macos-app) steps |
 | macOS 15+, Apple Silicon, the command only | `wasync_VERSION_darwin_arm64.pkg` | Open the package and follow Installer |
 | macOS 15+, Intel, the command only | `wasync_VERSION_darwin_amd64.pkg` | Open the package and follow Installer |
 | Linux x86-64, glibc 2.35+ | `wasync_VERSION_linux_amd64.tar.gz` | Extract and run `./install.sh` |
