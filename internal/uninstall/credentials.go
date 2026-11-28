@@ -16,24 +16,35 @@ import (
 
 // forgetApproval removes the Keychain item that holds dataDir's approval
 // credential, and any other item recorded for the same folder. Where the
-// credential is a file in the data directory there is nothing to do here.
-func forgetApproval(dataDir string) error {
+// credential is a file in the data directory there is nothing to do here. It
+// returns what it did, in words.
+func forgetApproval(dataDir string) []string {
+	const removed = "Removed the stored approval credential, if there was one."
 	if !approvecred.InKeychain() {
-		return nil
+		return []string{removed}
 	}
 	account, err := approvecred.Account(dataDir)
-	if err != nil {
-		return err
+	if err == nil {
+		err = forgetOne(account)
 	}
-	errs := []error{forgetOne(account)}
+	said := []string{removed}
+	if err != nil {
+		said = []string{"Could not remove the approval credential from the Keychain: " + err.Error()}
+	}
 	if items, err := approvecred.Items(); err == nil {
 		for _, it := range items {
-			if it.Account != account && it.Folder != "" && equalPath(it.Folder, dataDir) {
-				errs = append(errs, forgetOne(it.Account))
+			if it.Account == account || it.Folder == "" || !equalPath(it.Folder, dataDir) {
+				continue
+			}
+			switch err := forgetOne(it.Account); {
+			case errors.Is(err, approvecred.ErrForeignItem):
+				said = append(said, fmt.Sprintf("Kept the Keychain item %q for this data directory: another program made it, so delete it in Keychain Access.", it.Account))
+			case err != nil:
+				said = append(said, fmt.Sprintf("Could not remove the Keychain item %q: %v", it.Account, err))
 			}
 		}
 	}
-	return errors.Join(errs...)
+	return said
 }
 
 func forgetOne(account string) error {

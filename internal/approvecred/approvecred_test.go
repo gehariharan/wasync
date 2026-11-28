@@ -14,6 +14,11 @@ type memory struct {
 	folders map[string]string
 	getErr  error
 	setErrs int
+	// errs answers a Get for one account with an error, as the Keychain does
+	// for an item another program made.
+	errs map[string]error
+	// locked answers every Get with ErrLocked.
+	locked bool
 }
 
 func newMemory() *memory {
@@ -31,6 +36,12 @@ func (m *memory) List() ([]Item, error) {
 func (m *memory) Get(a string) (string, error) {
 	if m.getErr != nil {
 		return "", m.getErr
+	}
+	if m.locked {
+		return "", ErrLocked
+	}
+	if err := m.errs[a]; err != nil {
+		return "", err
 	}
 	v, ok := m.items[a]
 	if !ok {
@@ -287,7 +298,7 @@ func TestWithoutAKeychainThereIsNothingToList(t *testing.T) {
 // real one refuses to run unless the person asked for it.
 func TestATestBinaryNeverGetsTheRealKeychainByDefault(t *testing.T) {
 	t.Setenv(RealKeychainEnv, "")
-	if b := defaultBackend(); b != nil {
+	if b, _ := defaultBackend(); b != nil {
 		t.Fatalf("a test binary was given the real backend %T", b)
 	}
 	if err := refuseInTest(); !errors.Is(err, ErrRealKeychainInTest) {

@@ -32,7 +32,7 @@
     },
     {
       "description": "List wasync's Keychain items, or remove the ones left behind by data directories that are gone (macOS).",
-      "details": "On macOS wasync keeps one approval credential per data directory in your login Keychain. Without an argument this lists them and says which ones prune would remove; it never reads a secret, so it raises no prompt. Items are kept for this data directory and for any other whose recorded folder still exists. Items whose folder is gone are removable. Older items made before wasync recorded the folder are listed as unknown folder - not removed, because prune cannot tell whether a running wasync still uses them; remove one by hand in Keychain Access (search for wasync and delete the named item). prune only shows the plan; prune --apply removes it. Elsewhere the credential is a private file and there is nothing to clean up.",
+      "details": "On macOS a signed wasync release keeps one approval credential per data directory in your login Keychain, named after the folder and the release's signature, and never makes macOS ask for your password to use it. Without an argument this lists them and says which ones prune would remove; it never reads a secret, so it raises no prompt. Items are kept for this data directory and for any other whose recorded folder still exists. Items whose folder is gone are removable. Older items made before wasync recorded the folder are listed as unknown folder - not removed, because prune cannot tell whether a running wasync still uses them; remove one by hand in Keychain Access (search for wasync and delete the named item). prune only shows the plan; prune --apply removes it. Elsewhere, and for a wasync built from source, the credential is a private file and there is nothing to clean up.",
       "path": "keychain",
       "usage": "keychain [prune [--apply]]"
     },
@@ -50,7 +50,7 @@
     },
     {
       "description": "Unlink the saved WhatsApp device session.",
-      "details": "Connects to WhatsApp when a saved session exists. Local archives and chat preferences remain on disk. It works from any folder. If another wasync (serve, the TUI or run) owns the data directory, logout goes through that one: it says which one it used (kind, PID and data directory), signs the request with the approval credential (the Keychain asks you on macOS; the sending credential is not enough), unlinks the device, and that wasync then stops because it cannot capture without a linked phone, so wasync setup or wasync login can pair a new phone straight away.",
+      "details": "Connects to WhatsApp when a saved session exists. Local archives and chat preferences remain on disk. It works from any folder. If another wasync (serve, the TUI or run) owns the data directory, logout goes through that one: it says which one it used (kind, PID and data directory), signs the request with the approval credential (read from the Keychain without asking on a signed macOS release; the sending credential is not enough), unlinks the device, and that wasync then stops because it cannot capture without a linked phone, so wasync setup or wasync login can pair a new phone straight away.",
       "path": "logout",
       "usage": "logout"
     },

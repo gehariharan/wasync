@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/gehariharan/wasync/internal/agentauth"
+	"github.com/gehariharan/wasync/internal/approvecred"
 	"github.com/gehariharan/wasync/internal/localfs"
 	"github.com/gehariharan/wasync/internal/service"
 	"github.com/gehariharan/wasync/internal/update"
@@ -215,7 +217,7 @@ func newWorld(t *testing.T) *world {
 			return nil
 		},
 		LoginItems:     []service.Manager{w.app, w.legacy},
-		ForgetApproval: func(dir string) error { w.forgot = append(w.forgot, dir); return nil },
+		ForgetApproval: func(dir string) []string { w.forgot = append(w.forgot, dir); return nil },
 		AxiCredential:  func() (string, error) { return w.axiPath, nil },
 		RemoveAll:      os.RemoveAll,
 		Trash:          func(p string) error { w.trashed = append(w.trashed, p); return nil },
@@ -579,5 +581,55 @@ func TestRequestRoundTripsAsJSON(t *testing.T) {
 	var back Request
 	if err := json.Unmarshal(b, &back); err != nil || back != r {
 		t.Fatalf("%+v %v", back, err)
+	}
+}
+
+// keychainItems is a Keychain holding items for data directories; deleting one
+// in foreign fails as macOS does for an item another program made.
+type keychainItems struct {
+	folders map[string]string
+	foreign map[string]bool
+}
+
+func (k *keychainItems) Get(string) (string, error)       { return "", approvecred.ErrNotFound }
+func (k *keychainItems) Set(string, string, string) error { return nil }
+func (k *keychainItems) Delete(account string) error {
+	if k.foreign[account] {
+		return fmt.Errorf("%w (OSStatus -25293)", approvecred.ErrForeignItem)
+	}
+	delete(k.folders, account)
+	return nil
+}
+func (k *keychainItems) List() ([]approvecred.Item, error) {
+	var items []approvecred.Item
+	for a, f := range k.folders {
+		items = append(items, approvecred.Item{Account: a, Folder: f})
+	}
+	return items, nil
+}
+
+// An item another program made for the same data directory cannot be removed
+// without asking; uninstall still reports the release's own credential as
+// removed and says which item to delete in Keychain Access.
+func TestForgettingTheApprovalCredentialNamesAnItemAnotherProgramMade(t *testing.T) {
+	dir := t.TempDir()
+	own, err := approvecred.Account(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const other = "approve:made-by-another-program"
+	k := &keychainItems{folders: map[string]string{own: dir, other: dir}, foreign: map[string]bool{other: true}}
+	approvecred.Use(k)
+	t.Cleanup(func() { approvecred.Use(nil) })
+
+	said := strings.Join(forgetApproval(dir), "\n")
+	if _, kept := k.folders[own]; kept {
+		t.Fatal("the release's own item was not removed")
+	}
+	if !strings.Contains(said, "Removed the stored approval credential") || !strings.Contains(said, other) || !strings.Contains(said, "Keychain Access") {
+		t.Fatalf("uninstall said:\n%s", said)
+	}
+	if strings.Contains(said, "Could not remove the approval credential") || strings.Contains(said, approvecred.ErrAccessDenied.Error()) {
+		t.Fatalf("the foreign item was reported as a failure to remove the credential:\n%s", said)
 	}
 }

@@ -61,9 +61,12 @@ go vet -tags sqlite_fts5 ./...
 Tests never touch your real login Keychain: a test binary is given no Keychain
 unless you set `WASYNC_TEST_KEYCHAIN=1`, which only the Keychain's own round-trip
 test in `internal/approvecred` uses (`WASYNC_TEST_KEYCHAIN=1 go test -tags
-sqlite_fts5 ./internal/approvecred`). Anything that starts a built `wasync` (not a
-test binary) with a throwaway `--data-dir` does make a real Keychain item, because
-each data directory has its own (`wasync keychain prune` removes leftovers).
+sqlite_fts5 ./internal/approvecred`); the other Keychain tests use a throwaway
+keychain file. A `wasync` you build from source keeps the private `approve.token`
+file unless `WASYNC_TEST_KEYCHAIN=1` is set. Anything that starts a signed release
+(or a source build with that variable) with a throwaway `--data-dir` does make a
+real Keychain item, because each data directory has its own (`wasync keychain
+prune` removes leftovers).
 
 Tests use synthetic events and temporary files. They cover archive migration,
 consent checks at commit time, live/history deduplication, account isolation,

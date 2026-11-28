@@ -37,9 +37,9 @@ func describe(status int) string {
 	case statusInvalidOwnerEdit:
 		return "OSStatus -25244, the item was made by a different program"
 	case statusAuthFailed:
-		return "OSStatus -25293, not allowed"
+		return "OSStatus -25293, not allowed without asking"
 	case statusInteractionNotAllowed:
-		return "OSStatus -25308, no window could be shown"
+		return "OSStatus -25308, the Keychain is locked"
 	case statusDuplicate:
 		return "OSStatus -25299, the item already exists"
 	case statusNotFound:
@@ -51,14 +51,23 @@ func describe(status int) string {
 // denied reports a result that means the person, or the system on their behalf,
 // said no. It is never retried: asking again would only repeat the prompt.
 func denied(status int) bool {
-	return status == statusUserCanceled || status == statusAuthFailed || status == statusInteractionNotAllowed
+	return status == statusUserCanceled || status == statusAuthFailed
 }
+
+// wasync's Keychain calls never show a window, so a result that would have
+// needed one comes back as an error instead: -25293 when the item belongs to a
+// program the Keychain would have asked the person about, and -25308 when the
+// Keychain is locked and macOS would have asked for its password.
 
 // readError turns the result of a read into the error the rest of wasync knows.
 func readError(status int) error {
 	switch {
 	case status == statusNotFound:
 		return ErrNotFound
+	case status == statusAuthFailed:
+		return fmt.Errorf("%w (%s)", ErrForeignItem, describe(status))
+	case status == statusInteractionNotAllowed:
+		return ErrLocked
 	case denied(status):
 		return ErrAccessDenied
 	case status == statusTooLong:
@@ -79,6 +88,9 @@ func setItem(o rawOps, account, secret, folder string) error {
 	}
 	if status == statusInvalidOwnerEdit {
 		if removed := o.remove(account); removed != statusOK && removed != statusNotFound {
+			if removed == statusInteractionNotAllowed {
+				return ErrLocked
+			}
 			if denied(removed) {
 				return ErrAccessDenied
 			}
@@ -89,6 +101,8 @@ func setItem(o rawOps, account, secret, folder string) error {
 	switch {
 	case status == statusOK:
 		return nil
+	case status == statusInteractionNotAllowed:
+		return ErrLocked
 	case denied(status):
 		return ErrAccessDenied
 	case status == statusInvalidOwnerEdit:
@@ -102,6 +116,10 @@ func deleteError(status int) error {
 	switch {
 	case status == statusOK || status == statusNotFound:
 		return nil
+	case status == statusInteractionNotAllowed:
+		return ErrLocked
+	case status == statusAuthFailed:
+		return fmt.Errorf("%w (%s)", ErrForeignItem, describe(status))
 	case denied(status):
 		return ErrAccessDenied
 	}

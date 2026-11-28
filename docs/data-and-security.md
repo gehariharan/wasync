@@ -127,24 +127,42 @@ way the approval arrived; see [Agents](agents.md#approving-without-a-terminal). 
 has no such prompt (Linux, or a session with no screen), the typed phrase is the only check and
 is enforced by the interactive CLI and terminal UI, not by the HTTP endpoint.
 
-On macOS `approve.token` is kept in your login Keychain instead of a file (an existing file is
-moved there when wasync next starts), so another program that asks for it makes macOS ask for
-your password; Windows and Linux keep the private file. If you cancel or deny the Keychain
-prompt when wasync starts by itself at login, it stops without restarting and shows one
-notification: approvals stay off until you run wasync again. A shell outside your desktop
-session, such as SSH, cannot open the Keychain at all, so commands that need the approval
-credential (approving, `wasync logout`) fail there; `wasync stop` still works, because it then
-asks your own wasync process to stop as Ctrl-C would. There is one Keychain item per data
-directory (named `approve:` plus a short hash of its path, service `wasync`), so a wasync
-started with a temporary `--data-dir` leaves an item behind. `wasync keychain` lists them
-without reading any secret, and `wasync keychain prune --apply` removes the ones whose recorded
-folder is gone, always keeping the item for the data directory you are using; without
-`--apply` it only shows the plan. Items made before wasync recorded the folder are
-listed as "unknown folder - not removed" and are never deleted, because prune cannot
-tell whether a running wasync still uses them; to remove one, open Keychain Access,
-search for wasync and delete the named item. If macOS refuses to let this build of wasync edit
-an item an earlier build made (error -25244), wasync replaces the item once; if it cannot, it
-says which item to delete in Keychain Access instead of asking again.
+On macOS the signed wasync release keeps `approve.token` in your login Keychain instead of a
+file (an existing file is moved there when wasync next starts), so another program that asks
+for it makes macOS ask for your password; Windows and Linux keep the private file, and so does
+a wasync built from source (see below). wasync itself never makes macOS ask for your password
+to use its own credential. Each Keychain item is named after the data directory and the
+signature of the release that keeps it (`approve:` plus a short hash of the folder's path,
+then `@` and the signing team and identifier; service `wasync`), and the Keychain hands an
+item without asking to programs with the signature that made it: the app, its `wasync`
+command and every later release. wasync's Keychain calls never show a window: an item that
+another program made (an older build, a wasync built from source) is left alone, and the
+release keeps its own beside it. Reading, searching, replying and reacting from a connected
+agent never use the approval credential at all; the running wasync reads it once when it
+starts. wasync never asks you to unlock a locked login Keychain either: if it is locked when
+wasync starts, wasync stops without restarting and shows one notification: approvals stay off
+until you unlock the Keychain and run wasync again. A command that would need your
+password to read the credential (a different build from the running wasync, or a locked
+Keychain) fails and says why instead of asking. A shell outside your desktop session, such as
+SSH, cannot open the Keychain at all, so commands that need the approval credential
+(approving, `wasync logout`) fail there; `wasync stop` still works, because it then asks your
+own wasync process to stop as Ctrl-C would.
+
+The Keychain recognises a program by its code signature, and a wasync built from source (with
+`go build`, or by Homebrew on Linux) has none that lasts: every build looks like a different
+program. Such a build therefore keeps the private `approve.token` file in the data directory,
+as on Linux, rather than an item each later build could read only by asking you.
+`WASYNC_TEST_KEYCHAIN=1` makes it use the login Keychain anyway.
+
+There is one Keychain item per data directory, so a release started with a temporary
+`--data-dir` leaves an item behind, and items from earlier releases use the shorter name
+without the signature. `wasync keychain` lists them without reading any secret, and
+`wasync keychain prune --apply` removes the ones whose recorded folder is gone, always
+keeping the item for the data directory you are using; without `--apply` it only shows the
+plan. Items made before wasync recorded the folder are listed as "unknown folder - not
+removed" and are never deleted, because prune cannot tell whether a running wasync still uses
+them; to remove one, open Keychain Access, search for wasync and delete the named item. An
+item another program made can be removed only in Keychain Access.
 
 ## Encryption at rest
 

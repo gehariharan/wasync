@@ -29,8 +29,9 @@ type System struct {
 	// item and the one `wasync service install` makes.
 	LoginItems []service.Manager
 	// ForgetApproval removes the approval credential kept for dataDir outside
-	// it (the macOS Keychain item). Nothing to remove is not an error.
-	ForgetApproval func(dataDir string) error
+	// it (the macOS Keychain item) and says what it did, in words. Nothing to
+	// remove is not an error.
+	ForgetApproval func(dataDir string) []string
 	// AxiCredential is where wasync-axi reads its credential file; the
 	// per-app credential folders wasync makes sit beside it.
 	AxiCredential func() (string, error)
@@ -179,10 +180,8 @@ func describeItem(m service.Manager) string {
 // agent credentials apart needs the records inside it.
 func (s System) forgetKeys(dataDir string, log *helperLog) {
 	if s.ForgetApproval != nil {
-		if err := s.ForgetApproval(dataDir); err != nil {
-			log.printf("Could not remove the approval credential from the Keychain: %v", err)
-		} else {
-			log.printf("Removed the stored approval credential, if there was one.")
+		for _, line := range s.ForgetApproval(dataDir) {
+			log.printf("%s", line)
 		}
 	}
 	if s.AxiCredential == nil {
