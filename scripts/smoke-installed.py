@@ -39,6 +39,9 @@ with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
         assert ready, "offline service did not start"
         first = service.stdout.readline()
         assert first.startswith("Local API: "), first
+        # The temporary service's own address, so wasync-axi never falls back to
+        # its default address, where a real wasync on this machine may listen.
+        api_addr = first.removeprefix("Local API: ").strip().removeprefix("http://").rstrip("/")
         db = sqlite3.connect(str(Path(data) / "archive.db"))
         db.execute("INSERT INTO accounts(id,jid,created_at) VALUES(1,'synthetic@lid',1)")
         db.execute("INSERT INTO app_state(id,account_id) VALUES(1,1)")
@@ -69,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix="wasync-installed-smoke-") as directory:
         # reads the archive by calling the installed wasync, so no credential is used.
         assert subprocess.check_output([axi, "--version"], text=True, timeout=10).strip() == version
         environment = os.environ.copy()
-        environment.update({"WASYNC_BIN": binary, "WASYNC_DATA_DIR": data,
+        environment.update({"WASYNC_BIN": binary, "WASYNC_DATA_DIR": data, "WASYNC_API_ADDR": api_addr,
                             "WASYNC_AXI_CONFIG_DIR": str(Path(directory) / "axi-config"),
                             "WASYNC_AXI_AGENT_HOME": str(Path(directory) / "agents")})
         result = subprocess.run([axi, "messages", "synthetic@g.us", "--json"], capture_output=True, text=True,
