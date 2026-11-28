@@ -109,16 +109,22 @@ workflow token, then runs Homebrew installation checks. A failed publishing step
 can be retried; it must not change already published binaries or tags.
 
 The root `release.yml` also supports a manually requested version or root tag,
-producing a draft only. To publish such a draft, run the signing and verification
-stages; do not bypass notarization by publishing it directly. Windows previews
-retain their existing unsigned status. Linux core binaries target glibc 2.35+;
-AXI binaries are static.
+producing a draft only. To sign and publish such a draft when `auto-release.yml`
+is disabled, run **Sign draft macOS release** (`sign-release.yml`,
+`workflow_dispatch` only) with the draft version or tag. It downloads the draft,
+signs and notarizes both Mac architectures on the `wasync-signing` runner, and
+uploads the signed Mac assets, `checksums.txt` and `wasync.rb` back to the draft.
+Then run **Verify and publish signed release** (`publish-signed.yml`). Do
+not bypass notarization by publishing a draft directly. Windows previews retain
+their existing unsigned status. Linux core binaries target glibc 2.35+; AXI
+binaries are static.
 
 ### Signing runner operation
 
-The `wasync-sakthi-air` signing runner must be awake, online and logged in as the
-signing user, with its login Keychain unlocked. Signing runs as a user LaunchAgent
-in that desktop session.
+The signing runner is `wasync-thor` (label `wasync-signing`) on thor. It must be
+awake, online and logged in as the signing user, with its login Keychain unlocked.
+Signing runs as a user LaunchAgent (`actions.runner.gehariharan-wasync.wasync-thor`)
+in thor's auto-login desktop session.
 The job prevents idle sleep while signing, but does not wake an offline Mac or
 unlock a locked Keychain. After reboot, log in again. Jobs wait for an offline
 runner; a failed build or signing check leaves a draft and keeps the tap on the
@@ -127,9 +133,9 @@ failures in Actions. Do not run untrusted pull-request code on the signing runne
 
 The workflow uses existing local Apple credentials; no Apple private key or
 password is exported to GitHub. First-time signing-tool approvals must be
-completed in Terminal on the Air. The runner starts at login and reconnects
+completed in Terminal on thor. The runner starts at login and reconnects
 automatically. Its installation is outside this repository at
-`~/wasync-actions-runner` on the Air.
+`~/wasync-actions-runner` on thor.
 
 Releases run one at a time; GitHub keeps only the newest pending push while a
 release is running. Manual dispatch can retry publication without a new commit.
