@@ -295,17 +295,20 @@ var tools = []tool{
 		},
 	},
 	{
-		name: "whatsapp_send", description: "Send a new message, or a video with an optional caption, to a chat or a phone number. It sends once and is never retried. It works in every chat synced in wasync when the person granted the send scope. A chat that is not synced, or a new number, is refused unless the number is on the list the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message per number until it replies) or they have switched on open sending; otherwise call whatsapp_request_send so the person can approve that one message, rather than trying another route. A video counts as one message under the same rules.",
-		props: map[string]any{"chat": str("The chat JID, as listed by whatsapp_list_chats. Give this or to."), "to": str("A phone number with its country code, such as +15551230000. Give this or chat."), "text": str("The message text, or the video's caption (up to 16000 bytes). Needed unless video is given."), "video": str("Path to an MP4 file (H.264 video, AAC audio, up to 64 MiB) to send as a playable video; its preview is a frame taken with ffmpeg when installed.")},
+		name: "whatsapp_send", description: "Send a new message, an image or a video with an optional caption, to a chat or a phone number. It sends once and is never retried. It works in every chat synced in wasync when the person granted the send scope. A chat that is not synced, or a new number, is refused unless the number is on the list the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message per number until it replies) or they have switched on open sending; otherwise call whatsapp_request_send so the person can approve that one message, rather than trying another route. An image or video counts as one message under the same rules.",
+		props: map[string]any{"chat": str("The chat JID, as listed by whatsapp_list_chats. Give this or to."), "to": str("A phone number with its country code, such as +15551230000. Give this or chat."), "text": str("The message text, or the image or video's caption (up to 16000 bytes). Needed unless image or video is given."), "image": str("Path to a JPEG or PNG image (up to 16 MiB) to send as a photo. Do not combine with video."), "video": str("Path to an MP4 file (H.264 video, AAC audio, up to 64 MiB) to send as a playable video; its preview is a frame taken with ffmpeg when installed. Do not combine with image.")},
 		ann:   hints("Send on WhatsApp", annotations{OpenWorldHint: true}),
 		deadline: func(a map[string]any) time.Duration {
 			if v, _ := a["video"].(string); v != "" {
 				return toolDeadline + transport.TransferTimeout
 			}
+			if v, _ := a["image"].(string); v != "" {
+				return toolDeadline + transport.TransferTimeout
+			}
 			return toolDeadline
 		},
 		build: func(a map[string]any) ([]string, error) {
-			if err := unknown(a, "chat", "to", "text", "video"); err != nil {
+			if err := unknown(a, "chat", "to", "text", "image", "video"); err != nil {
 				return nil, err
 			}
 			chat, err := getStr(a, "chat", false, 256)
@@ -319,11 +322,18 @@ var tools = []tool{
 			if (chat == "") == (to == "") {
 				return nil, fmt.Errorf("give exactly one of chat or to")
 			}
+			image, err := getStr(a, "image", false, 4096)
+			if err != nil {
+				return nil, err
+			}
 			video, err := getStr(a, "video", false, 4096)
 			if err != nil {
 				return nil, err
 			}
-			text, err := getStr(a, "text", video == "", textMax)
+			if image != "" && video != "" {
+				return nil, fmt.Errorf("give at most one of image or video")
+			}
+			text, err := getStr(a, "text", image == "" && video == "", textMax)
 			if err != nil {
 				return nil, err
 			}
@@ -333,6 +343,7 @@ var tools = []tool{
 			} else {
 				b.args = append(b.args, "--chat", chat)
 			}
+			b.add("--image", image)
 			b.add("--video", video)
 			b.add("--text", text)
 			return b.args, nil

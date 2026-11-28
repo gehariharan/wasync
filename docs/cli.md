@@ -212,9 +212,9 @@ wasync send --to '15551234567@s.whatsapp.net' --file ./report.pdf --type documen
 wasync send --to '15551234567@s.whatsapp.net' --file ./explainer.mp4 --type video --text 'Caption'
 ```
 
-Sending supports text/URLs, JPEG/PNG images, videos and documents. WhatsApp determines
-which sizes and formats it accepts; wasync adds no fixed file-size cap for images and
-documents (see [Media](media.md#media-size)). The default attachment type is document. Rich
+Sending supports text/URLs, JPEG/PNG images (up to 16 MiB), videos and documents. WhatsApp determines
+which sizes and formats it accepts; wasync adds no fixed file-size cap for documents (see
+[Media](media.md#media-size)). The default attachment type is document. Rich
 link-preview generation is not implemented.
 
 `--type video` sends a clip that plays in the chat, with `--text` as its caption. It accepts

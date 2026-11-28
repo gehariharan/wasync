@@ -178,6 +178,8 @@ func TestToolsRunTheMatchingCommandLine(t *testing.T) {
 		{"whatsapp_changes", map[string]any{"consumer": "codex", "limit": 50}, []string{"observe", "--consumer", "codex", "--limit", "50"}},
 		{"whatsapp_send", map[string]any{"chat": "one@g.us", "text": "--chat sneaky"}, []string{"send", "--chat", "one@g.us", "--text", "--chat sneaky"}},
 		{"whatsapp_send", map[string]any{"to": "+15551230000", "text": "hi"}, []string{"send", "--to", "+15551230000", "--text", "hi"}},
+		{"whatsapp_send", map[string]any{"to": "+15551230000", "image": "/i/compare.png", "text": "See"}, []string{"send", "--to", "+15551230000", "--image", "/i/compare.png", "--text", "See"}},
+		{"whatsapp_send", map[string]any{"chat": "one@g.us", "image": "/i/a.jpg"}, []string{"send", "--chat", "one@g.us", "--image", "/i/a.jpg"}},
 		{"whatsapp_send", map[string]any{"to": "+15551230000", "video": "/v/explainer.mp4", "text": "Watch"}, []string{"send", "--to", "+15551230000", "--video", "/v/explainer.mp4", "--text", "Watch"}},
 		{"whatsapp_send", map[string]any{"chat": "one@g.us", "video": "/v/a.mp4"}, []string{"send", "--chat", "one@g.us", "--video", "/v/a.mp4"}},
 		{"whatsapp_reply", map[string]any{"ref": "m1_x", "text": "--text sneaky"}, []string{"reply", "--text", "--text sneaky", "--", "m1_x"}},
@@ -222,6 +224,8 @@ func TestBadArgumentsNeverReachACommand(t *testing.T) {
 		{"whatsapp_send", map[string]any{"chat": "a", "text": long}},
 		{"whatsapp_send", map[string]any{"chat": "a", "text": "hi", "thumbnail": "/v/a.jpg"}},
 		{"whatsapp_send", map[string]any{"chat": "a", "video": 7}},
+		{"whatsapp_send", map[string]any{"chat": "a", "image": 7}},
+		{"whatsapp_send", map[string]any{"chat": "a", "image": "/i/a.png", "video": "/v/a.mp4"}},
 		{"whatsapp_send", map[string]any{"chat": "a", "file": "/etc/passwd", "text": "hi"}},
 		{"whatsapp_send", map[string]any{"chat": "a", "text": "hi", "file": "/etc/passwd"}},
 		{"whatsapp_react", map[string]any{"ref": "m"}},
@@ -232,6 +236,7 @@ func TestBadArgumentsNeverReachACommand(t *testing.T) {
 		{"whatsapp_request_send", map[string]any{"chat": "a", "to": "+15551230000", "text": "hi"}},
 		{"whatsapp_request_send", map[string]any{"chat": "a", "text": strings.Repeat("x", 4097)}},
 		{"whatsapp_request_send", map[string]any{"chat": "a", "text": "hi", "video": "/v/a.mp4"}},
+		{"whatsapp_request_send", map[string]any{"chat": "a", "text": "hi", "image": "/i/a.png"}},
 		{"whatsapp_request_send", map[string]any{"match": "Mum", "text": "hi"}},
 		{"whatsapp_send_request_status", map[string]any{}},
 		{"whatsapp_search", map[string]any{"text": "a\x00b"}},
@@ -390,13 +395,14 @@ func TestVideoSendOutlastsTheUsualToolDeadline(t *testing.T) {
 	for _, args := range []map[string]any{
 		{"chat": "one@g.us", "text": "hi"},
 		{"chat": "one@g.us", "video": "/v/a.mp4"},
+		{"chat": "one@g.us", "image": "/i/a.png"},
 	} {
 		params, _ := json.Marshal(map[string]any{"name": "whatsapp_send", "arguments": args})
 		if _, rpcErr := s.call(context.Background(), params); rpcErr != nil {
 			t.Fatal(rpcErr.Message)
 		}
 	}
-	if len(left) != 2 || left[0] > 90*time.Second || left[1] < 10*time.Minute {
+	if len(left) != 3 || left[0] > 90*time.Second || left[1] < 10*time.Minute || left[2] < 10*time.Minute {
 		t.Fatalf("deadlines %v", left)
 	}
 }

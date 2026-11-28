@@ -27,6 +27,7 @@ import (
 
 const (
 	maxVideoBytes     = 64 << 20 // wasync's limit for a playable video
+	maxImageBytes     = 16 << 20 // wasync's limit for an image
 	maxThumbnailBytes = 64 << 10 // wasync's limit for the preview frame
 )
 

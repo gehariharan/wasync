@@ -481,3 +481,79 @@ func TestSendVideoUsageAndLimitsPostNothing(t *testing.T) {
 		t.Fatalf("posted to a wasync without write.send.video: %d", n)
 	}
 }
+
+func TestSendImagePostsItsBytesAndCaptionOnce(t *testing.T) {
+	h, srv := writerHarness(t)
+	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	img := writeTemp(t, "compare.png", []byte("synthetic png bytes"))
+	out, code := h.run(t, "send", "--to", "+15551230000", "--image", img, "--text", "Our compare screen")
+	if code != ExitOK {
+		t.Fatalf("exit %d\n%s", code, out)
+	}
+	mustContain(t, out, "send:", "status: server_acknowledged")
+	n, body := posts(srv)
+	var sent map[string]any
+	if n != 1 || json.Unmarshal([]byte(body), &sent) != nil {
+		t.Fatalf("posts %d body %s", n, body)
+	}
+	if sent["to"] != "+15551230000" || sent["text"] != "Our compare screen" || sent["image"] != base64.StdEncoding.EncodeToString([]byte("synthetic png bytes")) || len(sent) != 3 {
+		t.Fatalf("body %s", body)
+	}
+	if strings.Contains(body, "compare.png") {
+		t.Fatalf("the path reached wasync: %s", body)
+	}
+	// Caption is optional.
+	out, code = h.run(t, "send", "--chat", "one@g.us", "--image", img)
+	if code != ExitOK {
+		t.Fatalf("uncaptioned exit %d\n%s", code, out)
+	}
+	_, body = posts(srv)
+	sent = nil
+	if json.Unmarshal([]byte(body), &sent) != nil || sent["chat"] != "one@g.us" || sent["text"] != nil || sent["image"] != base64.StdEncoding.EncodeToString([]byte("synthetic png bytes")) || len(sent) != 2 {
+		t.Fatalf("uncaptioned body %s", body)
+	}
+}
+
+func TestSendImageUsageAndLimitsPostNothing(t *testing.T) {
+	h, srv := writerHarness(t)
+	srv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	img := writeTemp(t, "compare.png", []byte("png"))
+	video := writeTemp(t, "v.mp4", []byte("mp4"))
+	big := filepath.Join(t.TempDir(), "big.png")
+	f, err := os.Create(big)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = f.Truncate(maxImageBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	f.Close()
+	for _, args := range [][]string{
+		{"send", "--chat", "one@g.us", "--image", img, "--video", video},
+		{"send", "--chat", "one@g.us", "--image", filepath.Join(t.TempDir(), "absent.png")},
+		{"send", "--chat", "one@g.us", "--image", t.TempDir()},
+		{"send", "--chat", "one@g.us", "--image", big},
+		{"send", "--chat", "one@g.us", "--image", " "},
+	} {
+		if out, code := h.run(t, args...); code == ExitOK {
+			t.Fatalf("%v succeeded:\n%s", args, out)
+		}
+	}
+	if n, _ := posts(srv); n != 0 {
+		t.Fatalf("an invalid image send reached the API: %d posts", n)
+	}
+	// A wasync that cannot send images is told so before anything is posted.
+	old, oldSrv := writerHarness(t)
+	v := testutil.FakeVersion()
+	v.Features = []string{"write.send", "write.send.to"}
+	oldSrv.Version = v
+	oldSrv.Routes["/messages"] = ackEnvelope("server_acknowledged")
+	out, code := old.run(t, "send", "--to", "+15551230000", "--image", img)
+	if code == ExitOK {
+		t.Fatalf("send --image succeeded against a wasync without write.send.image:\n%s", out)
+	}
+	mustContain(t, out, "write.send.image")
+	if n, _ := posts(oldSrv); n != 0 {
+		t.Fatalf("posted to a wasync without write.send.image: %d", n)
+	}
+}

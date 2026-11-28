@@ -56,7 +56,7 @@ The old `whatsapp_axi_*` JSON keys and the `whatsapp_axi_too_old` code (`legacy_
 - **A connected agent uses every synced chat.** An agent connected in wasync can read, reply and react
   in every chat synced in wasync, now and later, with no per-chat prompt; editing is off unless the
   person grants it. To read or reply in a chat that is not synced, the person syncs it in wasync.
-- **Writes need a scope you grant.** `wasync-axi send --chat CHAT_JID --text TEXT` (a new message; `--video FILE.mp4` sends a playable video with the text as its caption; `--to PHONE_NUMBER` instead of `--chat` works only for a number on the list the person approved for you, or while they have switched on open sending, in the wasync web app; the home view shows the list's allowance left this hour)
+- **Writes need a scope you grant.** `wasync-axi send --chat CHAT_JID --text TEXT` (a new message; `--image FILE` sends a JPEG or PNG photo and `--video FILE.mp4` sends a playable video, both with the text as the caption; `--to PHONE_NUMBER` instead of `--chat` works only for a number on the list the person approved for you, or while they have switched on open sending, in the wasync web app; the home view shows the list's allowance left this hour)
   and `wasync-axi reply REF --text TEXT` (a quoted reply) post to wasync's API,
   which refuses them unless the credential holds `send` and the chat is synced in wasync
   (`wasync agents grant <name> --scope read.chats,read.messages,send --synced-chats`, or connect the
