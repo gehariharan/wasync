@@ -44,6 +44,7 @@ type pickData struct {
 	Narrow         bool
 	Selected       []pickRow
 	Syncing, Total int
+	SelectAll      int
 	History        bool
 	SaveMedia      bool
 	// DoneHref is where Done goes outside setup.
@@ -143,7 +144,7 @@ func (h *handler) pickView(w http.ResponseWriter, r *http.Request, sess uiSessio
 		h.webRender(w, r, pickTemplate, d)
 		return
 	}
-	d.Syncing, d.Total, d.Rows = list.Syncing, list.Total, pickRows(list.Chats)
+	d.Syncing, d.Total, d.SelectAll, d.Rows = list.Syncing, list.Total, list.SelectAll, pickRows(list.Chats)
 	for _, t := range []struct {
 		key, label string
 		n          int
@@ -172,7 +173,8 @@ func (h *handler) pickView(w http.ResponseWriter, r *http.Request, sess uiSessio
 }
 
 // pickSave saves one change from the page: sync=CHAT or stop=CHAT for one
-// chat, action=clearall to stop syncing everything, action=media for the
+// chat, action=selectall to sync every unselected chat matching the active tab
+// and search, action=clearall to stop syncing everything, action=media for the
 // "Also save photos, videos and files" box, or action=next (setup) and
 // action=done, which save the box and move on.
 func (h *handler) pickSave(w http.ResponseWriter, r *http.Request, sess uiSession) {
@@ -221,15 +223,26 @@ func (h *handler) pickSave(w http.ResponseWriter, r *http.Request, sess uiSessio
 	}
 	var ch pickChange
 	chat := ""
+	// The page's box says whether to ask for older messages; unticked
+	// boxes are not sent, so the box's presence is marked separately.
+	wantHistory := func() bool {
+		return r.PostForm.Get("history") == "yes" || r.PostForm.Get("historybox") != "1" && h.historyDefault()
+	}
 	switch {
 	case r.PostForm.Get("action") == "clearall":
 		ch.All = true
+	case r.PostForm.Get("action") == "selectall":
+		chats, err := h.store.PickerChats(r.Context(), account.ID)
+		if err != nil {
+			back("failed", "")
+			return
+		}
+		tab := pickTabKey(r.PostForm.Get("tab"))
+		query := humancheck.Clean(r.PostForm.Get("q"), 60)
+		ch.Chats, ch.Sync, ch.History = h.filterPickChats(r.Context(), chats, tab, query).unselectedIDs(), true, wantHistory()
 	case r.PostForm.Get("sync") != "":
 		chat = r.PostForm.Get("sync")
-		ch.Chats, ch.Sync = []string{chat}, true
-		// The page's box says whether to ask for older messages; unticked
-		// boxes are not sent, so the box's presence is marked separately.
-		ch.History = r.PostForm.Get("history") == "yes" || r.PostForm.Get("historybox") != "1" && h.historyDefault()
+		ch.Chats, ch.Sync, ch.History = []string{chat}, true, wantHistory()
 	case r.PostForm.Get("stop") != "":
 		chat = r.PostForm.Get("stop")
 		ch.Chats = []string{chat}
@@ -271,7 +284,10 @@ var pickTemplate = template.Must(template.New("pick").Funcs(uiFuncs).Parse(uiHea
 <div class="pick-grid">
 <div class="pick-find">
 <div class="search" role="search"><input type="search" name="q" value="{{.Query}}" placeholder="Search {{.Total}} chats by name or number" aria-label="Search chats" form="pick-search"> <button form="pick-search">Search</button></div>
+<div class="pick-bar">
 <nav class="pick-tabs" aria-label="Kinds of chat">{{range .Tabs}}<a href="{{.Href}}"{{if .Current}} aria-current="true"{{end}}>{{.Label}}<span class="n">{{.N}}</span></a>{{end}}</nav>
+{{if .SelectAll}}<button type="submit" name="action" value="selectall" class="pick-all">Select all {{.SelectAll}}</button>{{end}}
+</div>
 <div class="pick-list">
 {{range .Rows}}<button type="submit" class="pick-row" id="c-{{.ID}}" name="{{if .Syncing}}stop{{else}}sync{{end}}" value="{{.ID}}" aria-pressed="{{.Syncing}}" aria-label="{{if .Syncing}}Stop syncing{{else}}Sync{{end}} {{.Name}}" data-chat="{{.ID}}" data-name="{{.Name}}" data-picture="{{.Picture}}"><span class="tick" aria-hidden="true"></span><img class="avatar" src="{{.Picture}}" alt="" width="36" height="36" loading="lazy"><span class="nm">{{.Name}}</span><span class="sub">{{.Last}}</span></button>
 {{else}}{{if not .Unnamed}}<p class="empty">No chats match.</p>{{end}}{{end}}

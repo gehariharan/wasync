@@ -443,3 +443,188 @@ func TestPickerPageWorksWithoutScript(t *testing.T) {
 		t.Fatalf("clear all: %d", code)
 	}
 }
+
+func TestPickerSelectAllRespectsTabAndSearch(t *testing.T) {
+	f, c, csrf := pickerFixture(t, nil)
+	ctx := context.Background()
+	const (
+		jewelGroup  = "120363000000000091@g.us"
+		jewelPerson = "15550009991@s.whatsapp.net"
+		jewelStudio = "15550009992@s.whatsapp.net"
+	)
+	if err := f.store.SaveGroups(ctx, f.account, []storage.Group{{ID: jewelGroup, Name: "Jewellery Designs"}}); err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range []storage.Group{{ID: jewelPerson, Name: "Asha Jewellery"}, {ID: jewelStudio, Name: "Kiran Jewellery"}} {
+		if err := f.store.SaveDiscoveredChat(ctx, f.account, ch); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// On All, folded unnamed chats (4) are excluded from the shown list:
+	// 4 groups + 3 named people = 7.
+	all := pickJSON(t, c, "")
+	if all.SelectAll != 7 {
+		t.Fatalf("all select_all = %d, want 7", all.SelectAll)
+	}
+	// On both /ui/chats/pick and /ui/setup/chats, the button shows the count it will add.
+	for _, path := range []string{"/ui/chats/pick", "/ui/setup/chats"} {
+		_, page, _ := c.get(path)
+		if !strings.Contains(page, `name="action" value="selectall" class="pick-all">Select all 7</button>`) {
+			t.Fatalf("%s lacks Select all 7:\n%s", path, page)
+		}
+	}
+
+	// Pre-select one non-matching chat; filtered Select all must preserve it.
+	c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "sync": {officeTeam}})
+
+	// Search "jewellery" on Groups tab: matches only jewelGroup (1 chat).
+	_, page, _ := c.get("/ui/setup/chats?tab=groups&q=jewellery")
+	if !strings.Contains(page, ">Select all 1</button>") {
+		t.Fatalf("groups+search page lacks Select all 1:\n%s", page)
+	}
+	code, _, hd := c.post("/ui/setup/chats", url.Values{"csrf": {csrf}, "tab": {"groups"}, "q": {"jewellery"}, "action": {"selectall"}})
+	if code != 303 || hd.Get("Location") != "/ui/setup/chats?q=jewellery&tab=groups" {
+		t.Fatalf("setup select all groups+search: %d %v", code, hd.Get("Location"))
+	}
+	if !f.group(t, jewelGroup).Enabled || !f.group(t, officeTeam).Enabled {
+		t.Fatal("matching group or previously selected chat is not enabled")
+	}
+	if f.group(t, jewelPerson).Enabled || f.group(t, jewelStudio).Enabled || f.group(t, bookClub).Enabled {
+		t.Fatal("select all on Groups+search enabled chats outside the filter")
+	}
+	// Once every matching chat is selected, Select all disappears.
+	_, page, _ = c.get("/ui/setup/chats?tab=groups&q=jewellery")
+	if strings.Contains(page, `value="selectall"`) {
+		t.Fatalf("Select all still shown when 0 unselected remain:\n%s", page)
+	}
+
+	// Search "jewellery" on All tab: jewelGroup is already selected, so only the
+	// 2 unselected jewellery people remain to add.
+	_, page, _ = c.get("/ui/chats/pick?q=jewellery")
+	if !strings.Contains(page, ">Select all 2</button>") {
+		t.Fatalf("all+search page lacks Select all 2:\n%s", page)
+	}
+	code, _, hd = c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "tab": {"all"}, "q": {"jewellery"}, "action": {"selectall"}})
+	if code != 303 || hd.Get("Location") != "/ui/chats/pick?q=jewellery" {
+		t.Fatalf("pick select all search: %d %v", code, hd.Get("Location"))
+	}
+	if !f.group(t, jewelPerson).Enabled || !f.group(t, jewelStudio).Enabled {
+		t.Fatal("search select all missed matching chats")
+	}
+	if f.group(t, bookClub).Enabled || f.group(t, ammaChat).Enabled || f.group(t, phoneChat).Enabled {
+		t.Fatal("search select all enabled non-matching chats")
+	}
+
+	// People tab: 3 named people, 2 already selected -> Select all 1 (Amma).
+	// Folded unnamed chats are not included until the unnamed tab is opened.
+	_, page, _ = c.get("/ui/chats/pick?tab=people")
+	if !strings.Contains(page, ">Select all 1</button>") {
+		t.Fatalf("people tab lacks Select all 1:\n%s", page)
+	}
+	c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "tab": {"people"}, "action": {"selectall"}})
+	if !f.group(t, ammaChat).Enabled {
+		t.Fatal("people select all did not enable Amma")
+	}
+	if f.group(t, phoneChat).Enabled || f.group(t, unknownLID).Enabled {
+		t.Fatal("people select all silently enabled folded unnamed chats")
+	}
+
+	// Unnamed tab: all 4 unnamed chats can be selected together there.
+	_, page, _ = c.get("/ui/chats/pick?tab=unnamed")
+	if !strings.Contains(page, ">Select all 4</button>") {
+		t.Fatalf("unnamed tab lacks Select all 4:\n%s", page)
+	}
+	c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "tab": {"unnamed"}, "action": {"selectall"}})
+	if !f.group(t, phoneChat).Enabled || !f.group(t, unknownLID).Enabled || !f.group(t, shownLID).Enabled {
+		t.Fatal("unnamed tab select all did not enable unnamed chats")
+	}
+	if f.group(t, bookClub).Enabled {
+		t.Fatal("unnamed tab select all touched a group chat")
+	}
+
+	// Clear still clears everything.
+	if code, _, _ = c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "action": {"clearall"}}); code != 303 || f.group(t, jewelPerson).Enabled || f.group(t, officeTeam).Enabled {
+		t.Fatalf("clear all after select all: %d", code)
+	}
+}
+
+func TestPickerSelectAllAcrossPagesAuthHistoryAndSyncCount(t *testing.T) {
+	f, c, csrf := pickerFixture(t, nil)
+	ctx := context.Background()
+	var many []storage.Group
+	for i := range 220 {
+		many = append(many, storage.Group{ID: fmt.Sprintf("1203630000003%05d@g.us", i), Name: fmt.Sprintf("Club %03d", i)})
+	}
+	if err := f.store.SaveGroups(ctx, f.account, many); err != nil {
+		t.Fatal(err)
+	}
+	// Pre-select 59 of the 223 groups (with history off so we can verify they are untouched).
+	pre := make([]string, 0, 59)
+	for i := range 59 {
+		pre = append(pre, many[i].ID)
+	}
+	if err := f.store.EnableCaptureMany(ctx, f.account, pre, false); err != nil {
+		t.Fatal(err)
+	}
+
+	// Signed-out and forged requests are rejected just like single-chat ticks.
+	signedOut := newPageClient(t, f)
+	if code, _, _ := signedOut.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "tab": {"groups"}, "action": {"selectall"}}); code != 401 {
+		t.Fatalf("signed-out select all: %d", code)
+	}
+	if code, _, _ := c.post("/ui/chats/pick", url.Values{"csrf": {"wrong"}, "tab": {"groups"}, "action": {"selectall"}}); code != 403 {
+		t.Fatalf("forged select all: %d", code)
+	}
+	if f.group(t, many[100].ID).Enabled {
+		t.Fatal("rejected request enabled a chat")
+	}
+
+	// 223 total groups - 59 selected = 164 remaining, even though page 1 shows only 50.
+	_, page, _ := c.get("/ui/chats/pick?tab=groups")
+	if !strings.Contains(page, ">Select all 164</button>") {
+		t.Fatalf("paged groups tab lacks Select all 164:\n%s", page)
+	}
+
+	// Single-chat JSON sync with tab+q returns the live select_all count.
+	form := syncForm(csrf, "on", many[59].ID)
+	form.Set("tab", "groups")
+	form.Set("q", "")
+	code, body, _ := c.post("/ui/api/chats/sync", form)
+	if code != 200 || !strings.Contains(body, `"syncing":60`) || !strings.Contains(body, `"select_all":163`) {
+		t.Fatalf("sync with tab: %d %s", code, body)
+	}
+	// Ticking a chat outside the active tab leaves select_all for groups unchanged.
+	form = syncForm(csrf, "on", ammaChat)
+	form.Set("tab", "groups")
+	form.Set("q", "")
+	code, body, _ = c.post("/ui/api/chats/sync", form)
+	if code != 200 || !strings.Contains(body, `"syncing":61`) || !strings.Contains(body, `"select_all":163`) {
+		t.Fatalf("sync outside tab: %d %s", code, body)
+	}
+
+	// Select all with the history box unticked enables all remaining 163 groups
+	// across pages without queueing history requests.
+	code, _, hd := c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "tab": {"groups"}, "historybox": {"1"}, "action": {"selectall"}})
+	if code != 303 || hd.Get("Location") != "/ui/chats/pick?tab=groups" {
+		t.Fatalf("select all across pages: %d %v", code, hd.Get("Location"))
+	}
+	for _, g := range many {
+		got := f.group(t, g.ID)
+		if !got.Enabled {
+			t.Fatalf("%s was not enabled", g.ID)
+		}
+		if g.ID != many[59].ID && got.HistoryRequest == "queued" {
+			t.Fatalf("%s queued history despite unticked box", g.ID)
+		}
+	}
+	if !f.group(t, bookClub).Enabled || !f.group(t, officeTeam).Enabled {
+		t.Fatal("existing groups were not enabled")
+	}
+
+	// Turning history back on and selecting all on unnamed queues history for them.
+	c.post("/ui/chats/pick", url.Values{"csrf": {csrf}, "tab": {"unnamed"}, "historybox": {"1"}, "history": {"yes"}, "action": {"selectall"}})
+	if f.group(t, phoneChat).HistoryRequest != "queued" {
+		t.Fatal("select all with history=yes did not queue history")
+	}
+}

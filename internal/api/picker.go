@@ -112,7 +112,9 @@ type pickList struct {
 	Counts  pickCounts `json:"counts"`
 	Syncing int        `json:"syncing"`
 	Total   int        `json:"total"`
-	Chats   []pickChat `json:"chats"`
+	// SelectAll is how many unselected chats match the current tab and search.
+	SelectAll int        `json:"select_all"`
+	Chats     []pickChat `json:"chats"`
 	// Unnamed is the folded entry, shown after the chats of the last page of
 	// the All and People tabs while nothing is searched.
 	Unnamed *pickFold `json:"unnamed,omitempty"`
@@ -225,30 +227,48 @@ func (h *handler) pickChatJSON(e pickEntry) pickChat {
 	return pickChat{ID: e.chat.ID, Name: e.name, Kind: kind, Unnamed: e.unnamed, Syncing: e.chat.Enabled, LastActive: e.chat.LastActive, Initials: initialsOf, Picture: "/ui/avatar?c=" + url.QueryEscape(e.chat.ID)}
 }
 
-// listPick builds one page of the picker.
-func (h *handler) listPick(ctx context.Context, q pickQuery) (pickList, error) {
-	out := pickList{Tab: q.Tab, Query: q.Query, Chats: []pickChat{}}
-	account, err := h.store.Account(ctx)
-	if err != nil || account == nil {
-		return out, err
+type pickFiltered struct {
+	total   int
+	syncing int
+	counts  pickCounts
+	shown   []pickEntry
+	folded  pickFold
+}
+
+func (f pickFiltered) selectAll() int {
+	n := 0
+	for _, e := range f.shown {
+		if !e.chat.Enabled {
+			n++
+		}
 	}
-	out.Paired = true
-	chats, err := h.store.PickerChats(ctx, account.ID)
-	if err != nil {
-		return out, err
+	return n
+}
+
+func (f pickFiltered) unselectedIDs() []string {
+	var ids []string
+	for _, e := range f.shown {
+		if !e.chat.Enabled {
+			ids = append(ids, e.chat.ID)
+		}
 	}
-	needle := strings.ToLower(strings.TrimSpace(q.Query))
+	return ids
+}
+
+// filterPickChats splits chats by tab and search query, folding unnamed direct
+// chats on All and People when nothing is searched.
+func (h *handler) filterPickChats(ctx context.Context, chats []storage.PickerChat, tab, query string) pickFiltered {
+	var out pickFiltered
+	out.total = len(chats)
+	needle := strings.ToLower(strings.TrimSpace(query))
 	needleDigits := digits(needle)
 	if strings.Trim(needle, "+0123456789 -().") != "" {
 		needleDigits = "" // words are searched as names only
 	}
-	fold := needle == "" && (q.Tab == pickTabAll || q.Tab == pickTabPeople)
-	var shown []pickEntry
-	var folded pickFold
-	out.Total = len(chats)
+	fold := needle == "" && (tab == pickTabAll || tab == pickTabPeople)
 	for _, c := range chats {
 		if c.Enabled {
-			out.Syncing++
+			out.syncing++
 		}
 		e := pickEntry{chat: c, group: storage.ChatKind(c.ID) == "group"}
 		e.name, e.unnamed = h.pickName(ctx, c, false)
@@ -260,21 +280,21 @@ func (h *handler) listPick(ctx context.Context, q pickQuery) (pickList, error) {
 		if !e.matches(needle, needleDigits) {
 			continue
 		}
-		out.Counts.All++
+		out.counts.All++
 		switch {
 		case e.group:
-			out.Counts.Groups++
+			out.counts.Groups++
 		default:
-			out.Counts.People++
+			out.counts.People++
 		}
 		if e.unnamed {
-			out.Counts.Unnamed++
+			out.counts.Unnamed++
 		}
 		if c.Enabled {
-			out.Counts.Selected++
+			out.counts.Selected++
 		}
 		in := false
-		switch q.Tab {
+		switch tab {
 		case pickTabAll:
 			in = true
 		case pickTabGroups:
@@ -290,27 +310,45 @@ func (h *handler) listPick(ctx context.Context, q pickQuery) (pickList, error) {
 			continue
 		}
 		if fold && e.unnamed {
-			folded.Count++
+			out.folded.Count++
 			if c.Enabled {
-				folded.Syncing++
+				out.folded.Syncing++
 			}
 			continue
 		}
-		shown = append(shown, e)
+		out.shown = append(out.shown, e)
 	}
-	sort.SliceStable(shown, func(i, j int) bool { return shown[i].before(shown[j]) })
-	start := min(q.Offset, len(shown))
-	end := min(start+q.Limit, len(shown))
-	for _, e := range shown[start:end] {
+	return out
+}
+
+// listPick builds one page of the picker.
+func (h *handler) listPick(ctx context.Context, q pickQuery) (pickList, error) {
+	out := pickList{Tab: q.Tab, Query: q.Query, Chats: []pickChat{}}
+	account, err := h.store.Account(ctx)
+	if err != nil || account == nil {
+		return out, err
+	}
+	out.Paired = true
+	chats, err := h.store.PickerChats(ctx, account.ID)
+	if err != nil {
+		return out, err
+	}
+	f := h.filterPickChats(ctx, chats, q.Tab, q.Query)
+	out.Total, out.Syncing, out.Counts, out.SelectAll = f.total, f.syncing, f.counts, f.selectAll()
+	sort.SliceStable(f.shown, func(i, j int) bool { return f.shown[i].before(f.shown[j]) })
+	start := min(q.Offset, len(f.shown))
+	end := min(start+q.Limit, len(f.shown))
+	for _, e := range f.shown[start:end] {
 		if e.unnamed && e.name == unknownPerson {
 			e.name, _ = h.pickName(ctx, e.chat, true)
 		}
 		out.Chats = append(out.Chats, h.pickChatJSON(e))
 	}
-	if end < len(shown) {
+	if end < len(f.shown) {
 		next := end
 		out.NextOffset = &next
-	} else if folded.Count > 0 {
+	} else if f.folded.Count > 0 {
+		folded := f.folded
 		out.Unnamed = &folded
 	}
 	return out, nil
@@ -349,7 +387,7 @@ func (h *handler) applyPick(ctx context.Context, account int64, ch pickChange) (
 	for _, c := range chats {
 		enabled[c.ID] = c.Enabled
 	}
-	var off []string
+	var on, off []string
 	if ch.All && !ch.Sync {
 		for id, on := range enabled {
 			if on {
@@ -366,14 +404,17 @@ func (h *handler) applyPick(ctx context.Context, account int64, ch pickChange) (
 		for _, id := range ch.Chats {
 			switch {
 			case ch.Sync && !enabled[id]:
-				if err = h.store.EnableCapture(ctx, account, id, ch.History); err != nil {
-					return 0, err
-				}
+				on = append(on, id)
 				enabled[id] = true
 			case !ch.Sync && enabled[id]:
 				off = append(off, id)
 				enabled[id] = false
 			}
+		}
+	}
+	if len(on) > 0 {
+		if err = h.store.EnableCaptureMany(ctx, account, on, ch.History); err != nil {
+			return 0, err
 		}
 	}
 	if len(off) > 0 {
@@ -458,7 +499,18 @@ func (h *handler) pickSyncJSON(w http.ResponseWriter, r *http.Request, sess uiSe
 		fail(w, 500, "cannot update capture preference")
 		return
 	}
-	writeJSON(w, 200, map[string]int{"syncing": n})
+	res := map[string]int{"syncing": n}
+	if r.PostForm.Has("tab") {
+		tab := pickTabKey(r.PostForm.Get("tab"))
+		if tab == pickTabSelected {
+			tab = pickTabAll
+		}
+		query := humancheck.Clean(r.PostForm.Get("q"), 60)
+		if chats, err := h.store.PickerChats(r.Context(), account.ID); err == nil {
+			res["select_all"] = h.filterPickChats(r.Context(), chats, tab, query).selectAll()
+		}
+	}
+	writeJSON(w, 200, res)
 }
 
 type settingsJSON struct {
