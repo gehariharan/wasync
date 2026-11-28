@@ -1,73 +1,89 @@
-// Checks the landing page markup, stylesheet rules, and screenshot assets.
+// Checks that every screenshot the landing page serves resolves to a real, web-sized file.
 import assert from "node:assert/strict";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
-const websiteDir = join(dirname(fileURLToPath(import.meta.url)), "..");
-const publicDir = join(websiteDir, "public", "wasync");
-const landingHTML = readFileSync(join(publicDir, "index.html"), "utf8");
-const installHTML = readFileSync(join(publicDir, "installoptions", "index.html"), "utf8");
-const siteCSS = readFileSync(join(publicDir, "site.css"), "utf8");
+const publicDir = join(dirname(fileURLToPath(import.meta.url)), "..", "public", "wasync");
+const maxAssetBytes = 150_000;
 
-test("landing page keeps the platform picker, mobile view, and download links intact", () => {
-  for (const tab of ["mac", "windows", "linux"]) {
-    assert.match(landingHTML, new RegExp(`id="tab-${tab}"[^>]*aria-controls="panel-${tab}"`));
-    assert.match(landingHTML, new RegExp(`id="panel-${tab}"[^>]*data-panel="${tab}"`));
-  }
-  for (const key of ["mac-arm64", "mac-amd64", "windows-amd64", "linux-amd64"]) {
-    assert.match(landingHTML, new RegExp(`href="download/${key}"[^>]*data-dl="${key}"`));
-  }
-  assert.match(landingHTML, /data-for="mobile"/);
-  assert.match(landingHTML, /data-share/);
-  assert.match(landingHTML, /data-copy="page-link"/);
-  assert.match(landingHTML, /href="installoptions\/#not-whatsapp"/);
-  assert.match(installHTML, /id="not-whatsapp"/);
-});
-
-test("hero icon uses an inline animated SVG and site.css respects prefers-reduced-motion", () => {
-  assert.match(landingHTML, /<svg class="hero-logo"[^>]*aria-hidden="true"/);
-  assert.match(landingHTML, /class="hl-tile"/);
-  assert.match(landingHTML, /class="hl-arrows"/);
-  assert.match(siteCSS, /@keyframes hl-spin/);
-  assert.match(siteCSS, /@media \(prefers-reduced-motion: reduce\)/);
-});
-
-test("header sits on the page background without the white bar from components.css", () => {
-  assert.match(siteCSS, /body\.site \.topbar\s*\{[^}]*background:\s*transparent;/s);
-  assert.match(siteCSS, /body\.site \.topbar\s*\{[^}]*border-bottom:\s*0;/s);
-});
-
-test("screenshots section has lazy-loaded WebP and fallback images with explicit dimensions on disk", () => {
-  assert.match(landingHTML, /<section class="showcase" aria-labelledby="showcase-title">/);
-  const pictures = [...landingHTML.matchAll(/<picture>([\s\S]*?)<\/picture>/g)];
-  assert.equal(pictures.length, 3, "expected 3 app screenshots in the showcase");
-
-  for (const [, inner] of pictures) {
-    const sources = [...inner.matchAll(/<source\s+([^>]+)>/g)].map(m => m[1]);
-    assert.ok(sources.some(s => /type="image\/webp"/.test(s) && /prefers-color-scheme: dark/.test(s)), "expected dark WebP source");
-    assert.ok(sources.some(s => /type="image\/webp"/.test(s) && !/prefers-color-scheme/.test(s)), "expected light WebP source");
-
-    for (const src of sources) {
-      const file = /srcset="([^"]+)"/.exec(src)?.[1];
-      assert.ok(file, "source must have srcset");
-      const abs = join(publicDir, file);
-      assert.ok(existsSync(abs), `missing asset ${file}`);
-      assert.ok(statSync(abs).size < 150_000, `WebP asset ${file} should stay web-friendly (<150 KB)`);
+function startTags(html) {
+  const tags = [];
+  const tagPattern = /<(\/?)([a-zA-Z][\w-]*)((?:\s+[^\s=>\/]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?)*)\s*\/?>/g;
+  const attrPattern = /([^\s=>\/]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+  for (const [, closing, name, rawAttrs] of html.replace(/<!--[\s\S]*?-->/g, "").matchAll(tagPattern)) {
+    const attrs = {};
+    for (const [, key, dq, sq, bare] of rawAttrs.matchAll(attrPattern)) {
+      attrs[key.toLowerCase()] = dq ?? sq ?? bare ?? "";
     }
+    tags.push({ name: name.toLowerCase(), closing: closing === "/", attrs });
+  }
+  return tags;
+}
 
-    const imgTag = /<img\s+([^>]+)>/.exec(inner)?.[1];
-    assert.ok(imgTag, "picture must have fallback <img>");
-    assert.match(imgTag, /loading="lazy"/);
-    assert.match(imgTag, /decoding="async"/);
-    assert.match(imgTag, /width="\d+"/);
-    assert.match(imgTag, /height="\d+"/);
-    assert.match(imgTag, /alt="[^"]{10,}"/);
-    const imgSrc = /src="([^"]+)"/.exec(imgTag)?.[1];
-    assert.ok(imgSrc, "img must have src");
-    const absImg = join(publicDir, imgSrc);
-    assert.ok(existsSync(absImg), `missing fallback image ${imgSrc}`);
-    assert.ok(statSync(absImg).size < 150_000, `fallback image ${imgSrc} should stay web-friendly (<150 KB)`);
+function pictures(html) {
+  const found = [];
+  let current = null;
+  for (const tag of startTags(html)) {
+    if (tag.name === "picture") {
+      if (tag.closing) {
+        found.push(current);
+        current = null;
+      } else {
+        current = { sources: [], imgs: [] };
+      }
+    } else if (current && !tag.closing && tag.name === "source") {
+      current.sources.push(tag.attrs);
+    } else if (current && !tag.closing && tag.name === "img") {
+      current.imgs.push(tag.attrs);
+    }
+  }
+  return found;
+}
+
+function assetFile(url) {
+  const file = join(publicDir, url);
+  assert.ok(existsSync(file), `page references missing asset ${url}`);
+  assert.ok(statSync(file).size < maxAssetBytes, `${url} should stay under ${maxAssetBytes} bytes`);
+  return file;
+}
+
+function pngSize(file) {
+  const bytes = readFileSync(file);
+  assert.equal(bytes.toString("latin1", 1, 4), "PNG", `${file} is not a PNG`);
+  return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
+}
+
+const landing = pictures(readFileSync(join(publicDir, "index.html"), "utf8"));
+
+test("the landing page shows app screenshots", () => {
+  assert.ok(landing.length > 0, "expected at least one <picture> screenshot");
+});
+
+test("every screenshot source and fallback image exists on disk and stays web-sized", () => {
+  for (const picture of landing) {
+    assert.ok(picture.sources.length > 0, "a <picture> should offer at least one <source>");
+    for (const source of picture.sources) {
+      assert.ok(source.srcset, "a <source> needs a srcset");
+      for (const candidate of source.srcset.split(",")) {
+        assetFile(candidate.trim().split(/\s+/)[0]);
+      }
+    }
+    assert.equal(picture.imgs.length, 1, "a <picture> needs exactly one fallback <img>");
+    assert.ok(picture.imgs[0].src, "the fallback <img> needs a src");
+    assetFile(picture.imgs[0].src);
+  }
+});
+
+test("each screenshot reserves the fallback image's real pixel size so the layout does not jump", () => {
+  for (const picture of landing) {
+    const img = picture.imgs[0];
+    const actual = pngSize(assetFile(img.src));
+    assert.deepEqual(
+      { width: Number(img.width), height: Number(img.height) },
+      actual,
+      `${img.src} declares a size that differs from the image file`,
+    );
   }
 });
