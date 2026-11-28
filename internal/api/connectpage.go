@@ -46,8 +46,6 @@ type connectData struct {
 	Sel     string
 	Cur     *connectRow
 	Preview *connectPreview
-	// Ago is how long ago the connected app last called wasync.
-	Ago string
 	// Other is the Other tile: the agents connected by name, where
 	// wasync-axi reads its credential, and the block to paste.
 	Agents       []setupAgent
@@ -116,9 +114,7 @@ func (h *handler) connectView(w http.ResponseWriter, r *http.Request, sess uiSes
 	d.Tiles = append(d.Tiles, connectTile{Kind: otherApp, Title: "Other", Sub: "Copy one block", Current: d.Sel == otherApp, Href: d.Back + "?app=" + otherApp})
 	switch {
 	case d.Cur != nil && d.Cur.Connected:
-		if d.Cur.LastCall != nil {
-			d.Ago = ago(now.Sub(*d.Cur.LastCall))
-		} else {
+		if d.Cur.LastCall == nil {
 			d.Refresh = 5 // the screen turns to "connected" on the app's first call
 		}
 	case d.Cur != nil:
