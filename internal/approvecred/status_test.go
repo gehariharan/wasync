@@ -118,15 +118,15 @@ func TestReadAndDeleteResultsMapToTheErrorsWasyncKnows(t *testing.T) {
 	if !errors.Is(readError(statusUserCanceled), ErrAccessDenied) {
 		t.Fatal("a cancelled request is not a denial")
 	}
-	for _, status := range []int{statusUserCanceled, statusAuthFailed} {
-		if !errors.Is(deleteError(status), ErrAccessDenied) {
-			t.Fatalf("status %d is not a denial", status)
-		}
+	if !errors.Is(deleteError(statusUserCanceled), ErrAccessDenied) {
+		t.Fatal("a cancelled delete is not a denial")
 	}
-	// With the Keychain's windows off, -25293 on a read means the item belongs
-	// to a program macOS would have asked the person about.
-	if err := readError(statusAuthFailed); !errors.Is(err, ErrForeignItem) || !strings.Contains(err.Error(), "-25293") {
-		t.Fatalf("auth failed: %v", err)
+	// With the Keychain's windows off, -25293 on a read or a delete means the
+	// item belongs to a program macOS would have asked the person about.
+	for _, err := range []error{readError(statusAuthFailed), deleteError(statusAuthFailed)} {
+		if !errors.Is(err, ErrForeignItem) || errors.Is(err, ErrAccessDenied) || !strings.Contains(err.Error(), "-25293") {
+			t.Fatalf("auth failed: %v", err)
+		}
 	}
 	if err := readError(-25244); err == nil || errors.Is(err, ErrAccessDenied) || !strings.Contains(err.Error(), "-25244") {
 		t.Fatalf("%v", err)

@@ -118,6 +118,8 @@ func deleteError(status int) error {
 		return nil
 	case status == statusInteractionNotAllowed:
 		return ErrLocked
+	case status == statusAuthFailed:
+		return fmt.Errorf("%w (%s)", ErrForeignItem, describe(status))
 	case denied(status):
 		return ErrAccessDenied
 	}

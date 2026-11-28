@@ -240,27 +240,6 @@ int wasync_kc_list(const char *path, const char *service, char **out, int *outle
 	}
 }
 
-int wasync_kc_unlock(const char *path) {
-	@autoreleasepool {
-		OSStatus status;
-		SecKeychainRef kc = wasync_open(path, &status);
-		if (status != errSecSuccess) {
-			return (int)status;
-		}
-		if (kc == NULL && (status = SecKeychainCopyDefault(&kc)) != errSecSuccess) {
-			return (int)status;
-		}
-		SecKeychainStatus state = 0;
-		if (SecKeychainGetStatus(kc, &state) == errSecSuccess && (state & kSecUnlockStateStatus)) {
-			CFRelease(kc);
-			return 0;
-		}
-		status = SecKeychainUnlock(kc, 0, NULL, false);
-		CFRelease(kc);
-		return (int)status;
-	}
-}
-
 int wasync_kc_create(const char *path, const char *password) {
 	@autoreleasepool {
 		SecKeychainRef kc = NULL;

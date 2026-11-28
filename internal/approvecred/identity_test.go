@@ -137,19 +137,21 @@ func TestAnItemUnderItsOwnNameThatItCannotReadStopsTheOwner(t *testing.T) {
 	}
 }
 
-// A locked Keychain: the owner asks once to unlock it, as any program would;
-// a command does not ask at all.
-func TestALockedKeychainIsUnlockedOnceByTheOwnerOnly(t *testing.T) {
+// A locked Keychain is reported to the owner and to a command alike; neither
+// asks the person to unlock it, and no credential is made in its place.
+func TestALockedKeychainIsReportedWithoutAsking(t *testing.T) {
 	mem := newMemory()
 	signedRelease(t, mem)
 	dir := dataDir(t)
 	mem.locked = true
-	if _, err := Read(dir); !errors.Is(err, ErrLocked) || mem.unlocks != 0 {
-		t.Fatalf("read: %v unlocks=%d", err, mem.unlocks)
+	if _, err := Read(dir); !errors.Is(err, ErrLocked) {
+		t.Fatalf("read: %v", err)
 	}
-	got, err := Owner(dir, fileLoader(t))
-	if err != nil || !valid(got) || mem.unlocks != 1 {
-		t.Fatalf("owner: %q %v unlocks=%d", got, err, mem.unlocks)
+	if _, err := Owner(dir, fileLoader(t)); !errors.Is(err, ErrLocked) {
+		t.Fatalf("owner: %v", err)
+	}
+	if len(mem.items) != 0 {
+		t.Fatalf("a locked Keychain was written to: %v", mem.items)
 	}
 }
 

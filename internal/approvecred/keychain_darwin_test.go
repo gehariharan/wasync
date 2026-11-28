@@ -221,13 +221,10 @@ func TestAnUnsignedBuildKeepsTheFile(t *testing.T) {
 	if id := signer(); id != "" {
 		t.Skipf("this test binary is signed by %s", id)
 	}
-	t.Setenv(RealKeychainEnv, "")
-	if b, id := platform(); b != nil || id != "" {
-		t.Fatalf("an unsigned build got %T %q", b, id)
-	}
-	path := filepath.Join(t.TempDir(), "x.keychain")
-	t.Setenv(RealKeychainEnv, path)
-	if b, _ := platform(); b != (keychain{path: path}) {
-		t.Fatalf("a keychain file was not used: %#v", b)
+	for _, v := range []string{"", filepath.Join(t.TempDir(), "x.keychain")} {
+		t.Setenv(RealKeychainEnv, v)
+		if b, id := platform(); b != nil || id != "" {
+			t.Fatalf("an unsigned build with %s=%q got %T %q", RealKeychainEnv, v, b, id)
+		}
 	}
 }

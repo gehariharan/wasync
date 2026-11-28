@@ -139,9 +139,9 @@ command and every later release. wasync's Keychain calls never show a window: an
 another program made (an older build, a wasync built from source) is left alone, and the
 release keeps its own beside it. Reading, searching, replying and reacting from a connected
 agent never use the approval credential at all; the running wasync reads it once when it
-starts. The one window wasync may still cause is macOS asking you to unlock a locked login
-Keychain when wasync starts; if you cancel it, wasync stops without restarting and shows one
-notification: approvals stay off until you run wasync again. A command that would need your
+starts. wasync never asks you to unlock a locked login Keychain either: if it is locked when
+wasync starts, wasync stops without restarting and shows one notification: approvals stay off
+until you unlock the Keychain and run wasync again. A command that would need your
 password to read the credential (a different build from the running wasync, or a locked
 Keychain) fails and says why instead of asking. A shell outside your desktop session, such as
 SSH, cannot open the Keychain at all, so commands that need the approval credential
@@ -152,9 +152,7 @@ The Keychain recognises a program by its code signature, and a wasync built from
 `go build`, or by Homebrew on Linux) has none that lasts: every build looks like a different
 program. Such a build therefore keeps the private `approve.token` file in the data directory,
 as on Linux, rather than an item each later build could read only by asking you.
-`WASYNC_TEST_KEYCHAIN=1` makes it use the login Keychain anyway, and setting it to the
-absolute path of a keychain file makes any build use that file instead, for trying the
-Keychain code without touching your own.
+`WASYNC_TEST_KEYCHAIN=1` makes it use the login Keychain anyway.
 
 There is one Keychain item per data directory, so a release started with a temporary
 `--data-dir` leaves an item behind, and items from earlier releases use the shorter name

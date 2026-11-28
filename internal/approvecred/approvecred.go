@@ -49,9 +49,7 @@ var ErrRealKeychainInTest = errors.New("a test reached the real Keychain; set " 
 // RealKeychainEnv, set to 1, lets a test binary, or a build that is not signed
 // by a developer team, use the person's real login Keychain. Without it a test
 // can never read or write there: every data directory, including each temporary
-// test directory, would otherwise leave its own item behind. Set to the absolute
-// path of a keychain file instead, it makes any build use that keychain, so the
-// Keychain code can be tried without touching the person's own.
+// test directory, would otherwise leave its own item behind.
 const RealKeychainEnv = "WASYNC_TEST_KEYCHAIN"
 
 // Backend keeps one secret per data directory outside the data directory.
@@ -81,13 +79,10 @@ type Lister interface {
 // ("TEAM.identifier", or "" for the names wasync used before).
 var backend, identity = defaultBackend()
 
-// unlocker is a Backend that can ask the person to unlock it.
-type unlocker interface{ unlock() error }
-
 // defaultBackend is the Keychain for a signed macOS release and nothing
 // elsewhere. A test binary gets nothing either, unless it asked for a Keychain.
 func defaultBackend() (Backend, string) {
-	if v := os.Getenv(RealKeychainEnv); testing.Testing() && v != "1" && !filepath.IsAbs(v) {
+	if testing.Testing() && os.Getenv(RealKeychainEnv) != "1" {
 		return nil, ""
 	}
 	return platform()
@@ -171,22 +166,13 @@ func valid(token string) bool {
 // and moving an existing file into the Keychain. fromFile is the legacy loader
 // that reads or creates the private file; it is used only without a Keychain.
 //
-// It never makes macOS ask the person anything, with one exception: when the
-// login Keychain is locked it asks once to unlock it, as any program would.
+// It never makes macOS ask the person anything: a locked login Keychain is
+// reported as ErrLocked.
 func Owner(dir string, fromFile func() (string, error)) (string, error) {
 	if backend == nil {
 		return fromFile()
 	}
-	secret, err := owner(dir)
-	if errors.Is(err, ErrLocked) {
-		if u, ok := backend.(unlocker); ok {
-			if err = u.unlock(); err != nil {
-				return "", fmt.Errorf("unlock the Keychain: %w", err)
-			}
-			secret, err = owner(dir)
-		}
-	}
-	return secret, err
+	return owner(dir)
 }
 
 func owner(dir string) (string, error) {

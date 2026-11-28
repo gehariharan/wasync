@@ -17,12 +17,9 @@ type memory struct {
 	// errs answers a Get for one account with an error, as the Keychain does
 	// for an item another program made.
 	errs map[string]error
-	// locked answers every Get with ErrLocked until unlock is called.
-	locked  bool
-	unlocks int
+	// locked answers every Get with ErrLocked.
+	locked bool
 }
-
-func (m *memory) unlock() error { m.unlocks++; m.locked = false; return nil }
 
 func newMemory() *memory {
 	return &memory{items: map[string]string{}, folders: map[string]string{}}

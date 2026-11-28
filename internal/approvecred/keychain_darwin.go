@@ -13,7 +13,6 @@ import "C"
 import (
 	"bytes"
 	"os"
-	"path/filepath"
 	"sync"
 	"unsafe"
 )
@@ -21,9 +20,8 @@ import (
 const service = "wasync"
 
 // keychain is the person's login Keychain or, when path is set, a keychain
-// file (tests, and a person checking a build with WASYNC_TEST_KEYCHAIN=path).
-// No call ever shows a window except unlock: one that macOS would have to ask
-// the person about fails instead (see status.go).
+// file (tests only). No call ever shows a window: one that macOS would have to
+// ask the person about fails instead (see status.go).
 type keychain struct{ path string }
 
 // oneCall runs one Keychain call at a time: each one turns the Keychain's
@@ -36,12 +34,8 @@ var oneCall sync.Mutex
 // whose signature changes every time it is built, would find each earlier
 // build's item belongs to someone else and could only read it by asking the
 // person; it keeps the file instead, as wasync does where there is no Keychain.
-// WASYNC_TEST_KEYCHAIN=1 gives any build the login Keychain, and an absolute
-// path gives it that keychain file.
+// WASYNC_TEST_KEYCHAIN=1 gives any build the login Keychain.
 func platform() (Backend, string) {
-	if v := os.Getenv(RealKeychainEnv); filepath.IsAbs(v) {
-		return keychain{path: v}, signer()
-	}
 	id := signer()
 	if id == "" && os.Getenv(RealKeychainEnv) != "1" {
 		return nil, ""
@@ -142,23 +136,6 @@ func (k keychain) List() ([]Item, error) {
 		items = append(items, Item{Account: string(fields[i]), Folder: string(fields[i+1])})
 	}
 	return items, nil
-}
-
-// unlock asks the person to unlock the keychain when it is locked. It is the
-// only call that may show a window.
-func (k keychain) unlock() error {
-	if err := k.guard(); err != nil {
-		return err
-	}
-	path := k.cpath()
-	defer free(path)
-	oneCall.Lock()
-	rc := int(C.wasync_kc_unlock(path))
-	oneCall.Unlock()
-	if rc != statusOK {
-		return readError(rc)
-	}
-	return nil
 }
 
 // The single calls setItem makes. Each one passes strings to C and frees them.

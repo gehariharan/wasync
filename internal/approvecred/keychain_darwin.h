@@ -9,7 +9,7 @@
 // path is a keychain file to use instead of the person's own Keychain, or NULL
 // for theirs. None of these functions ever shows a window: where macOS would
 // have to ask the person (the item belongs to another program, or the Keychain
-// is locked), the call fails instead. Only wasync_kc_unlock may ask.
+// is locked), the call fails instead.
 int wasync_kc_get(const char *path, const char *service, const char *account, char *out, int outlen);
 int wasync_kc_add(const char *path, const char *service, const char *account, const char *secret, const char *folder);
 int wasync_kc_update(const char *path, const char *service, const char *account, const char *secret, const char *folder);
@@ -20,10 +20,6 @@ int wasync_kc_delete(const char *path, const char *service, const char *account)
 // each item, its account and its folder, each followed by a NUL; the folder is
 // empty for an item that has none.
 int wasync_kc_list(const char *path, const char *service, char **out, int *outlen);
-
-// wasync_kc_unlock unlocks the keychain, asking the person for its password
-// when it is locked. It is the only call here that may show a window.
-int wasync_kc_unlock(const char *path);
 
 // wasync_kc_create makes a new, unlocked keychain file with the given password
 // that stays unlocked; it is not added to the person's keychain list. Tests use it.

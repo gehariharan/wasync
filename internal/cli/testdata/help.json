@@ -50,7 +50,7 @@
     },
     {
       "description": "Unlink the saved WhatsApp device session.",
-      "details": "Connects to WhatsApp when a saved session exists. Local archives and chat preferences remain on disk. It works from any folder. If another wasync (serve, the TUI or run) owns the data directory, logout goes through that one: it says which one it used (kind, PID and data directory), signs the request with the approval credential (the Keychain asks you on macOS; the sending credential is not enough), unlinks the device, and that wasync then stops because it cannot capture without a linked phone, so wasync setup or wasync login can pair a new phone straight away.",
+      "details": "Connects to WhatsApp when a saved session exists. Local archives and chat preferences remain on disk. It works from any folder. If another wasync (serve, the TUI or run) owns the data directory, logout goes through that one: it says which one it used (kind, PID and data directory), signs the request with the approval credential (read from the Keychain without asking on a signed macOS release; the sending credential is not enough), unlinks the device, and that wasync then stops because it cannot capture without a linked phone, so wasync setup or wasync login can pair a new phone straight away.",
       "path": "logout",
       "usage": "logout"
     },
