@@ -35,22 +35,27 @@ import (
 // chat or number, up to a small cap per hour. Every such message is marked in
 // the sent log.
 //
-// A send may carry a video: its MP4 bytes, base64 in "video", with "text" as
-// the caption and, in "thumbnail", the preview frame wasync-axi took with
-// ffmpeg (a JPEG of at most 64 KiB and 320 pixels on each side, passed on
-// unchanged). The agent sends the bytes it has rather than a path, so wasync
-// never opens a file on an agent's behalf, and it never runs ffmpeg on them
-// either; without a frame the video gets a plain preview. Only a caller whose
-// credential holds the send scope may send a body larger than 128 KiB or take
-// longer than the usual deadlines. A video is checked before the
-// send is counted against any pacing, and goes through exactly the same
-// scope, allowlist, list, open-sending and rate-limit decisions as text.
+// A send may carry a video or an image (never both):
+//   - A video: its MP4 bytes, base64 in "video", with "text" as the caption and,
+//     in "thumbnail", the preview frame wasync-axi took with ffmpeg (a JPEG of
+//     at most 64 KiB and 320 pixels on each side, passed on unchanged).
+//   - An image: its JPEG or PNG bytes (at most 16 MiB), base64 in "image", with
+//     "text" as the caption.
+//
+// The agent sends the bytes it has rather than a path, so wasync never opens a
+// file on an agent's behalf, and it never runs ffmpeg on them either; without a
+// frame a video gets a plain preview. Only a caller whose credential holds the
+// send scope may send a body larger than 128 KiB or take longer than the usual
+// deadlines. Media is checked before the send is counted against any pacing,
+// and goes through exactly the same scope, allowlist, list, open-sending and
+// rate-limit decisions as text.
 func init() {
 	registerV1(v1Route{Pattern: "POST /api/v1/messages", Scope: agentauth.ScopeSend, Mutation: true, Authorize: (*handler).authorizeSend, Handle: (*handler).v1Send})
 	registerV1(v1Route{Pattern: "/api/v1/messages", Handle: v1MethodNotAllowed("POST", `use POST /api/v1/messages with {"chat":"CHAT_JID","text":"..."} or {"to":"PHONE_NUMBER","text":"..."}`)})
 	query.RegisterFeature("write.send")
 	query.RegisterFeature("write.send.to")
 	query.RegisterFeature("write.send.video")
+	query.RegisterFeature("write.send.image")
 }
 
 // maxSendBody bounds a send request: the largest video and preview frame,
@@ -158,6 +163,7 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 		To        string `json:"to"`
 		Text      string `json:"text"`
 		Video     []byte `json:"video"`
+		Image     []byte `json:"image"`
 		Thumbnail []byte `json:"thumbnail"`
 	}
 	if !v1WriteBodyLimit(w, r, id, &body, maxSendBody) {
@@ -175,9 +181,15 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 			return
 		}
 	}
-	in := whatsapp.SendInput{To: target, Text: body.Text, Video: body.Video, Thumbnail: body.Thumbnail, SentBy: agentName(r)}
-	if len(in.Video) > 0 {
+	in := whatsapp.SendInput{To: target, Text: body.Text, Video: body.Video, Image: body.Image, Thumbnail: body.Thumbnail, SentBy: agentName(r)}
+	switch {
+	case len(in.Video) > 0 && len(in.Image) > 0:
+		v1Fail(w, id, 400, query.CodeInvalidArgument, "give either image or video, not both", "")
+		return
+	case len(in.Video) > 0:
 		in.Type = "video"
+	case len(in.Image) > 0:
+		in.Type = "image"
 	}
 	if err := in.Validate(); err != nil {
 		v1WriteInvalid(w, id, err)
@@ -190,6 +202,13 @@ func (h *handler) v1Send(w http.ResponseWriter, r *http.Request, id string) {
 			_, err = whatsapp.VideoThumbnail(in.Thumbnail, info)
 		}
 		if err != nil {
+			v1WriteInvalid(w, id, err)
+			return
+		}
+	}
+	if len(in.Image) > 0 {
+		// Refuse an image WhatsApp will not send before it uses up any pacing.
+		if _, err := whatsapp.ProbeImage(bytes.NewReader(in.Image), int64(len(in.Image))); err != nil {
 			v1WriteInvalid(w, id, err)
 			return
 		}

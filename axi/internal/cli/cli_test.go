@@ -159,7 +159,7 @@ func TestHelpCatalogListsOnlyImplementedCommands(t *testing.T) {
 	text, _ := h.run(t, "help")
 	mustContain(t, text, "commands[18]{name,usage,description}:", "help[1]:")
 	// Every command that talks to wasync has a compatibility entry.
-	if got := compat.Default().CommandNames(); !reflect.DeepEqual(got, []string{"chats", "doctor", "edit", "home", "message", "messages", "observe", "react", "reply", "search", "send", "send-request", "send.list", "send.to", "send.to.video", "send.video", "thread", "version"}) {
+	if got := compat.Default().CommandNames(); !reflect.DeepEqual(got, []string{"chats", "doctor", "edit", "home", "message", "messages", "observe", "react", "reply", "search", "send", "send-request", "send.image", "send.list", "send.to", "send.to.image", "send.to.video", "send.video", "thread", "version"}) {
 		t.Fatalf("compat entries %v", got)
 	}
 	for _, args := range [][]string{{"version", "--help"}, {"help", "version"}, {"--help"}, {"help", "help"}, {"messages", "--help"}, {"help", "search"}} {
@@ -268,11 +268,11 @@ func TestVersionJSON(t *testing.T) {
 	if got.OldVersion != buildinfo.Version || got.OldCommit != buildinfo.Commit || got.OldDate != buildinfo.Date {
 		t.Fatalf("pre-rename keys missing: %s", out)
 	}
-	if got.Version != buildinfo.Version || got.Commit != buildinfo.Commit || got.Date != buildinfo.Date || got.Wasync.Transport != "api" || got.Wasync.Version == nil || len(got.Wasync.Version.Features) != 20 || !got.Compat.OK {
+	if got.Version != buildinfo.Version || got.Commit != buildinfo.Commit || got.Date != buildinfo.Date || got.Wasync.Transport != "api" || got.Wasync.Version == nil || len(got.Wasync.Version.Features) != 21 || !got.Compat.OK {
 		t.Fatalf("%+v", got)
 	}
 	text, _ := h.run(t, "version")
-	mustContain(t, text, "wasync-axi: "+buildinfo.Version, "commit: "+buildinfo.Commit, "date: "+buildinfo.Date, `min_api: "1.0"`, "features[20]: chats,chats.match,messages", "archive_schema: \"6\"")
+	mustContain(t, text, "wasync-axi: "+buildinfo.Version, "commit: "+buildinfo.Commit, "date: "+buildinfo.Date, `min_api: "1.0"`, "features[21]: chats,chats.match,messages", "archive_schema: \"6\"")
 }
 
 func TestIncompatibleWasync(t *testing.T) {

@@ -17,6 +17,8 @@
     "send.list": {"features": ["write.send", "write.send.list"]},
     "send.video": {"features": ["write.send", "write.send.video"]},
     "send.to.video": {"features": ["write.send", "write.send.to", "write.send.video"]},
+    "send.image": {"features": ["write.send", "write.send.image"]},
+    "send.to.image": {"features": ["write.send", "write.send.to", "write.send.image"]},
     "reply": {"features": ["message.ref", "write.reply"]},
     "react": {"features": ["message.ref", "write.react"]},
     "edit": {"features": ["message.ref", "write.edit"]},

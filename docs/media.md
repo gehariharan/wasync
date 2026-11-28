@@ -155,6 +155,7 @@ temporary encrypted data in addition to their final file.
 A video sent with `--type video` (or by an agent) is the exception: it must be an MP4 with
 H.264 video and AAC audio of at most 64 MiB, the most WhatsApp's linked devices send as a
 playable video. Send a larger file as a document; see [Sending](cli.md#sending-replying-reacting-and-editing).
+An image an agent sends through the API must likewise be a JPEG or PNG of at most 16 MiB.
 
 For a long explicit upload, increase the CLI's command timeout, for example:
 

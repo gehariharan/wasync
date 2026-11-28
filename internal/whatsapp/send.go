@@ -31,6 +31,10 @@ type SendInput struct {
 	// in place of a file wasync opens. It is never read from JSON, so only
 	// code that has checked the agent's right to send can set it.
 	Video []byte `json:"-"`
+	// Image holds an image's bytes when an agent sends one through the API,
+	// in place of a file wasync opens. It is never read from JSON, so only
+	// code that has checked the agent's right to send can set it.
+	Image []byte `json:"-"`
 	// SentBy names the agent sending, so the archived copy shows it; agents
 	// cannot set it themselves. It is empty for the owner's own sends.
 	SentBy string `json:"-"`
@@ -51,7 +55,8 @@ func (in SendInput) Validate() error {
 		return err
 	}
 	hasVideo := len(in.Video) > 0
-	if strings.TrimSpace(in.Text) == "" && in.File == "" && !hasVideo {
+	hasImage := len(in.Image) > 0
+	if strings.TrimSpace(in.Text) == "" && in.File == "" && !hasVideo && !hasImage {
 		return fmt.Errorf("provide --text or --file")
 	}
 	if len(in.Text) > 16000 {
@@ -63,14 +68,22 @@ func (in SendInput) Validate() error {
 		return fmt.Errorf("attachment type must be image, video or document")
 	}
 	switch {
+	case hasVideo && hasImage:
+		return fmt.Errorf("give either an image or a video, not both")
 	case in.File != "" && hasVideo:
 		return fmt.Errorf("give a video file or video bytes, not both")
+	case in.File != "" && hasImage:
+		return fmt.Errorf("give an image file or image bytes, not both")
 	case hasVideo && in.Type != "video":
 		return fmt.Errorf("video bytes must be sent as type video")
-	case in.File == "" && !hasVideo && in.Type != "":
+	case hasImage && in.Type != "image":
+		return fmt.Errorf("image bytes must be sent as type image")
+	case in.File == "" && !hasVideo && !hasImage && in.Type != "":
 		return fmt.Errorf("attachment type requires --file")
 	case len(in.Video) > MaxVideoBytes:
 		return fmt.Errorf("video exceeds %d MiB, the most WhatsApp sends as playable video; shorten or compress it", MaxVideoBytes>>20)
+	case len(in.Image) > MaxImageBytes:
+		return fmt.Errorf("image exceeds %d MiB, the most WhatsApp sends as an image; resize or compress it", MaxImageBytes>>20)
 	case len(in.Thumbnail) > 0 && in.Type != "video":
 		return fmt.Errorf("a preview frame is only sent with a video")
 	case len(in.Thumbnail) > MaxThumbnailBytes:
@@ -104,7 +117,7 @@ func (c *Client) send(ctx context.Context, wa messageSender, own types.JID, in S
 	out := SendResult{ChatID: in.To, Status: "not_sent"}
 	jid, _ := ParseChat(in.To)
 	message := &waE2E.Message{Conversation: proto.String(in.Text)}
-	if in.File != "" || len(in.Video) > 0 {
+	if in.File != "" || len(in.Video) > 0 || len(in.Image) > 0 {
 		var err error
 		if message, err = attachmentMessage(ctx, wa, in); err != nil {
 			return out, err
@@ -134,9 +147,10 @@ func attachmentMessage(ctx context.Context, wa messageSender, in SendInput) (*wa
 	var (
 		content io.ReaderAt
 		size    int64
-		mime    = videoMIME
+		mime    string
 	)
-	if in.File != "" {
+	switch {
+	case in.File != "":
 		f, sniffed, err := openAttachment(in.File)
 		if err != nil {
 			return nil, err
@@ -148,15 +162,24 @@ func attachmentMessage(ctx context.Context, wa messageSender, in SendInput) (*wa
 		}
 		// Read only this file's initial length so appending cannot grow a transfer.
 		content, size, mime = f, info.Size(), sniffed
-	} else {
-		content, size = bytes.NewReader(in.Video), int64(len(in.Video))
+	case len(in.Video) > 0:
+		content, size, mime = bytes.NewReader(in.Video), int64(len(in.Video)), videoMIME
+	default:
+		content, size = bytes.NewReader(in.Image), int64(len(in.Image))
 	}
 	mediaType := whatsmeow.MediaDocument
+	var img ImageInfo
 	var video VideoInfo
 	var thumbnail []byte
 	switch in.Type {
 	case "image":
-		if mime != "image/jpeg" && mime != "image/png" {
+		if len(in.Image) > 0 {
+			var err error
+			if img, err = ProbeImage(content, size); err != nil {
+				return nil, err
+			}
+			mime = img.MIME
+		} else if mime != "image/jpeg" && mime != "image/png" {
 			return nil, fmt.Errorf("image sending supports JPEG and PNG; use document for other files")
 		}
 		mediaType = whatsmeow.MediaImage
@@ -180,6 +203,12 @@ func attachmentMessage(ctx context.Context, wa messageSender, in SendInput) (*wa
 	switch mediaType {
 	case whatsmeow.MediaImage:
 		message.ImageMessage = &waE2E.ImageMessage{Caption: proto.String(in.Text), Mimetype: proto.String(mime), URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey, FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256, FileLength: &uploaded.FileLength}
+		if len(in.Image) > 0 {
+			message.ImageMessage.Width, message.ImageMessage.Height = proto.Uint32(img.Width), proto.Uint32(img.Height)
+			if in.Text == "" {
+				message.ImageMessage.Caption = nil
+			}
+		}
 	case whatsmeow.MediaVideo:
 		message.VideoMessage = &waE2E.VideoMessage{Mimetype: proto.String(mime), URL: &uploaded.URL, DirectPath: &uploaded.DirectPath, MediaKey: uploaded.MediaKey, FileEncSHA256: uploaded.FileEncSHA256, FileSHA256: uploaded.FileSHA256, FileLength: &uploaded.FileLength,
 			Seconds: proto.Uint32(video.Seconds), Width: proto.Uint32(video.Width), Height: proto.Uint32(video.Height), JPEGThumbnail: thumbnail,

@@ -29,7 +29,7 @@ func TestEmbeddedFile(t *testing.T) {
 	if m.MinAPI != "1.0" {
 		t.Fatalf("min_api %s", m.MinAPI)
 	}
-	if got := strings.Join(m.CommandNames(), ","); got != "chats,doctor,edit,home,message,messages,observe,react,reply,search,send,send-request,send.list,send.to,send.to.video,send.video,thread,version" {
+	if got := strings.Join(m.CommandNames(), ","); got != "chats,doctor,edit,home,message,messages,observe,react,reply,search,send,send-request,send.image,send.list,send.to,send.to.image,send.to.video,send.video,thread,version" {
 		t.Fatalf("commands %s", got)
 	}
 }

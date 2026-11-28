@@ -140,6 +140,7 @@ const (
 	FeatureWriteSendTo      = "write.send.to"
 	FeatureWriteSendList    = "write.send.list"
 	FeatureWriteSendVideo   = "write.send.video"
+	FeatureWriteSendImage   = "write.send.image"
 	FeatureWriteReply       = "write.reply"
 	FeatureWriteReact       = "write.react"
 	FeatureWriteEdit        = "write.edit"

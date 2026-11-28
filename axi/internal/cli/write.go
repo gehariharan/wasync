@@ -143,20 +143,21 @@ func (a *App) runReply(ctx context.Context, inv invocation) error {
 	return a.writeResult(inv, t, ref, "reply", resp, res)
 }
 
-const sendUsage = "wasync-axi send (--chat CHAT_JID | --to PHONE_NUMBER) (--text TEXT | --video FILE.mp4 [--text CAPTION]) [--json]"
+const sendUsage = "wasync-axi send (--chat CHAT_JID | --to PHONE_NUMBER) (--text TEXT | --image FILE [--text CAPTION] | --video FILE.mp4 [--text CAPTION]) [--json]"
 
 var sendCommand = &command{
 	name:        "send",
 	usage:       sendUsage,
-	description: "Send a new message or a video to a chat, or to a phone number (running wasync, scope send; a chat synced in wasync, or a number on the list the person approved for you or while open sending is on; for anything else use `send-request`); sends once, never retries",
+	description: "Send a new message, an image or a video to a chat, or to a phone number (running wasync, scope send; a chat synced in wasync, or a number on the list the person approved for you or while open sending is on; for anything else use `send-request`); sends once, never retries",
 	flags: []flagSpec{
 		{name: "--chat", value: "CHAT_JID", description: "the chat to send to, as listed by `chats`; it must be synced in wasync, unless open sending is on"},
 		{name: "--to", value: "PHONE_NUMBER", description: "a phone number with its country code, such as +15551230000; wasync refuses it unless it is on the list the person approved for you (paced: new numbers at random intervals, so retry at the time wasync gives; one message until it replies) or open sending is on"},
-		{name: "--text", value: "TEXT", description: "the message text, or the video's caption; WhatsApp text, at most 16000 bytes"},
+		{name: "--text", value: "TEXT", description: "the message text, or the image or video's caption; WhatsApp text, at most 16000 bytes"},
+		{name: "--image", value: "FILE", description: "a JPEG or PNG image (up to 16 MiB) to send as a photo; the same approval and pacing as text apply"},
 		{name: "--video", value: "FILE", description: "an MP4 video (H.264 video, AAC audio, up to 64 MiB) to send as a playable video; its preview is a frame taken with ffmpeg when it is installed, otherwise a plain one; the same approval and pacing as text apply"},
 		jsonFlag,
 	},
-	examples: []string{`wasync-axi send --chat 120363000000000001@g.us --text "Rent sent today"`, `wasync-axi send --to +15551230000 --text "Hi, it is Sam from the flat"`, `wasync-axi send --to +15551230000 --video explainer.mp4 --text "A 75-second look at how it works"`},
+	examples: []string{`wasync-axi send --chat 120363000000000001@g.us --text "Rent sent today"`, `wasync-axi send --to +15551230000 --text "Hi, it is Sam from the flat"`, `wasync-axi send --to +15551230000 --image compare.png --text "How the compare screen looks"`, `wasync-axi send --to +15551230000 --video explainer.mp4 --text "A 75-second look at how it works"`},
 	run:      (*App).runSend,
 }
 
@@ -169,8 +170,8 @@ type transferWriter interface {
 // message to anchor on. The chat must be synced in wasync, the number on the
 // list the person approved for this agent, or open sending must be on; wasync
 // refuses anything else and says why, and `send-request` asks the person to
-// approve one message instead. A video goes as its bytes, with the text as
-// its caption.
+// approve one message instead. An image or video goes as its bytes, with the
+// text as its caption.
 func (a *App) runSend(ctx context.Context, inv invocation) error {
 	chat, hasChat := inv.flag("--chat")
 	to, hasTo := inv.flag("--to")
@@ -182,10 +183,15 @@ func (a *App) runSend(ctx context.Context, inv invocation) error {
 		return usageErr("usage: "+sendUsage, "`send` needs --chat (the chat JID from `chats`) or --to (a phone number)")
 	}
 	text, hasText := inv.flag("--text")
+	imagePath, hasImage := inv.flag("--image")
 	videoPath, hasVideo := inv.flag("--video")
 	switch {
-	case !hasText && !hasVideo:
-		return usageErr("usage: "+sendUsage, "`send` needs --text, or --video")
+	case !hasText && !hasImage && !hasVideo:
+		return usageErr("usage: "+sendUsage, "`send` needs --text, --image or --video")
+	case hasImage && hasVideo:
+		return usageErr("usage: "+sendUsage, "give --image or --video, not both")
+	case hasImage && strings.TrimSpace(imagePath) == "":
+		return usageErr("usage: "+sendUsage, "--image needs a file")
 	case hasVideo && strings.TrimSpace(videoPath) == "":
 		return usageErr("usage: "+sendUsage, "--video needs a file")
 	}
@@ -199,6 +205,14 @@ func (a *App) runSend(ctx context.Context, inv invocation) error {
 		body["chat"] = chat
 	}
 	note := ""
+	if hasImage {
+		command += ".image"
+		img, err := readAttachment("--image", imagePath, maxImageBytes)
+		if err != nil {
+			return err
+		}
+		body["image"] = img
+	}
 	if hasVideo {
 		command += ".video"
 		video, err := readAttachment("--video", videoPath, maxVideoBytes)
@@ -218,10 +232,14 @@ func (a *App) runSend(ctx context.Context, inv invocation) error {
 	}
 	var res contract.WriteResult
 	var resp contract.Response
-	if hasVideo {
+	if hasImage || hasVideo {
 		tw, ok := w.(transferWriter)
 		if !ok {
-			return writeNeedsOwner("sending a video")
+			kind := "sending a video"
+			if hasImage {
+				kind = "sending an image"
+			}
+			return writeNeedsOwner(kind)
 		}
 		resp, err = ack(t, &res, func(r *contract.Response) error { return tw.PostTransfer(ctx, "/messages", body, r) })
 	} else {
