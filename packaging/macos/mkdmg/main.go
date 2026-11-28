@@ -1,6 +1,6 @@
 // Command mkdmg builds the wasync disk image: a window with wasync.app, a
 // link to Applications, and a background picture asking to drag one onto the
-// other. It writes the Finder layout itself, so it needs no Finder scripting
+// other and then eject the disk. It writes the Finder layout itself, so it needs no Finder scripting
 // and runs on a build machine with no one logged in.
 //
 //	go run ./packaging/macos/mkdmg -app dist/.../wasync.app -out wasync_V_darwin_ARCH.dmg

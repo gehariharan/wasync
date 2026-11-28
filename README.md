@@ -35,7 +35,7 @@ You do not need Go or a compiler.
 
 | Platform | Download | How |
 | --- | --- | --- |
-| macOS 15+ (Apple Silicon or Intel), the wasync app | `wasync_VERSION_darwin_arm64.dmg` / `_amd64.dmg` | Open the disk image and drag wasync to Applications ([the wasync app](docs/desktop.md)) |
+| macOS 15+ (Apple Silicon or Intel), the wasync app | `wasync_VERSION_darwin_arm64.dmg` / `_amd64.dmg` | Drag wasync to Applications, eject the wasync disk, then open wasync from Applications or Spotlight ([the wasync app](docs/desktop.md)) |
 | macOS 15+ (Apple Silicon or Intel), the command only | `wasync_VERSION_darwin_arm64.pkg` / `_amd64.pkg` | Open the package and follow Installer |
 | Linux x86-64 or ARM64, glibc 2.35+ | `wasync_VERSION_linux_amd64.tar.gz` / `_arm64.tar.gz` | Extract and run `./install.sh` |
 | Windows 10/11 x64 | `wasync_VERSION_windows_amd64-setup.exe` or `.zip` | Per-user Setup of the wasync app, or portable ZIP ([Windows](docs/windows.md)) |

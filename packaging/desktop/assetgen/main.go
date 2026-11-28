@@ -79,7 +79,7 @@ func main() {
 		writeBMP(filepath.Join(windowsPk, fmt.Sprintf("wizard-small-%d.bmp", i)), cornerPicture(logo, size))
 	}
 
-	// The disk image window: drag wasync to Applications, and the byline.
+	// The disk image window: drag wasync to Applications, eject, and the byline.
 	faces := loadFaces(*regular, *semibold)
 	one := filepath.Join(os.TempDir(), "wasync-dmg-background.png")
 	two := filepath.Join(os.TempDir(), "wasync-dmg-background@2x.png")
@@ -309,7 +309,7 @@ func dmgBackground(fs faces, scale int) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	fill(img, paper)
 	centred(img, face(fs.semibold, 20, scale), ink, "Drag wasync to Applications", 64*scale)
-	centred(img, face(fs.regular, 13, scale), muted, "Then open wasync from your Applications folder.", 90*scale)
+	centred(img, face(fs.regular, 13, scale), muted, "Then eject the disk and open wasync from Applications.", 90*scale)
 	arrow(img, scale)
 	centred(img, face(fs.regular, 13, scale), muted, "by @gehariharan · gehariharan.com", (DMGHeight-34)*scale)
 	return img

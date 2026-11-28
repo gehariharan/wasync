@@ -111,7 +111,7 @@ func Detect(h Host) Channel {
 			return Channel{Kind: KindMacApp, Note: "macOS is running wasync from a temporary copy. Move wasync to your Applications folder, open it from there, then update."}
 		}
 		if h.Writable == nil || !h.Writable(filepath.Dir(bundle)) {
-			return Channel{Kind: KindMacApp, Note: "wasync cannot replace itself in " + filepath.Dir(bundle) + ". Download the new disk image from " + releasePage + " and drag wasync to Applications."}
+			return Channel{Kind: KindMacApp, Note: "wasync cannot replace itself in " + filepath.Dir(bundle) + ". Download the new disk image from " + releasePage + " and drag wasync to Applications, eject the disk, then open wasync from Applications."}
 		}
 		return Channel{Kind: KindMacApp, OneClick: true, Target: bundle, Arch: h.GOARCH}
 	case "linux":

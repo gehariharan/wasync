@@ -317,6 +317,7 @@ main.install h2 { margin-top: var(--s6); }
 .steps3 h3 { margin: 0 0 var(--s3); }
 .steps-n { margin: 0; padding-left: 1.3rem; display: grid; gap: var(--s2); font-size: var(--fs-sm); color: var(--fg-2); }
 .steps-n li { min-width: 0; }
+.panel .mac-steps { margin: var(--s4) auto 0; max-width: 22rem; text-align: left; }
 .steps-n li::marker { color: var(--brand-strong); font-weight: 700; }
 pre { margin: var(--s2) 0 0; padding: var(--s2) var(--s3); background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--r-sm); overflow-x: auto; }
 pre code { background: none; border: 0; padding: 0; font-size: .76rem; overflow-wrap: normal; white-space: pre; }

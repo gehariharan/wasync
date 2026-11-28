@@ -32,7 +32,7 @@ func (m Mac) Probe(ctx context.Context, ch *Channel) {
 	if !ch.OneClick {
 		return
 	}
-	notSigned := "This copy of wasync is not signed by its developer, so it cannot check that an update is genuine. Download the new disk image from " + releasePage + " and drag wasync to Applications."
+	notSigned := "This copy of wasync is not signed by its developer, so it cannot check that an update is genuine. Download the new disk image from " + releasePage + " and drag wasync to Applications, eject the disk, then open wasync from Applications."
 	stdout, stderr, err := m.Run(ctx, "codesign", []string{"-dv", "--verbose=2", ch.Target}, nil)
 	if err != nil {
 		ch.OneClick, ch.Note = false, notSigned
