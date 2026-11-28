@@ -655,6 +655,9 @@ type uiData struct {
 	Scripts []string
 	// UpdateNote says a newer wasync is ready to install, on every page.
 	UpdateNote string
+	// Theme is the Appearance setting, "light" or "dark"; empty follows the
+	// system.
+	Theme string
 }
 
 func (d *uiData) frame() *uiData { return d }
@@ -697,15 +700,21 @@ func railPage(path string) string {
 	return ""
 }
 
-// frameFor fills what every signed-in page's frame shows: the background
-// warning, the current rail item and how many requests wait for approval.
+// frameFor fills what every page's frame shows: the Appearance setting and,
+// signed in, the background warning, the current rail item and how many
+// requests wait for approval.
 func (h *handler) frameFor(r *http.Request, data any) {
 	h.warnBackground(data)
 	f, ok := data.(framed)
-	if !ok || f.frame().Signedout {
+	if !ok {
 		return
 	}
 	d := f.frame()
+	s, _ := h.prefs.Get()
+	d.Theme = s.Theme
+	if d.Signedout {
+		return
+	}
 	d.Page = railPage(r.URL.Path)
 	d.AgentOnly = h.agentOnly()
 	if d.Page == "chats" && d.AgentOnly && strings.HasPrefix(r.URL.Path, "/ui/chats/pick") {
@@ -756,12 +765,12 @@ func (h *handler) uiRender(w http.ResponseWriter, r *http.Request, code int, dat
 // stylesheets, the icon rail and the notices. Pages carry no styles of their
 // own; components.css holds them all.
 const uiHead = `{{define "head"}}<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<html lang="en"{{with .Theme}} data-theme="{{.}}"{{end}}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 {{if .Refresh}}<meta http-equiv="refresh" content="{{.Refresh}}">{{end}}
 <title>{{.Title}}</title>
 <link rel="manifest" href="/ui/manifest.webmanifest"><link rel="icon" href="/ui/favicon.ico" sizes="48x48"><link rel="icon" href="/ui/icon.svg" type="image/svg+xml"><link rel="apple-touch-icon" href="/ui/apple-touch-icon.png">
 <meta name="application-name" content="wasync"><meta name="apple-mobile-web-app-title" content="wasync">
-<meta name="theme-color" content="#f6f7f5" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#111513" media="(prefers-color-scheme: dark)">
+{{if eq .Theme "light"}}<meta name="theme-color" content="#f6f7f5">{{else if eq .Theme "dark"}}<meta name="theme-color" content="#111513">{{else}}<meta name="theme-color" content="#f6f7f5" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#111513" media="(prefers-color-scheme: dark)">{{end}}
 <link rel="preload" href="/ui/inter.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="/ui/tokens.css?v={{tokensv}}"><link rel="stylesheet" href="/ui/components.css?v={{componentsv}}">
 {{if .Script}}<script src="/ui/passkey.js" defer></script>{{end}}{{range .Scripts}}<script src="{{.}}" defer></script>{{end}}
@@ -784,7 +793,7 @@ const uiHead = `{{define "head"}}<!doctype html>
 
 // uiIcons are the line icons the rail and the chats tools use, drawn inline
 // so they follow the text colour. Each is decorative: its link names it.
-const uiIcons = `{{define "icon"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">{{if eq . "chats"}}<path d="M4 5h16v11H9l-5 4z"/>{{else if eq . "home"}}<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>{{else if eq . "sent"}}<path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/>{{else if eq . "agents"}}<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3.5" r="1"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/>{{else if eq . "approvals"}}<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="m9 12 2 2 4-4"/>{{else if eq . "settings"}}<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9 7 7M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1"/>{{else if eq . "all"}}<path d="M4 6h16M4 12h16M4 18h16"/>{{else if eq . "pick"}}<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>{{else if eq . "new"}}<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>{{end}}</svg>{{end}}`
+const uiIcons = `{{define "icon"}}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">{{if eq . "chats"}}<path d="M4 5h16v11H9l-5 4z"/>{{else if eq . "home"}}<path d="M4 11l8-7 8 7v9h-5v-6H9v6H4z"/>{{else if eq . "sent"}}<path d="M21 3 10 14"/><path d="m21 3-7 18-4-7-7-4z"/>{{else if eq . "agents"}}<rect x="5" y="8" width="14" height="11" rx="3"/><path d="M12 8V4"/><circle cx="12" cy="3.5" r="1"/><circle cx="9.5" cy="13" r="1"/><circle cx="14.5" cy="13" r="1"/>{{else if eq . "approvals"}}<path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="m9 12 2 2 4-4"/>{{else if eq . "settings"}}<path d="M10.8 4.9L11.0 2.5L13.0 2.5L13.2 4.9L16.1 6.1L18.0 4.6L19.4 6.0L17.9 7.9L19.1 10.8L21.5 11.0L21.5 13.0L19.1 13.2L17.9 16.1L19.4 18.0L18.0 19.4L16.1 17.9L13.2 19.1L13.0 21.5L11.0 21.5L10.8 19.1L7.9 17.9L6.0 19.4L4.6 18.0L6.1 16.1L4.9 13.2L2.5 13.0L2.5 11.0L4.9 10.8L6.1 7.9L4.6 6.0L6.0 4.6L7.9 6.1z"/><circle cx="12" cy="12" r="3"/>{{else if eq . "all"}}<path d="M4 6h16M4 12h16M4 18h16"/>{{else if eq . "pick"}}<rect x="4" y="4" width="16" height="16" rx="3"/><path d="m8 12 3 3 5-6"/>{{else if eq . "new"}}<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13 7 4 4"/>{{end}}</svg>{{end}}`
 
 // uiFuncs are the helpers every page template may call.
 var uiFuncs = template.FuncMap{

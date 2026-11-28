@@ -69,8 +69,11 @@
   --wide-w: 76rem;
 }
 
+/* Dark: what the system asks for, unless Settings, Appearance keeps wasync
+   light, or always when it keeps it dark (<html data-theme>). The two blocks
+   hold the same values; a test keeps them equal. */
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #111513;
     --surface: #191e1b;
     --surface-2: #212823;
@@ -91,3 +94,25 @@
     --shadow: none;
   }
 }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #111513;
+  --surface: #191e1b;
+  --surface-2: #212823;
+  --line: #2b332e;
+  --line-2: #3b4540;
+  --fg: #e7ece9;
+  --fg-2: #c2cbc5;
+  --mut: #97a29b;
+  --brand: #1b7a50;
+  --brand-strong: #4cc38a;
+  --brand-50: #15271e;
+  --brand-100: #1e3b2c;
+  --link: #5fd19a;
+  --danger: #ff8a80;
+  --danger-50: #3a1d1b;
+  --warn: #f3b25a;
+  --warn-50: #33261a;
+  --shadow: none;
+}
+:root[data-theme="light"] { color-scheme: light; }

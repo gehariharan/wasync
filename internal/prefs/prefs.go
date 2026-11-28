@@ -1,6 +1,6 @@
 // Package prefs holds the owner's everyday wasync settings: how wasync is used
-// (for AI agents only, or also to read chats here) and whether photos, videos
-// and files of synced chats are saved. They are comfort settings, not access
+// (for AI agents only, or also to read chats here), whether photos, videos
+// and files of synced chats are saved, and how its windows look. They are comfort settings, not access
 // rules: nothing here lets an agent read or send anything.
 //
 // The settings live in a private file next to the archive. Keys this build does
@@ -30,6 +30,10 @@ const (
 	UseAgents = "agents"
 	// UseChats is "Also read my chats here".
 	UseChats = "chats"
+	// ThemeLight and ThemeDark are the Appearance choices that keep wasync
+	// light or dark whatever the system uses.
+	ThemeLight = "light"
+	ThemeDark  = "dark"
 )
 
 // Settings is the saved choice. The zero value is the default.
@@ -47,6 +51,9 @@ type Settings struct {
 	// SetupStep is the furthest setup step the person reached, so an
 	// unfinished setup resumes there.
 	SetupStep int `json:"setup_step,omitempty"`
+	// Theme is the Appearance choice: ThemeLight or ThemeDark; "" follows the
+	// system, which is the default.
+	Theme string `json:"theme,omitempty"`
 }
 
 // SettingUp reports whether a setup begun on this version is unfinished.
@@ -62,9 +69,15 @@ func (s Settings) MediaOn() bool { return s.SaveMedia == nil || *s.SaveMedia }
 func (s Settings) Validate() error {
 	switch s.Use {
 	case "", UseAgents, UseChats:
-		return nil
+	default:
+		return fmt.Errorf("use must be %q or %q", UseAgents, UseChats)
 	}
-	return fmt.Errorf("use must be %q or %q", UseAgents, UseChats)
+	switch s.Theme {
+	case "", ThemeLight, ThemeDark:
+	default:
+		return fmt.Errorf("theme must be %q or %q", ThemeLight, ThemeDark)
+	}
+	return nil
 }
 
 // Store reads and writes the settings of one data directory. Reads are cached
@@ -219,6 +232,7 @@ func (s *Store) Update(change func(*Settings)) (Settings, error) {
 		setKey(raw, "setup_done", *next.SetupDone, false)
 	}
 	setKey(raw, "setup_step", next.SetupStep, next.SetupStep == 0)
+	setKey(raw, "theme", next.Theme, next.Theme == "")
 	if err = s.write(raw); err != nil {
 		return current, err
 	}

@@ -112,3 +112,27 @@ func TestADamagedFileGivesDefaultsAndIsNotOverwritten(t *testing.T) {
 		}
 	}
 }
+
+func TestAppearanceFollowsTheSystemUntilChosenAndIsRemembered(t *testing.T) {
+	dir := privateDir(t)
+	path := filepath.Join(dir, FileName)
+	store := Open(dir)
+	if s, err := store.Get(); err != nil || s.Theme != "" {
+		t.Fatalf("default appearance: %+v %v", s, err)
+	}
+	if _, err := store.Update(func(s *Settings) { s.Theme = ThemeDark }); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := Open(dir).Get(); err != nil || got.Theme != ThemeDark {
+		t.Fatalf("dark not remembered: %+v %v", got, err)
+	}
+	if _, err := store.Update(func(s *Settings) { s.Theme = "sepia" }); err == nil {
+		t.Fatal("an unknown appearance was saved")
+	}
+	if _, err := store.Update(func(s *Settings) { s.Theme = "" }); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); strings.Contains(string(data), "theme") {
+		t.Fatalf("following the system is the default and is not written: %s", data)
+	}
+}
