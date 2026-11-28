@@ -151,7 +151,13 @@ func (k *refusingKeychain) Set(string, string, string) error { k.sets++; return 
 func (k *refusingKeychain) Delete(string) error              { return nil }
 
 func TestServeStopsCleanlyWhenTheKeychainIsRefused(t *testing.T) {
-	keychain := &refusingKeychain{err: approvecred.ErrAccessDenied}
+	for _, refusal := range []error{approvecred.ErrAccessDenied, approvecred.ErrLocked} {
+		t.Run(refusal.Error(), func(t *testing.T) { serveStopsCleanlyWhenTheKeychainRefuses(t, refusal) })
+	}
+}
+
+func serveStopsCleanlyWhenTheKeychainRefuses(t *testing.T, refusal error) {
+	keychain := &refusingKeychain{err: refusal}
 	approvecred.Use(keychain)
 	t.Cleanup(func() { approvecred.Use(nil) })
 	client := &boundedSyncClient{}

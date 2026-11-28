@@ -295,7 +295,7 @@ func (a *App) ownerAction(offline, setupMode, appMode bool) action {
 			}
 		}, send)
 		// Exit cleanly in both cases so a login item does not restart into the same prompt.
-		if errors.Is(err, approvecred.ErrAccessDenied) {
+		if errors.Is(err, approvecred.ErrAccessDenied) || errors.Is(err, approvecred.ErrLocked) {
 			const msg = "Approvals are off: the Keychain did not let wasync use its approval credential (it may still be locked). Run wasync again to turn them back on."
 			fmt.Fprintln(a.Err, msg)
 			a.announce(msg)
